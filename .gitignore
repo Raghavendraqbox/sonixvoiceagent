@@ -1,0 +1,47 @@
+# Environment — never commit secrets
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+venv/
+.venv/
+env/
+.env/
+
+# Generated at runtime
+faiss_index/
+*.faiss
+*.pkl
+response.mp3
+*.mp3
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# The cloned English agent (reference only, not part of this project)
+voiceagentcloud/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb

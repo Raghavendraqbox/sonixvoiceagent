@@ -1,0 +1,44 @@
+Qobox Company Information
+
+Company Name: Quality Outside The Box (Qobox)
+Qobox is an Indian software quality assurance and testing services company that focuses on delivering reliable, scalable, and high-performance software systems.
+The company specializes in software testing, automation frameworks, performance engineering, and quality consulting services for enterprise applications.
+
+Qobox was established in 2020 and operates as a private limited company registered in India.
+The company is headquartered in Chennai, Tamil Nadu, India.
+The company has two directors: Gangapuram Jayanthi and Amalodbhavi Mrudula Ranjan Damavarapu.
+
+Qobox Core Services:
+Software Testing: Manual testing for web, mobile, and enterprise applications.
+Automation Testing: Developing automated test frameworks to accelerate testing cycles.
+Performance Testing: Testing software under heavy load conditions to ensure system stability.
+Security Testing: Identifying vulnerabilities and protecting applications from security threats.
+API Testing: Validating backend APIs for reliability and performance.
+QA Consulting: Helping organizations implement effective testing strategies and quality frameworks.
+
+Qobox Industries Served:
+Healthcare, Insurance, Retail, Financial Services, Telecommunications, and Pharmaceutical companies.
+
+Qobox Technology Stack:
+Test automation frameworks, Continuous Integration and Continuous Deployment CI/CD pipelines, performance testing tools, security testing tools, and enterprise testing platforms.
+
+Qobox Mission:
+To improve the reliability and quality of software systems by implementing modern testing methodologies, automation solutions, and performance engineering practices.
+
+Contact and Support:
+For information about Qobox services, please speak with a Qobox representative.
+To connect with a specialist, ask the voice agent to transfer your call.
+
+Telugu Knowledge:
+
+Qobox గురించి:
+Qobox అనేది భారతీయ సాఫ్ట్‌వేర్ నాణ్యత నిర్ధారణ మరియు పరీక్ష సేవల సంస్థ.
+సంస్థ చెన్నై, తమిళనాడు, భారతదేశంలో ప్రధాన కార్యాలయంతో 2020 లో స్థాపించబడింది.
+
+Qobox సేవలు:
+సాఫ్ట్‌వేర్ టెస్టింగ్: వెబ్, మొబైల్ మరియు ఎంటర్‌ప్రైజ్ అప్లికేషన్‌ల మాన్యువల్ టెస్టింగ్.
+ఆటోమేషన్ టెస్టింగ్: టెస్టింగ్ చక్రాలను వేగవంతం చేయడానికి స్వయంచాలక పరీక్ష ఫ్రేమ్‌వర్క్‌లు.
+పెర్ఫార్మెన్స్ టెస్టింగ్: సిస్టమ్ స్థిరత్వాన్ని నిర్ధారించడానికి హెవీ లోడ్‌లో సాఫ్ట్‌వేర్ పరీక్షించడం.
+సెక్యూరిటీ టెస్టింగ్: దుర్బలత్వాలను గుర్తించడం మరియు అప్లికేషన్‌లను భద్రతా బెదిరింపుల నుండి రక్షించడం.
+API టెస్టింగ్: నమ్మకత్వం మరియు పెర్ఫార్మెన్స్ కోసం బ్యాకెండ్ API లను ధృవీకరించడం.
+QA కన్సల్టింగ్: సంస్థలు ప్రభావవంతమైన పరీక్ష వ్యూహాలు మరియు నాణ్యత ఫ్రేమ్‌వర్క్‌లను అమలు చేయడంలో సహాయం చేయడం.

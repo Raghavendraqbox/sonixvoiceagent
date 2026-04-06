@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="te">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Qobox Telugu Voice Agent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --border:    #2a2d3a;
+      --accent:    #f97316;   /* saffron — Telugu cultural colour */
+      --accent-2:  #a78bfa;
+      --danger:    #f87171;
+      --success:   #34d399;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --radius:    12px;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: "Noto Sans Telugu", "Inter", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 28px;
+      padding: 24px;
+    }
+
+    header { text-align: center; }
+    header h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    header p {
+      color: var(--muted);
+      font-size: 0.875rem;
+      margin-top: 4px;
+    }
+    header .badge {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 2px 10px;
+      border-radius: 20px;
+      background: rgba(249,115,22,0.15);
+      border: 1px solid rgba(249,115,22,0.4);
+      color: var(--accent);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+
+    /* ---- Status orb ---- */
+    .orb-wrapper { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    .orb {
+      width: 100px; height: 100px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #2d3146, #0f1117);
+      box-shadow: 0 0 20px rgba(249,115,22,0.08);
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .orb.idle {
+      background: radial-gradient(circle at 35% 35%, #2d3146, #0f1117);
+      box-shadow: 0 0 20px rgba(249,115,22,0.08);
+    }
+    .orb.user-speaking {
+      background: radial-gradient(circle at 35% 35%, #c2410c, #7c2d12);
+      animation: pulse-user 1s ease-in-out infinite;
+    }
+    @keyframes pulse-user {
+      0%   { box-shadow: 0 0 0 0   rgba(249,115,22,0.7); }
+      70%  { box-shadow: 0 0 0 22px rgba(249,115,22,0); }
+      100% { box-shadow: 0 0 0 0   rgba(249,115,22,0); }
+    }
+    .orb.bot-speaking {
+      background: radial-gradient(circle at 35% 35%, #7c3aed, #4c1d95);
+      animation: pulse-bot 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse-bot {
+      0%   { box-shadow: 0 0 0 0   rgba(139,92,246,0.7); }
+      70%  { box-shadow: 0 0 0 26px rgba(139,92,246,0); }
+      100% { box-shadow: 0 0 0 0   rgba(139,92,246,0); }
+    }
+    .orb.thinking {
+      background: radial-gradient(circle at 35% 35%, #d97706, #92400e);
+      animation: pulse-think 0.8s ease-in-out infinite;
+    }
+    @keyframes pulse-think {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.55; }
+    }
+    .orb-label {
+      font-size: 0.8rem; color: var(--muted);
+      letter-spacing: 0.05em; text-transform: uppercase; min-height: 1.2em;
+    }
+
+    /* ---- Button ---- */
+    #btn-start {
+      width: 200px; padding: 14px 0;
+      border: none; border-radius: var(--radius);
+      font-size: 0.95rem; font-weight: 600; cursor: pointer;
+      transition: transform 0.12s, box-shadow 0.2s, background 0.2s;
+      background: var(--accent); color: #fff;
+      box-shadow: 0 4px 20px rgba(249,115,22,0.35);
+    }
+    #btn-start:hover  { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(249,115,22,0.5); }
+    #btn-start:active { transform: translateY(0); }
+    #btn-start.active {
+      background: var(--danger);
+      box-shadow: 0 4px 20px rgba(248,113,113,0.4);
+    }
+    #btn-start:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    /* ---- Cards ---- */
+    .card {
+      width: 100%; max-width: 640px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px 20px;
+    }
+    .card-label {
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px;
+    }
+    #transcript-user {
+      font-size: 0.95rem; color: var(--accent); min-height: 1.4em; word-break: break-word;
+    }
+    #transcript-partial {
+      font-size: 0.85rem; color: var(--muted); font-style: italic;
+      margin-top: 4px; min-height: 1.2em;
+    }
+    #transcript-bot {
+      font-size: 0.95rem; color: var(--text); min-height: 1.4em; word-break: break-word;
+      line-height: 1.6;
+    }
+
+    /* ---- Status bar ---- */
+    #status-bar { font-size: 0.75rem; color: var(--muted); text-align: center; }
+    #status-bar span {
+      display: inline-block; padding: 3px 10px; border-radius: 20px;
+      background: var(--surface); border: 1px solid var(--border);
+    }
+
+    /* ---- Energy meter ---- */
+    .meter-wrapper { width: 100%; max-width: 640px; display: flex; align-items: center; gap: 10px; }
+    .meter-label { font-size: 0.7rem; color: var(--muted); white-space: nowrap; width: 70px; }
+    .meter-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    #energy-bar {
+      height: 100%; width: 0%; background: var(--accent);
+      border-radius: 3px; transition: width 0.08s ease;
+    }
+    #energy-bar.above-threshold { background: var(--success); }
+
+    /* Telugu font hint */
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Telugu:wght@400;600&display=swap');
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Qobox అసిస్టెంట్</h1>
+    <p>Quality Outside The Box — వర్చువల్ కస్టమర్ సేవ</p>
+    <span class="badge">తెలుగు · Telugu · Full Duplex</span>
+  </header>
+
+  <div class="orb-wrapper">
+    <div class="orb idle" id="orb"></div>
+    <div class="orb-label" id="orb-label">నిష్క్రియంగా ఉంది</div>
+  </div>
+
+  <button id="btn-start" onclick="toggleSession()">మాట్లాడడం ప్రారంభించండి</button>
+
+  <div class="meter-wrapper">
+    <span class="meter-label">మైక్ స్థాయి</span>
+    <div class="meter-track"><div id="energy-bar"></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">మీరు చెప్పారు</div>
+    <div id="transcript-user">—</div>
+    <div id="transcript-partial"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">అసిస్టెంట్</div>
+    <div id="transcript-bot">—</div>
+  </div>
+
+  <div id="status-bar"><span id="status-text">కనెక్ట్ అవ్వలేదు</span></div>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+const WS_URL            = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+const SEND_INTERVAL_MS  = 100;       // Send PCM chunks every 100ms
+const VAD_THRESHOLD     = 0.018;     // RMS energy threshold for speech detection
+const VAD_HOLD_FRAMES   = 4;         // 400ms sustained speech → confirm interrupt
+// edge-tts Telugu native rate → resampled to 24kHz on backend
+// MUST match config.tts.sample_rate and TTS_RATE in tts.py
+const PLAYBACK_SAMPLE_RATE = 24000;
+const PREBUFFER_MS      = 250;       // Buffer 250ms before starting playback
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let ws             = null;
+let audioCtx       = null;
+let mediaStream    = null;
+let sourceNode     = null;
+let analyserNode   = null;
+let processorNode  = null;
+let sendInterval   = null;
+let pcmBuffer      = [];
+let sessionActive  = false;
+let botSpeaking    = false;
+let userSpeaking   = false;
+let vadFrameCount  = 0;
+let interruptSent  = false;
+
+// TTS playback queue
+let ttsAudioCtx       = null;
+let ttsSourceNodes    = [];
+let ttsQueue          = [];
+let ttsBufferedMs     = 0;
+let ttsScheduledUntil = 0;
+let ttsPrebufferDone  = false;
+
+// ---------------------------------------------------------------------------
+// DOM
+// ---------------------------------------------------------------------------
+const orbEl             = document.getElementById("orb");
+const orbLabel          = document.getElementById("orb-label");
+const btnStart          = document.getElementById("btn-start");
+const statusText        = document.getElementById("status-text");
+const transcriptUser    = document.getElementById("transcript-user");
+const transcriptPartial = document.getElementById("transcript-partial");
+const transcriptBot     = document.getElementById("transcript-bot");
+const energyBar         = document.getElementById("energy-bar");
+
+// ---------------------------------------------------------------------------
+// UI helpers
+// ---------------------------------------------------------------------------
+function setOrb(state, label) {
+  orbEl.className = `orb ${state}`;
+  orbLabel.textContent = label;
+}
+function setStatus(msg) { statusText.textContent = msg; }
+
+// ---------------------------------------------------------------------------
+// Session toggle
+// ---------------------------------------------------------------------------
+async function toggleSession() {
+  if (sessionActive) stopSession();
+  else await startSession();
+}
+
+async function startSession() {
+  setStatus("మైక్రోఫోన్ అనుమతి కోసం అభ్యర్థిస్తోంది…");
+  btnStart.disabled = true;
+
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        sampleRate: 16000,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+  } catch (err) {
+    setStatus("మైక్రోఫోన్ అనుమతి లేదు: " + err.message);
+    btnStart.disabled = false;
+    return;
+  }
+
+  // Capture context — 16kHz for ASR
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+    sampleRate: 16000,
+    latencyHint: "interactive",
+  });
+
+  // Playback context — 24kHz for edge-tts Telugu
+  ttsAudioCtx = new (window.AudioContext || window.webkitAudioContext)({
+    sampleRate: PLAYBACK_SAMPLE_RATE,
+    latencyHint: "playback",
+  });
+
+  await setupAudioPipeline();
+  connectWebSocket();
+
+  sessionActive = true;
+  btnStart.textContent = "ఆపండి";
+  btnStart.classList.add("active");
+  btnStart.disabled = false;
+  setOrb("idle", "వింటోంది");
+  setStatus("కనెక్ట్ అయింది — మాట్లాడడం ప్రారంభించండి…");
+}
+
+function stopSession() {
+  sessionActive = false;
+  btnStart.textContent = "మాట్లాడడం ప్రారంభించండి";
+  btnStart.classList.remove("active");
+
+  if (sendInterval)  { clearInterval(sendInterval); sendInterval = null; }
+  if (processorNode) { processorNode.disconnect(); processorNode = null; }
+  if (sourceNode)    { sourceNode.disconnect();    sourceNode    = null; }
+  if (analyserNode)  { analyserNode.disconnect();  analyserNode  = null; }
+  if (audioCtx)      { audioCtx.close();           audioCtx      = null; }
+  if (mediaStream)   { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+
+  ttsSourceNodes.forEach(s => { try { s.stop(0); } catch (_) {} });
+  ttsSourceNodes = [];
+  if (ttsAudioCtx)  { ttsAudioCtx.close(); ttsAudioCtx = null; }
+  if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+  ws = null;
+
+  ttsQueue = []; ttsBufferedMs = 0; ttsPrebufferDone = false;
+  ttsScheduledUntil = 0; botSpeaking = false; userSpeaking = false;
+  setOrb("idle", "నిష్క్రియంగా ఉంది");
+  setStatus("కనెక్ట్ అవ్వలేదు");
+}
+
+// ---------------------------------------------------------------------------
+// Audio pipeline
+// ---------------------------------------------------------------------------
+async function setupAudioPipeline() {
+  sourceNode   = audioCtx.createMediaStreamSource(mediaStream);
+  analyserNode = audioCtx.createAnalyser();
+  analyserNode.fftSize = 256;
+  analyserNode.smoothingTimeConstant = 0.5;
+  sourceNode.connect(analyserNode);
+
+  if (audioCtx.audioWorklet) {
+    await setupWorklet();
+  } else {
+    setupScriptProcessor();
+  }
+
+  sendInterval = setInterval(sendAudioChunk, SEND_INTERVAL_MS);
+}
+
+// AudioWorklet (preferred — zero-copy)
+const WORKLET_CODE = `
+class PCMCapture extends AudioWorkletProcessor {
+  process(inputs) {
+    const ch = inputs[0][0];
+    if (ch && ch.length > 0) {
+      const copy = new Float32Array(ch);
+      this.port.postMessage(copy, [copy.buffer]);
+    }
+    return true;
+  }
+}
+registerProcessor("pcm-capture", PCMCapture);
+`;
+
+async function setupWorklet() {
+  const blob = new Blob([WORKLET_CODE], { type: "application/javascript" });
+  const url  = URL.createObjectURL(blob);
+  await audioCtx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+  processorNode = new AudioWorkletNode(audioCtx, "pcm-capture");
+  processorNode.port.onmessage = (e) => { pcmBuffer.push(...e.data); };
+  analyserNode.connect(processorNode);
+  processorNode.connect(audioCtx.destination);
+}
+
+function setupScriptProcessor() {
+  processorNode = audioCtx.createScriptProcessor(4096, 1, 1);
+  processorNode.onaudioprocess = (e) => {
+    const s = e.inputBuffer.getChannelData(0);
+    pcmBuffer.push(...s);
+  };
+  analyserNode.connect(processorNode);
+  processorNode.connect(audioCtx.destination);
+}
+
+// ---------------------------------------------------------------------------
+// PCM helpers
+// ---------------------------------------------------------------------------
+function float32ToInt16PCM(float32Array) {
+  const int16 = new Int16Array(float32Array.length);
+  for (let i = 0; i < float32Array.length; i++) {
+    const s = Math.max(-1, Math.min(1, float32Array[i]));
+    int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  return int16;
+}
+
+function int16ToFloat32(int16Array) {
+  const float32 = new Float32Array(int16Array.length);
+  for (let i = 0; i < int16Array.length; i++) {
+    float32[i] = int16Array[i] / 32768.0;
+  }
+  return float32;
+}
+
+// ---------------------------------------------------------------------------
+// Audio chunk sender (every 100ms)
+// ---------------------------------------------------------------------------
+function sendAudioChunk() {
+  if (!ws || ws.readyState !== WebSocket.OPEN || pcmBuffer.length === 0) return;
+  const samples = new Float32Array(pcmBuffer);
+  pcmBuffer = [];
+  const rms = computeRMS(samples);
+  updateEnergyMeter(rms);
+  checkVAD(rms);
+  ws.send(float32ToInt16PCM(samples).buffer);
+}
+
+// ---------------------------------------------------------------------------
+// VAD
+// ---------------------------------------------------------------------------
+function computeRMS(arr) {
+  let s = 0;
+  for (let i = 0; i < arr.length; i++) s += arr[i] * arr[i];
+  return Math.sqrt(s / arr.length);
+}
+
+function updateEnergyMeter(rms) {
+  const pct = Math.min(100, rms * 1000);
+  energyBar.style.width = pct + "%";
+  energyBar.classList.toggle("above-threshold", rms > VAD_THRESHOLD);
+}
+
+function checkVAD(rms) {
+  if (rms > VAD_THRESHOLD) {
+    vadFrameCount++;
+
+    // Immediate interrupt when bot is speaking — every ms of overlap is bad UX
+    if (botSpeaking && !interruptSent) {
+      interruptSent = true;
+      sendJSON({ type: "interrupt" });
+      stopTTSPlayback();
+      setOrb("user-speaking", "మీరు మాట్లాడుతున్నారు…");
+      userSpeaking = true;
+    }
+
+    if (vadFrameCount >= VAD_HOLD_FRAMES && !userSpeaking) {
+      userSpeaking = true;
+      setOrb("user-speaking", "మీరు మాట్లాడుతున్నారు…");
+    }
+  } else {
+    vadFrameCount = 0;
+    if (userSpeaking) {
+      userSpeaking = false;
+      if (!botSpeaking) setOrb("idle", "వింటోంది");
+    }
+    interruptSent = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket
+// ---------------------------------------------------------------------------
+function connectWebSocket() {
+  setStatus("సర్వర్‌కు కనెక్ట్ అవుతోంది…");
+  ws = new WebSocket(WS_URL);
+  ws.binaryType = "arraybuffer";
+
+  ws.onopen  = () => setStatus("కనెక్ట్ అయింది — సెషన్ ప్రారంభమవుతోంది…");
+  ws.onclose = (e) => {
+    setStatus("డిస్‌కనెక్ట్ అయింది (code " + e.code + ")");
+    if (sessionActive) {
+      setOrb("idle", "మళ్ళీ కనెక్ట్ అవుతోంది…");
+      setTimeout(connectWebSocket, 2000);
+    }
+  };
+  ws.onerror = () => setStatus("WebSocket లోపం");
+
+  ws.onmessage = (event) => {
+    if (event.data instanceof ArrayBuffer) onAudioReceived(event.data);
+    else if (typeof event.data === "string") onJSONReceived(event.data);
+  };
+}
+
+function sendJSON(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+// ---------------------------------------------------------------------------
+// Incoming messages
+// ---------------------------------------------------------------------------
+function onJSONReceived(raw) {
+  let msg;
+  try { msg = JSON.parse(raw); } catch { return; }
+
+  switch (msg.type) {
+    case "session_ready":
+      setStatus("సిద్ధంగా ఉంది — అసిస్టెంట్‌తో మాట్లాడండి");
+      break;
+
+    case "transcript_partial":
+      transcriptPartial.textContent = msg.text || "";
+      break;
+
+    case "transcript_final":
+      transcriptUser.textContent = msg.text || "—";
+      transcriptPartial.textContent = "";
+      transcriptBot.textContent = "—";
+      setOrb("thinking", "ఆలోచిస్తోంది…");
+      botSpeaking = false;
+      break;
+
+    case "bot_text_fragment":
+      if (transcriptBot.textContent === "—") transcriptBot.textContent = "";
+      transcriptBot.textContent += msg.text + " ";
+      break;
+
+    case "tts_start":
+      stopTTSPlayback();
+      botSpeaking = true;
+      ttsPrebufferDone = false;
+      ttsScheduledUntil = 0;
+      ttsBufferedMs = 0;
+      if (ttsAudioCtx && ttsAudioCtx.state !== "running") ttsAudioCtx.resume();
+      setOrb("bot-speaking", "అసిస్టెంట్ మాట్లాడుతోంది…");
+      break;
+
+    case "tts_end":
+    case "tts_stopped":
+      botSpeaking = false;
+      if (!userSpeaking) setOrb("idle", "వింటోంది");
+      break;
+
+    case "error":
+      setStatus("లోపం: " + (msg.message || "తెలియదు"));
+      console.error("Server error:", msg.message);
+      break;
+
+    case "pong":
+      break;
+
+    default:
+      console.debug("Unhandled:", msg.type);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// TTS playback (24kHz PCM)
+// ---------------------------------------------------------------------------
+
+/**
+ * Receive a raw PCM ArrayBuffer from the server.
+ * Format: 16-bit signed LE, mono, 24000 Hz (edge-tts Telugu)
+ */
+function onAudioReceived(arrayBuffer) {
+  if (!ttsAudioCtx || !botSpeaking) return;
+
+  const int16 = new Int16Array(arrayBuffer);
+  ttsQueue.push(int16);
+
+  const chunkDurationMs = (int16.length / PLAYBACK_SAMPLE_RATE) * 1000;
+  ttsBufferedMs += chunkDurationMs;
+
+  if (!ttsPrebufferDone && ttsBufferedMs >= PREBUFFER_MS) {
+    ttsPrebufferDone = true;
+    drainTTSQueue();
+  } else if (ttsPrebufferDone) {
+    drainTTSQueue();
+  }
+}
+
+/**
+ * Schedule all queued TTS chunks back-to-back on the Web Audio timeline.
+ * Uses integer sample-count tracking to avoid floating-point drift gaps.
+ */
+function drainTTSQueue() {
+  if (!ttsAudioCtx) return;
+  const now = ttsAudioCtx.currentTime;
+  const AHEAD_S = 0.005;
+  if (ttsScheduledUntil < now + AHEAD_S) ttsScheduledUntil = now + AHEAD_S;
+
+  while (ttsQueue.length > 0) {
+    const int16   = ttsQueue.shift();
+    const float32 = int16ToFloat32(int16);
+    const buffer  = ttsAudioCtx.createBuffer(1, float32.length, PLAYBACK_SAMPLE_RATE);
+    buffer.copyToChannel(float32, 0);
+
+    const source = ttsAudioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ttsAudioCtx.destination);
+    source.start(ttsScheduledUntil);
+    ttsSourceNodes.push(source);
+    source.addEventListener("ended", () => {
+      ttsSourceNodes = ttsSourceNodes.filter(n => n !== source);
+    });
+
+    // Advance by exact sample count to prevent drift
+    ttsScheduledUntil += float32.length / PLAYBACK_SAMPLE_RATE;
+  }
+  ttsBufferedMs = 0;
+}
+
+function stopTTSPlayback() {
+  ttsQueue = [];
+  ttsBufferedMs = 0;
+  ttsPrebufferDone = false;
+  ttsScheduledUntil = 0;
+  ttsSourceNodes.forEach(s => { try { s.stop(0); } catch (_) {} });
+  ttsSourceNodes = [];
+}
+
+// ---------------------------------------------------------------------------
+// Keepalive
+// ---------------------------------------------------------------------------
+setInterval(() => {
+  if (ws && ws.readyState === WebSocket.OPEN) sendJSON({ type: "ping" });
+}, 25000);
+</script>
+</body>
+</html>

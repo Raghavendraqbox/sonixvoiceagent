@@ -1,0 +1,70 @@
+# Telugu Voice AI Agent — Python dependencies
+# Tested on Python 3.11, CUDA 12.x, PyTorch 2.x
+#
+# ── Install order on GPU machines ──────────────────────────────────────────
+#  1. Install PyTorch with CUDA first:
+#       pip install torch --index-url https://download.pytorch.org/whl/cu124
+#  2. Then install this file:
+#       pip install -r requirements.txt
+# ───────────────────────────────────────────────────────────────────────────
+
+# ---------------------------------------------------------------------------
+# Web framework
+# ---------------------------------------------------------------------------
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+websockets==12.0
+httpx==0.27.0
+python-multipart==0.0.9
+
+# ---------------------------------------------------------------------------
+# ASR — Soniox (primary, best Telugu accuracy)
+# Get API key: https://soniox.com/dashboard
+# Set SONIOX_API_KEY in .env
+# Falls back to faster-whisper when key is absent
+# ---------------------------------------------------------------------------
+soniox>=2.0.0
+
+# ---------------------------------------------------------------------------
+# ASR fallback — faster-whisper large-v3 on GPU (no API key needed)
+# Downloads ~3 GB model on first run
+# ---------------------------------------------------------------------------
+faster-whisper==1.2.1
+
+# ---------------------------------------------------------------------------
+# LLM — Ollama (local GPU, open-source, no API key required)
+# Install Ollama: curl -fsSL https://ollama.com/install.sh | sh
+# Pull model:    ollama pull qwen2.5:32b
+# Uses only httpx (listed above) — no extra package needed
+# ---------------------------------------------------------------------------
+# (no extra package — Ollama is accessed via httpx REST API)
+
+# ---------------------------------------------------------------------------
+# RAG — FAISS + sentence-transformers embeddings
+# ---------------------------------------------------------------------------
+sentence-transformers==3.0.1
+transformers>=4.40,<5.0
+faiss-cpu==1.8.0
+# GPU FAISS (optional, faster retrieval on large indexes):
+#   pip uninstall faiss-cpu && pip install faiss-gpu==1.7.4
+
+numpy==1.26.4
+
+# ---------------------------------------------------------------------------
+# TTS — edge-tts Telugu neural voices (free, no API key required)
+# Voices: te-IN-ShrutiNeural (F, default) | te-IN-MohanNeural (M)
+# Set TTS_VOICE in .env to switch
+# ---------------------------------------------------------------------------
+edge-tts==7.2.8
+av==17.0.0          # PyAV: MP3 decode + PCM resample for edge-tts output
+
+# ---------------------------------------------------------------------------
+# TTS fallback — gTTS (Google TTS, language=te, free)
+# ---------------------------------------------------------------------------
+gtts>=2.5.1
+
+# ---------------------------------------------------------------------------
+# Async / utilities
+# ---------------------------------------------------------------------------
+aiofiles==23.2.1
+structlog==24.1.0
