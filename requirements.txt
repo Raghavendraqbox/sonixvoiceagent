@@ -51,7 +51,21 @@ faiss-cpu==1.8.0
 numpy==1.26.4
 
 # ---------------------------------------------------------------------------
-# TTS — edge-tts Telugu neural voices (free, no API key required)
+# TTS — Primary: Meta MMS-TTS (facebook/mms-tts-tel)
+# VITS model trained specifically on Telugu speech — natural, native-sounding
+# Model downloaded automatically from HuggingFace (~460 MB) on first run
+# Requires: transformers (already listed above), torch (install separately)
+# ---------------------------------------------------------------------------
+# (loaded via transformers — no extra package needed)
+
+# Resampling: MMS-TTS outputs 16kHz, browser expects 24kHz
+# Priority: torchaudio → scipy → numpy (all three are tried in order)
+scipy>=1.11.0       # polyphase resampling for MMS-TTS 16kHz→24kHz
+# torchaudio: install alongside torch for best quality resampling:
+#   pip install torchaudio --index-url https://download.pytorch.org/whl/cu124
+
+# ---------------------------------------------------------------------------
+# TTS — Fallback 1: edge-tts Telugu neural voices (free, internet required)
 # Voices: te-IN-ShrutiNeural (F, default) | te-IN-MohanNeural (M)
 # Set TTS_VOICE in .env to switch
 # ---------------------------------------------------------------------------
@@ -59,7 +73,7 @@ edge-tts==7.2.8
 av==17.0.0          # PyAV: MP3 decode + PCM resample for edge-tts output
 
 # ---------------------------------------------------------------------------
-# TTS fallback — gTTS (Google TTS, language=te, free)
+# TTS — Fallback 2: gTTS (Google TTS, language=te, free, internet required)
 # ---------------------------------------------------------------------------
 gtts>=2.5.1
 

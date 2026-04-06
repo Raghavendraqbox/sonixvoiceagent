@@ -36,17 +36,18 @@ class OllamaConfig:
     Ollama local LLM — open-source, no API key required.
 
     Recommended Telugu models (pick one based on available VRAM):
-      qwen2.5:32b   → ~20 GB VRAM  ← best Telugu quality
-      qwen2.5:14b   → ~10 GB VRAM  ← good balance
-      qwen2.5:7b    →  ~6 GB VRAM  ← runs on smaller GPUs
-      gemma3:27b    → ~18 GB VRAM  ← Google Gemma 3
-      aya:35b       → ~22 GB VRAM  ← Cohere multilingual
+      qwen2.5:72b   → ~48 GB VRAM  ← best overall Telugu (default for 80GB GPU)
+      gemma4:31b    → ~63 GB VRAM  ← Google Gemma 4 (Apr 2026), excellent Telugu
+      qwen2.5:32b   → ~20 GB VRAM  ← good balance for smaller GPUs
+      qwen2.5:14b   → ~10 GB VRAM  ← lighter option
+      gemma3:27b    → ~55 GB VRAM  ← Google Gemma 3
 
     Pull the model before starting:
-      ollama pull qwen2.5:32b
+      ollama pull qwen2.5:72b     # default — best Telugu on 80GB GPU
+      ollama pull gemma4:31b      # upgrade option (needs ~63 GB free VRAM)
     """
     base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    model: str = os.getenv("OLLAMA_MODEL", "qwen2.5:32b")
+    model: str = os.getenv("OLLAMA_MODEL", "qwen2.5:72b")
     temperature: float = float(os.getenv("OLLAMA_TEMPERATURE", "0.7"))
     top_p: float = float(os.getenv("OLLAMA_TOP_P", "0.9"))
     max_tokens: int = int(os.getenv("OLLAMA_MAX_TOKENS", "150"))

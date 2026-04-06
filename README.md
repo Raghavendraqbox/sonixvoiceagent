@@ -7,19 +7,19 @@ Speak in Telugu → get an intelligent Telugu voice response in real time.
 Browser Mic
     │
     ▼  PCM 16kHz (WebSocket binary)
-Soniox ASR  ─── Telugu STT ──────────────────┐
-    │                                         │
-    ▼  Final transcript                       │
-Qwen2.5 (Ollama)  ── Telugu LLM response ───┤
-    │                                         │
-    ▼  Text fragments (streamed)              │
-edge-tts  ─── te-IN-ShrutiNeural ────────────┘
-    │
+Soniox ASR  ─── Telugu STT ──────────────────────┐
+    │                                             │
+    ▼  Final transcript                           │
+Qwen2.5:72b (Ollama)  ── Telugu LLM response ───┤
+    │                                             │
+    ▼  Text fragments (streamed)                  │
+MMS-TTS facebook/mms-tts-tel  ── Telugu VITS ────┘
+    │  (resampled 16kHz → 24kHz)
     ▼  PCM 24kHz (WebSocket binary)
 Browser Speaker
 ```
 
-**Fully open-source LLM** — runs on your GPU via Ollama, no API key needed for inference.
+**Fully open-source stack** — LLM and TTS both run on your GPU via Ollama/HuggingFace, no API keys needed for inference.
 
 ---
 
@@ -27,12 +27,12 @@ Browser Speaker
 
 - **Full-duplex** — user can interrupt the bot mid-sentence; it stops and listens instantly
 - **Streaming pipeline** — first audio response arrives within ~200ms of speech ending
-- **Telugu-first** — Soniox ASR gives state-of-the-art Telugu accuracy; edge-tts provides natural Telugu neural voice
+- **Telugu-first** — Soniox ASR gives state-of-the-art Telugu accuracy; Meta MMS-TTS provides native, natural Telugu voice (not robotic)
 - **Bilingual** — responds in Telugu when the user speaks Telugu, English when spoken to in English
 - **Open-source LLM** — Qwen2.5-32B runs locally on GPU via Ollama; no OpenAI / Claude API required
 - **RAG** — Qobox knowledge base embedded in FAISS for accurate company-specific answers
 - **Conversation memory** — remembers the last 8 turns per session
-- **Robust fallbacks** — Soniox → Whisper large-v3 | edge-tts → gTTS | Ollama → neutral stub
+- **Robust fallbacks** — Soniox → Whisper large-v3 | MMS-TTS → edge-tts → gTTS | Ollama → neutral stub
 
 ---
 
@@ -167,16 +167,24 @@ Get your free Soniox key at [soniox.com/dashboard](https://soniox.com/dashboard)
 
 ---
 
-## TTS: Telugu Voice Options
+## TTS: Native Telugu Voice
 
-edge-tts provides natural-sounding Microsoft Azure neural voices — free, no API key required.
+### Primary: Meta MMS-TTS (`facebook/mms-tts-tel`)
+
+- VITS model trained specifically on Telugu speech
+- Natural, native-sounding pronunciation — not robotic
+- Runs on local GPU, ~460 MB model, no internet required
+- Downloaded automatically from HuggingFace on first run
+
+### Fallback: edge-tts Telugu neural voices
+
+Used automatically when MMS-TTS fails. Change the fallback voice via `.env`:
 
 | Voice | Gender | Quality |
 |-------|--------|---------|
-| `te-IN-ShrutiNeural` | Female | ★★★★★ (default) |
-| `te-IN-MohanNeural`  | Male   | ★★★★★ |
+| `te-IN-ShrutiNeural` | Female | ★★★★☆ (default fallback) |
+| `te-IN-MohanNeural`  | Male   | ★★★★☆ |
 
-Set in `.env`:
 ```env
 TTS_VOICE=te-IN-MohanNeural
 ```
