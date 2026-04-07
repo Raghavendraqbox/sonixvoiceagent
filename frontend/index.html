@@ -439,18 +439,22 @@ function checkVAD(rms) {
   if (rms > VAD_THRESHOLD) {
     vadFrameCount++;
 
-    // Immediate interrupt when bot is speaking — every ms of overlap is bad UX
-    if (botSpeaking && !interruptSent) {
-      interruptSent = true;
-      sendJSON({ type: "interrupt" });
-      stopTTSPlayback();
-      setOrb("user-speaking", "మీరు మాట్లాడుతున్నారు…");
-      userSpeaking = true;
-    }
-
-    if (vadFrameCount >= VAD_HOLD_FRAMES && !userSpeaking) {
-      userSpeaking = true;
-      setOrb("user-speaking", "మీరు మాట్లాడుతున్నారు…");
+    // Require VAD_HOLD_FRAMES consecutive frames before acting.
+    // This prevents the mic picking up the bot's own TTS audio (echo)
+    // from triggering a false interrupt — echo may spike one frame but
+    // won't sustain for 4 × 100 ms = 400 ms.
+    if (vadFrameCount >= VAD_HOLD_FRAMES) {
+      if (botSpeaking && !interruptSent) {
+        interruptSent = true;
+        sendJSON({ type: "interrupt" });
+        stopTTSPlayback();
+        setOrb("user-speaking", "మీరు మాట్లాడుతున్నారు…");
+        userSpeaking = true;
+      }
+      if (!userSpeaking) {
+        userSpeaking = true;
+        setOrb("user-speaking", "మీరు మాట్లాడుతున్నారు…");
+      }
     }
   } else {
     vadFrameCount = 0;
@@ -458,7 +462,10 @@ function checkVAD(rms) {
       userSpeaking = false;
       if (!botSpeaking) setOrb("idle", "వింటోంది");
     }
-    interruptSent = false;
+    // Only clear interruptSent once the bot has finished speaking.
+    // Resetting it on every brief silence (e.g. between TTS sentences)
+    // would allow echo from the next sentence to re-trigger the interrupt.
+    if (!botSpeaking) interruptSent = false;
   }
 }
 
@@ -532,6 +539,7 @@ function onJSONReceived(raw) {
     case "tts_end":
     case "tts_stopped":
       botSpeaking = false;
+      interruptSent = false;   // safe to allow interrupts again next turn
       if (!userSpeaking) setOrb("idle", "వింటోంది");
       break;
 
