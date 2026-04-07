@@ -1,19 +1,21 @@
-# Sonix Voice Agent — Real-Time Full-Duplex Telugu Voice AI
+# Sonix Voice Agent — Real-Time Full-Duplex Dari & Pashto Voice AI
 
-A production-ready, full-duplex Telugu voice AI agent. Speak in Telugu → get an intelligent Telugu voice response in real time. Runs entirely on your own GPU — no OpenAI or cloud AI API needed.
+A production-ready, full-duplex voice AI agent for **Dari** (دری) and **Pashto** (پښتو). Speak in Dari or Pashto → get an intelligent voice response in real time. Runs entirely on your own GPU — no OpenAI or cloud AI API needed.
 
 ```
 Browser Mic
     │
     ▼  PCM 16kHz (WebSocket binary)
-Soniox ASR  ──── Telugu Speech-to-Text ──────────────┐
-    │  (fallback: Whisper large-v3)                   │
-    ▼  Final transcript                               │
-Qwen2.5:72b via Ollama  ── Telugu LLM response ──────┤
-    │  (open-source, runs on your GPU)                │
-    ▼  Text (streamed sentence by sentence)           │
-edge-tts Telugu Neural Voice  ── Telugu Speech ───────┘
-    │  (fallback: gTTS)
+Soniox ASR  ──── Dari / Pashto Speech-to-Text ─────────────┐
+    │  (fallback: Whisper large-v3)                         │
+    ▼  Final transcript                                     │
+Qwen2.5 via Ollama  ── Dari / Pashto LLM response ─────────┤
+    │  (open-source, runs on your GPU)                      │
+    ▼  Text (streamed sentence by sentence)                 │
+Meta MMS-TTS  ── Dari / Pashto Neural Speech ───────────────┘
+    │  facebook/mms-tts-prs (Dari)
+    │  facebook/mms-tts-pbt (Pashto)
+    │  (fallback: edge-tts → gTTS)
     ▼  PCM 24kHz (WebSocket binary)
 Browser Speaker
 ```
@@ -51,7 +53,7 @@ Browser Speaker
 | **Internet** | Required (first-time downloads) | — |
 | **Browser** | Chrome or Edge | Chrome |
 
-> **No experience needed.** Follow every step below exactly and you will have a working Telugu voice agent.
+> **No experience needed.** Follow every step below exactly and you will have a working Dari/Pashto voice agent.
 
 ---
 
@@ -67,7 +69,7 @@ sudo apt-get install -y git curl python3 python3-pip zstd
 ### Step 2 — Clone the repository
 
 ```bash
-git clone https://github.com/Raghavendraqbox/sonixvoiceagent.git
+git clone -b daripastho https://github.com/Raghavendraqbox/sonixvoiceagent.git
 cd sonixvoiceagent
 ```
 
@@ -87,7 +89,9 @@ This downloads ~2.5 GB. Wait for it to finish.
 pip3 install -r requirements.txt
 ```
 
-This installs FastAPI, Whisper, edge-tts, FAISS, sentence-transformers, and all other required packages.
+This installs FastAPI, Whisper, Meta MMS-TTS, uroman, edge-tts, FAISS, sentence-transformers, and all other required packages.
+
+> **Note:** The `uroman` package is required for Dari/Pashto MMS-TTS models. It is included in `requirements.txt` and installed automatically.
 
 ### Step 5 — Install Ollama (local LLM server)
 
@@ -108,22 +112,22 @@ ollama serve &
 
 You should see: `Ollama is running`
 
-### Step 7 — Download the Telugu LLM
+### Step 7 — Download a multilingual LLM
 
 Choose the model that fits your GPU VRAM (see [Section 7](#7-choosing-a-gpu--model)):
 
 ```bash
-# If you have 80 GB VRAM (best quality — recommended for production)
-ollama pull qwen2.5:72b
+# If you have 6 GB VRAM (default — good Dari, reasonable Pashto)
+ollama pull qwen2.5:7b
 
-# If you have 20 GB VRAM
-ollama pull qwen2.5:32b
-
-# If you have 10 GB VRAM
+# If you have 10 GB VRAM (better quality)
 ollama pull qwen2.5:14b
 
-# If you have 6 GB VRAM (minimum)
-ollama pull qwen2.5:7b
+# If you have 20 GB VRAM (best Dari quality)
+ollama pull qwen2.5:32b
+
+# If you have 80 GB VRAM (best overall)
+ollama pull qwen2.5:72b
 ```
 
 > The download is large (7B = ~4 GB, 72B = ~47 GB). This only happens once.
@@ -133,19 +137,20 @@ Verify the model downloaded:
 ollama list
 ```
 
-### Step 8 — (Optional) Set up environment variables
+### Step 8 — Set the default language (optional)
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and set your model if you chose something other than the default:
+Open `.env` and set your preferred default language:
 
 ```env
-OLLAMA_MODEL=qwen2.5:32b
+LANGUAGE=dari    # or: pashto
+OLLAMA_MODEL=qwen2.5:7b
 ```
 
-Everything else works without changes. See [Section 6](#6-configuration) for all options.
+The language can also be changed per-session from the browser UI dropdown. See [Section 6](#6-configuration) for all options.
 
 ---
 
@@ -158,16 +163,16 @@ python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
 
 You should see:
 ```
-Telugu Voice AI Agent starting…
-ASR  : Soniox (te) → Whisper large-v3 fallback
-LLM  : Ollama qwen2.5:72b @ http://localhost:11434
-TTS  : edge-tts te-IN-ShrutiNeural → gTTS fallback
+Dari & Pashto Voice AI Agent starting…
+Default language : dari
+Supported        : dari, pashto
+ASR  : Soniox (stt-rt-v4) → Whisper large-v3 fallback
+LLM  : Ollama qwen2.5:7b @ http://localhost:11434
+TTS  : MMS-TTS (local GPU) → edge-tts → gTTS
 Server ready.
 ```
 
-The server is now running on port `8000`.
-
-> **First run note:** Whisper large-v3 (~3 GB) downloads automatically on the first speech input. This is a one-time download.
+> **First run note:** The MMS-TTS model for your language (~460 MB) downloads automatically from HuggingFace on first use. Whisper large-v3 (~3 GB) also downloads automatically on first speech input.
 
 ---
 
@@ -179,11 +184,12 @@ Open **Chrome** or **Edge** and go to:
 http://localhost:8000
 ```
 
-1. Click **మాట్లాడడం ప్రారంభించండి** (Start Talking)
-2. Allow microphone access when the browser asks
-3. Speak in Telugu — the agent will respond in Telugu voice
+1. Select your language from the **Language** dropdown: **Dari (دری)** or **Pashto (پښتو)**
+2. Click **Start Conversation**
+3. Allow microphone access when the browser asks
+4. Speak in Dari or Pashto — the agent will respond in the same language
 
-> **Must use Chrome or Edge.** Firefox has limited Web Audio API support and may not work correctly.
+> **Must use Chrome or Edge.** Firefox has limited Web Audio API support.
 
 > **Must be on `localhost` or HTTPS.** Browsers block microphone on plain HTTP for remote IPs. If accessing from another machine, set up HTTPS or use an SSH tunnel.
 
@@ -201,13 +207,18 @@ Expected response:
 ```json
 {
   "status": "ok",
+  "supported_languages": ["dari", "pashto"],
+  "default_language": "dari",
   "asr": "whisper-large-v3 (local GPU)",
-  "llm": "ollama/qwen2.5:72b @ http://localhost:11434",
-  "tts": "edge-tts/te-IN-ShrutiNeural (24kHz)"
+  "llm": "ollama/qwen2.5:7b @ http://localhost:11434",
+  "tts": "mms-tts (local GPU) → edge-tts → gTTS (24kHz output)"
 }
 ```
 
-If `status` is `ok`, everything is working.
+List available languages:
+```bash
+curl http://localhost:8000/languages
+```
 
 ---
 
@@ -216,89 +227,95 @@ If `status` is `ok`, everything is working.
 All settings are controlled via environment variables. Copy `.env.example` to `.env` and edit:
 
 ```env
+# ── Language ──────────────────────────────────────────────────────────────
+# Server-side default language (also selectable per-session in the UI)
+LANGUAGE=dari                   # Options: dari | pashto
+
 # ── ASR (Speech-to-Text) ──────────────────────────────────────────────────
-# Optional: Soniox API key for best Telugu accuracy
+# Optional: Soniox API key for best accuracy
 # Leave empty to use Whisper large-v3 locally (no API key needed)
 # Get a free key at: https://soniox.com/dashboard
 SONIOX_API_KEY=
-
-SONIOX_LANGUAGE=te
-SONIOX_MODEL=soniox_multilingual_2
+SONIOX_MODEL=stt-rt-v4          # Current recommended Soniox model
 
 # ── LLM (Language Model) ──────────────────────────────────────────────────
-# Ollama runs locally — no API key needed
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:72b      # Change to match what you pulled in Step 7
+OLLAMA_MODEL=qwen2.5:7b         # Change to match what you pulled in Step 7
 OLLAMA_TEMPERATURE=0.7
 OLLAMA_MAX_TOKENS=150
 
-# ── TTS (Text-to-Speech) ──────────────────────────────────────────────────
-# Telugu neural voices (free, requires internet)
-# Female voice: te-IN-ShrutiNeural  ← default
-# Male voice:   te-IN-MohanNeural
-TTS_VOICE=te-IN-ShrutiNeural
+# ── TTS voices (edge-tts fallback — optional overrides) ───────────────────
+# Dari voices (fa-IR locale):
+#   fa-IR-DilaraNeural  ← female (default)
+#   fa-IR-FaridNeural   ← male
+TTS_VOICE_DARI=fa-IR-DilaraNeural
+
+# Pashto voices (ps-AF locale):
+#   ps-AF-LatifaNeural    ← female (default)
+#   ps-AF-GulNawazNeural  ← male
+TTS_VOICE_PASHTO=ps-AF-LatifaNeural
 
 # ── RAG (Knowledge Base) ──────────────────────────────────────────────────
-RAG_DOCS_DIR=../docs           # Folder with your .txt knowledge base files
-RAG_TOP_K=3                    # Number of knowledge chunks to retrieve per query
+RAG_DOCS_DIR=../docs            # Folder with your .txt knowledge base files
+RAG_TOP_K=3                     # Number of knowledge chunks per query
 
 # ── Server ────────────────────────────────────────────────────────────────
 SERVER_PORT=8000
-LOG_LEVEL=info                 # debug | info | warning | error
+LOG_LEVEL=info                  # debug | info | warning | error
 ```
 
 ---
 
 ## 7. Choosing a GPU & Model
 
-| Model | VRAM Needed | Download Size | Telugu Quality | Speed |
-|-------|-------------|---------------|----------------|-------|
-| `qwen2.5:72b` | ~80 GB | ~47 GB | ★★★★★ Best | Medium |
-| `qwen2.5:32b` | ~20 GB | ~19 GB | ★★★★★ Excellent | Fast |
-| `qwen2.5:14b` | ~10 GB | ~9 GB | ★★★★☆ Very Good | Very Fast |
-| `qwen2.5:7b` | ~6 GB | ~4 GB | ★★★☆☆ Good | Fastest |
-| `gemma4:31b` | ~63 GB | ~21 GB | ★★★★★ Excellent | Medium |
+| Model | VRAM | Download | Dari Quality | Pashto Quality | Speed |
+|-------|------|----------|-------------|----------------|-------|
+| `qwen2.5:7b` | ~6 GB | ~4 GB | ★★★☆☆ Good | ★★★☆☆ Reasonable | Fastest |
+| `qwen2.5:14b` | ~10 GB | ~9 GB | ★★★★☆ Very Good | ★★★☆☆ Good | Very Fast |
+| `qwen2.5:32b` | ~20 GB | ~19 GB | ★★★★★ Excellent | ★★★★☆ Good | Fast |
+| `qwen2.5:72b` | ~48 GB | ~47 GB | ★★★★★ Best | ★★★★☆ Very Good | Medium |
+| `aya-expanse` | varies | varies | ★★★★☆ Good | ★★★☆☆ Reasonable | Medium |
 
 **Which one to pick:**
-- **A100 80GB** → `qwen2.5:72b` (best quality, fits perfectly)
+- **A100 80GB** → `qwen2.5:72b` (best quality)
 - **RTX 3090 / 4090 (24 GB)** → `qwen2.5:32b`
 - **RTX 3080 (10 GB)** → `qwen2.5:14b`
-- **RTX 3060 / any 6-8 GB GPU** → `qwen2.5:7b`
+- **RTX 3060 / any 6-8 GB GPU** → `qwen2.5:7b` (default)
 
 After pulling a different model, update `.env`:
 ```env
 OLLAMA_MODEL=qwen2.5:32b
 ```
-
 Then restart the server.
+
+> **Pashto tip:** For the best Pashto responses, the community model `junaid008/qehwa-pashto-llm` (Qwen2.5-7B fine-tuned for Pashto, Apache 2.0) can be converted to a GGUF Ollama Modelfile for improved Pashto generation.
 
 ---
 
 ## 8. ASR Options
 
-The agent supports two ASR backends:
+The agent supports two ASR backends per language:
 
 ### Option A: Whisper large-v3 (default, no setup needed)
 - Runs on your GPU locally
 - No API key required
 - ~3 GB model, downloads automatically on first use
-- Good Telugu accuracy
+- Dari → `language="fa"` | Pashto → `language="ps"`
 
-### Option B: Soniox (best Telugu accuracy)
+### Option B: Soniox (best accuracy)
 - Cloud-based streaming ASR
-- **Superior** Telugu accuracy vs Whisper
-- Real-time partial transcripts (words appear as you speak)
+- **Superior** accuracy and real-time partial transcripts
+- Dari → `language_code="fa"` | Pashto → `language_code="ps"`
 - Requires internet + free API key
 
-To use Soniox:
+To enable Soniox:
 1. Get a free API key at [soniox.com/dashboard](https://soniox.com/dashboard)
-2. Install the package: `pip3 install soniox`
-3. Add to `.env`: `SONIOX_API_KEY=your-key-here`
-4. Restart the server
+2. Add to `.env`: `SONIOX_API_KEY=your-key-here`
+3. Restart the server
 
 | | Soniox | Whisper large-v3 |
 |-|--------|-----------------|
-| Telugu accuracy | ★★★★★ | ★★★★☆ |
+| Accuracy | ★★★★★ | ★★★★☆ |
 | Response latency | ~100ms | ~800ms |
 | Partial results | Yes (real-time) | No |
 | Requires internet | Yes | No |
@@ -308,34 +325,45 @@ To use Soniox:
 
 ## 9. TTS Voices
 
-The agent uses **edge-tts** for Telugu neural voice synthesis (free, powered by Microsoft Azure).
+### Primary: Meta MMS-TTS (local GPU — no internet required)
 
-| Voice ID | Gender | Description |
-|----------|--------|-------------|
-| `te-IN-ShrutiNeural` | Female | Default — natural, clear |
-| `te-IN-MohanNeural` | Male | Natural male Telugu voice |
+| Language | Model | Type |
+|----------|-------|------|
+| Dari | `facebook/mms-tts-prs` | Afghan Persian VITS |
+| Pashto | `facebook/mms-tts-pbt` | Southern Pashto VITS |
 
-Change the voice in `.env`:
+Models download automatically from HuggingFace (~460 MB each) on first use. Both models require `uroman` for romanisation — installed automatically via `requirements.txt`.
+
+### Fallback 1: edge-tts (Microsoft Azure — free, internet required)
+
+| Language | Female Voice | Male Voice |
+|----------|-------------|------------|
+| Dari | `fa-IR-DilaraNeural` | `fa-IR-FaridNeural` |
+| Pashto | `ps-AF-LatifaNeural` | `ps-AF-GulNawazNeural` |
+
+Override in `.env`:
 ```env
-TTS_VOICE=te-IN-MohanNeural
+TTS_VOICE_DARI=fa-IR-FaridNeural      # Switch to male Dari voice
+TTS_VOICE_PASHTO=ps-AF-GulNawazNeural # Switch to male Pashto voice
 ```
 
-> edge-tts requires internet access. If the network is unavailable, gTTS (Google TTS) is used as a fallback.
+### Fallback 2: gTTS (Google TTS — free, internet required)
+Uses Persian (`fa`) for both languages as the closest available Google voice.
 
 ---
 
 ## 10. Adding Your Own Knowledge Base
 
-The agent uses RAG (Retrieval-Augmented Generation) to answer questions from a custom knowledge base. By default it contains Qobox company information.
+The agent uses RAG (Retrieval-Augmented Generation) to answer questions from a custom knowledge base. By default it contains Qobox company information in English, Dari, and Pashto.
 
 To add your own content:
 
-1. Create a `.txt` file with your knowledge in plain text (Telugu or English, or both):
+1. Create a `.txt` file in English (the LLM will respond in the user's language):
 
 ```
 # my_company.txt
 Our company is XYZ. We provide software testing services.
-మా కంపెనీ XYZ. మేము సాఫ్ట్‌వేర్ టెస్టింగ్ సేవలు అందిస్తాము.
+Contact us at info@xyz.com or call +1-555-000-0000.
 ```
 
 2. Place the file in the `docs/` folder:
@@ -369,7 +397,7 @@ ollama serve &
 ollama list
 
 # If your model isn't listed, pull it
-ollama pull qwen2.5:72b
+ollama pull qwen2.5:7b
 ```
 
 Make sure `OLLAMA_MODEL` in `.env` matches exactly what `ollama list` shows.
@@ -378,11 +406,10 @@ Make sure `OLLAMA_MODEL` in `.env` matches exactly what `ollama list` shows.
 
 ### "No transcription" / ASR not working
 
-- **With Soniox:** Check that `SONIOX_API_KEY` is set correctly in `.env`. Try visiting [soniox.com/dashboard](https://soniox.com/dashboard) to verify your key.
-- **With Whisper:** First run downloads ~3 GB. Watch server logs — you'll see `Loading model...`. Wait for it to finish.
+- **With Soniox:** Check that `SONIOX_API_KEY` is set correctly in `.env`. Verify your key at [soniox.com/dashboard](https://soniox.com/dashboard).
+- **With Whisper:** First run downloads ~3 GB. Watch server logs — you'll see `Loading Whisper large-v3 for Dari…`. Wait for it to finish.
 
 ```bash
-# Check server logs for errors
 cd backend && python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --log-level debug
 ```
 
@@ -390,22 +417,23 @@ cd backend && python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --log-level
 
 ### "No audio / TTS is silent"
 
-- edge-tts requires internet. Check your connection.
-- Try a ping: `ping tts.microsoft.com`
-- If no internet, gTTS (Google) is used automatically.
+- **MMS-TTS:** Model downloads ~460 MB from HuggingFace on first use. Check server logs for `Loading facebook/mms-tts-prs…`.
+- **uroman missing:** Run `pip3 install uroman` — required for Dari/Pashto MMS-TTS models.
+- **edge-tts:** Requires internet. Check your connection.
+- If all else fails, gTTS (Google TTS) is used automatically.
 
 ---
 
 ### "Microphone not working in browser"
 
 - Use **Chrome** or **Edge** only
-- Access via `http://localhost:8000` (not via IP address like `http://192.168.x.x:8000`)
-- If you must access from another machine: set up HTTPS, or use an SSH tunnel:
+- Access via `http://localhost:8000` (not via IP address)
+- If you must access from another machine, use an SSH tunnel:
 
 ```bash
-# On your local machine — tunnel remote port 8000 to localhost
+# On your local machine
 ssh -L 8000:localhost:8000 user@your-server-ip
-# Then open http://localhost:8000 in your browser
+# Then open http://localhost:8000
 ```
 
 ---
@@ -414,34 +442,30 @@ ssh -L 8000:localhost:8000 user@your-server-ip
 
 Switch to a smaller model:
 ```bash
-ollama pull qwen2.5:14b
+ollama pull qwen2.5:7b
 ```
-
 Then update `.env`:
 ```env
-OLLAMA_MODEL=qwen2.5:14b
+OLLAMA_MODEL=qwen2.5:7b
 ```
+
+---
+
+### "uroman error on startup"
+
+```bash
+pip3 install uroman
+```
+
+The `uroman` package is required for Dari (`facebook/mms-tts-prs`) and Pashto (`facebook/mms-tts-pbt`) TTS models. It should be installed by `pip install -r requirements.txt`, but can be installed manually.
 
 ---
 
 ### Port already in use
 
 ```bash
-# Find what's using port 8000
 lsof -i :8000
-
-# Kill it
 kill -9 <PID>
-```
-
----
-
-### Server crashes on startup
-
-Run with debug logging to see the exact error:
-```bash
-cd backend
-python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --log-level debug
 ```
 
 ---
@@ -451,15 +475,20 @@ python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --log-level debug
 ### How a conversation turn works
 
 ```
-1. Browser mic       → AudioWorklet captures PCM at 16 kHz, mono
-2. WebSocket binary  → 100ms chunks (3200 bytes) sent to server
-3. ASR (Soniox/Whisper) → streams partial transcripts back; fires final on silence
-4. VAD interrupt     → if user speaks mid-response, {"type":"interrupt"} stops TTS instantly
-5. LLM (Qwen2.5)    → receives final transcript + conversation history + RAG context
-                       streams tokens; each complete sentence dispatches to TTS
-6. TTS (edge-tts)   → synthesises each sentence fragment in real time
+1. Browser (UI)      → User selects Dari or Pashto from dropdown
+2. WebSocket connect → ws://host/ws?language=dari (or pashto)
+3. Browser mic       → AudioWorklet captures PCM at 16 kHz, mono
+4. WebSocket binary  → 100ms chunks (3200 bytes) sent to server
+5. ASR               → Soniox (fa/ps) or Whisper (fa/ps)
+                       streams partial transcripts; fires final on silence
+6. VAD interrupt     → if user speaks mid-response, stops TTS instantly
+7. LLM (Qwen2.5)    → receives final transcript + history + RAG context
+                       system prompt instructs: respond in Dari/Pashto script
+                       streams tokens; each sentence dispatches to TTS
+8. TTS (MMS-TTS)    → facebook/mms-tts-prs (Dari) or mms-tts-pbt (Pashto)
+                       uroman romanises input text automatically
                        streams 60ms PCM chunks (24 kHz) back over WebSocket
-7. Browser speaker  → Web Audio API schedules chunks back-to-back; gapless playback
+9. Browser speaker  → Web Audio API schedules chunks back-to-back; gapless
 ```
 
 ### Full-duplex interrupt flow
@@ -471,7 +500,15 @@ While the bot is speaking, the browser continuously listens for your voice. The 
 4. Browser stops audio playback immediately
 5. ASR starts processing your new speech
 
-This gives a natural conversational feel — you never have to wait for the bot to finish.
+### Language selection flow
+
+```
+Frontend dropdown  →  WebSocket URL: /ws?language=dari
+                   →  server validates language
+                   →  ASRHandler(language="dari")  → soniox_lang="fa", whisper="fa"
+                   →  VoiceTTSHandler(language="dari") → model=mms-tts-prs
+                   →  VoiceLLMClient(language="dari")  → system_prompt in Dari
+```
 
 ### RAG pipeline
 
@@ -480,7 +517,7 @@ At startup, all `.txt` files in `docs/` are:
 2. Embedded using `sentence-transformers/all-MiniLM-L6-v2`
 3. Stored in a FAISS index on disk
 
-On each user query, the top-3 most relevant chunks are retrieved and injected into the LLM system prompt.
+On each user query, the top-3 most relevant chunks are retrieved and injected into the LLM system prompt. The LLM then responds in Dari or Pashto using that context.
 
 ---
 
@@ -490,23 +527,27 @@ On each user query, the top-3 most relevant chunks are retrieved and injected in
 sonixvoiceagent/
 │
 ├── backend/
-│   ├── main.py             FastAPI app + WebSocket endpoint
-│   ├── asr.py              Soniox streaming ASR → Whisper large-v3 fallback
-│   ├── llm.py              Ollama Qwen2.5 client (streaming)
-│   ├── tts.py              edge-tts Telugu TTS → gTTS fallback
-│   ├── session_manager.py  Per-session state, interrupt logic, pipeline wiring
-│   ├── config.py           All settings (env-var overridable)
+│   ├── main.py             FastAPI app + WebSocket (?language=dari/pashto)
+│   ├── asr.py              ASRHandler: Soniox → Whisper large-v3 fallback
+│   ├── llm.py              VoiceLLMClient: Ollama streaming, language-aware prompts
+│   ├── tts.py              VoiceTTSHandler: MMS-TTS → edge-tts → gTTS
+│   ├── session_manager.py  Per-session state, language wiring, conversation loop
+│   ├── config.py           LANGUAGE_CONFIGS for Dari/Pashto + all settings
 │   ├── memory.py           Sliding-window conversation history (8 turns)
 │   ├── rag.py              FAISS RAG retriever + embeddings
 │   └── faiss_index/        Auto-generated FAISS index (do not commit)
 │
 ├── frontend/
-│   └── index.html          Single-file browser client (Web Audio API + WebSocket)
+│   └── index.html          English UI: language selector + full-duplex voice
 │
 ├── docs/
-│   └── qobox_telugu.txt    Default Qobox knowledge base (Telugu + English)
+│   ├── qobox_company_info.txt   Qobox KB in English + Dari + Pashto
+│   └── qobox_telugu.txt         Legacy Telugu KB (still indexed by RAG)
 │
-├── requirements.txt        Python dependencies
+├── .claude/
+│   └── settings.local.json      Claude Code project permissions
+│
+├── requirements.txt        Python dependencies (includes uroman)
 ├── .env.example            Environment variable template
 ├── CHANGELOG.md            Version history
 └── README.md               This file
@@ -516,24 +557,26 @@ sonixvoiceagent/
 
 ## Features
 
+- **Dari & Pashto** — native voice synthesis via Meta MMS-TTS (local GPU, no internet needed for TTS)
+- **English UI** — all interface text in English; transcript cards render RTL Arabic/Pashto script
+- **Per-session language** — switch between Dari and Pashto from the browser dropdown before connecting
 - **Full-duplex** — interrupt the bot mid-sentence; it stops and listens instantly
 - **Streaming pipeline** — first audio response within ~200ms of speech ending
-- **Telugu-first** — native Telugu voice via edge-tts neural models
-- **Bilingual** — responds in Telugu when spoken to in Telugu, English in English
 - **Open-source LLM** — Qwen2.5 runs locally on GPU via Ollama; zero cloud AI cost
-- **RAG** — Qobox knowledge base embedded in FAISS for accurate company-specific answers
+- **RAG** — bilingual knowledge base (English + Dari + Pashto) embedded in FAISS
 - **Conversation memory** — remembers the last 8 turns per session
-- **Robust fallbacks** — Soniox → Whisper | edge-tts → gTTS | every component has a fallback
+- **Robust fallbacks** — MMS-TTS → edge-tts → gTTS | Soniox → Whisper | every component has a fallback
 
 ---
 
 ## Credits
 
-- **ASR**: [Soniox](https://soniox.com) — streaming Telugu speech recognition
+- **ASR**: [Soniox](https://soniox.com) — streaming Dari/Pashto speech recognition
 - **LLM**: [Ollama](https://ollama.com) + [Qwen2.5](https://qwenlm.github.io/) — open-source multilingual LLM
-- **TTS**: [edge-tts](https://github.com/rany2/edge-tts) — Microsoft neural Telugu voices
+- **TTS**: [Meta MMS-TTS](https://huggingface.co/facebook/mms-tts) — VITS models for Dari & Pashto
+- **TTS fallback**: [edge-tts](https://github.com/rany2/edge-tts) — Microsoft neural voices
 - **RAG**: [FAISS](https://github.com/facebookresearch/faiss) + [sentence-transformers](https://www.sbert.net/)
-- Built on architecture from [voiceagentcloud](https://github.com/Raghavendraqbox/voiceagentcloud)
+- **uroman**: [USC ISI uroman](https://github.com/isi-nlp/uroman) — script romanisation for MMS-TTS
 
 ---
 
