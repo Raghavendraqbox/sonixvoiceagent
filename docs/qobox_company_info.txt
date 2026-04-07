@@ -1,0 +1,43 @@
+Qobox Company Information — English Reference (Dari & Pashto Agent)
+
+Company Name: Quality Outside The Box (Qobox)
+Qobox is an Indian software quality assurance and testing services company that delivers reliable, scalable, and high-performance software systems.
+The company specializes in software testing, automation frameworks, performance engineering, and quality consulting services for enterprise applications.
+
+Qobox was established in 2020 and operates as a private limited company registered in India.
+The company is headquartered in Chennai, Tamil Nadu, India.
+The company has two directors: Gangapuram Jayanthi and Amalodbhavi Mrudula Ranjan Damavarapu.
+
+Qobox Core Services:
+Software Testing: Manual testing for web, mobile, and enterprise applications.
+Automation Testing: Developing automated test frameworks to accelerate testing cycles.
+Performance Testing: Testing software under heavy load conditions to ensure system stability.
+Security Testing: Identifying vulnerabilities and protecting applications from security threats.
+API Testing: Validating backend APIs for reliability, correctness, and performance.
+QA Consulting: Helping organizations implement effective testing strategies and quality frameworks.
+
+Qobox Industries Served:
+Healthcare, Insurance, Retail, Financial Services, Telecommunications, and Pharmaceutical companies.
+
+Qobox Technology Stack:
+Test automation frameworks (Selenium, Playwright, Cypress), Continuous Integration and Continuous Deployment (CI/CD) pipelines (Jenkins, GitHub Actions), performance testing tools (JMeter, Gatling), security testing tools (OWASP ZAP, Burp Suite), and enterprise testing platforms.
+
+Qobox Mission:
+To improve the reliability and quality of software systems by implementing modern testing methodologies, automation solutions, and performance engineering practices.
+
+Qobox Contact and Support:
+For information about Qobox services, please speak with a Qobox representative.
+To connect with a specialist, ask the voice agent to transfer your call.
+For urgent technical issues, ask to escalate to the engineering team.
+
+Dari (دری) — Qobox Information:
+Qobox یک شرکت هندی در زمینه تضمین کیفیت نرم‌افزار و خدمات آزمایش است.
+دفتر مرکزی شرکت در چنای، تامیل‌نادو، هند قرار دارد و در سال ۲۰۲۰ تأسیس شد.
+خدمات اصلی: آزمایش نرم‌افزار، اتوماسیون، آزمایش عملکرد، آزمایش امنیتی، آزمایش API، و مشاوره QA.
+برای اطلاعات بیشتر با نماینده Qobox صحبت کنید.
+
+Pashto (پښتو) — Qobox Information:
+Qobox د سافتویر کیفیت ډاډمنتیا او د ازموینې خدماتو یوه هندي شرکت ده.
+د شرکت مرکزي دفتر د هند د چنای، تامیل نادو ایالت کې موقعیت لري او په ۲۰۲۰ کې تأسیس شو.
+اصلي خدمات: د سافتویر ازموینه، اتومیشن، د فعالیت ازموینه، امنیتي ازموینه، د API ازموینه، او د QA مشوره.
+د نورو معلوماتو لپاره د Qobox د استازي سره خبرې وکړئ.

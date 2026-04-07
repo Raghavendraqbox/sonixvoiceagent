@@ -1,17 +1,20 @@
 """
-tts.py — Native Telugu TTS handler.
+tts.py — Multi-language TTS handler for Dari and Pashto.
 
-Priority chain:
-  1. facebook/mms-tts-tel  (Meta MMS VITS, native Telugu, local GPU)
-  2. edge-tts te-IN-ShrutiNeural  (Microsoft neural, free, internet)
-  3. gTTS  (Google TTS, free, internet)
+Priority chain per language:
+  1. facebook/mms-tts-prs  (Dari  — Meta MMS VITS, local GPU)
+     facebook/mms-tts-pbt  (Pashto — Meta MMS VITS, local GPU)
+  2. edge-tts  fa-IR-DilaraNeural   (Dari  — Microsoft Azure, free)
+               ps-AF-LatifaNeural   (Pashto — Microsoft Azure, free)
+  3. gTTS  fa  (fallback for both languages)
   4. Silence padding  (last resort)
 
-MMS-TTS (facebook/mms-tts-tel):
-  - VITS architecture trained specifically on Telugu speech
-  - Native, natural pronunciation — not robotic
-  - Runs fully on local GPU (CUDA), ~460 MB model size
+MMS-TTS models:
+  - VITS architecture; natural, non-robotic pronunciation
+  - Run fully on local GPU (CUDA), ~460 MB each
   - Output: 16 000 Hz PCM → resampled to 24 000 Hz for the browser
+  - Dari/Pashto models require uroman romanisation: the VitsTokenizer
+    handles this automatically when the `uroman` package is installed.
 
 Audio output contract:
   PCM 16-bit signed LE, 24 000 Hz, mono
@@ -29,70 +32,83 @@ from typing import Callable, Awaitable
 
 import numpy as np
 
-from config import config
+from config import config, get_language_config
 
 logger = logging.getLogger(__name__)
 
-TTS_RATE = config.tts.sample_rate  # 24 000 Hz — browser playback rate
-MMS_NATIVE_RATE = 16_000           # facebook/mms-tts-tel native sample rate
+TTS_RATE = config.tts.sample_rate      # 24 000 Hz — browser playback rate
 
 AudioSendCallback = Callable[[bytes], Awaitable[None]]
 
 # ---------------------------------------------------------------------------
-# MMS-TTS singleton — loaded once on first synthesis call
+# MMS-TTS per-language model cache — loaded once per model_id
 # ---------------------------------------------------------------------------
-_mms_model      = None
-_mms_tokenizer  = None
-_mms_lock       = threading.Lock()
+_mms_models: dict = {}          # {model_id: (model, tokenizer)} or {model_id: (None, None)}
+_mms_lock = threading.Lock()
 
 
-def _get_mms():
-    """Return (model, tokenizer), initialising on first call."""
-    global _mms_model, _mms_tokenizer
-    if _mms_model is not None:
-        return _mms_model, _mms_tokenizer
+def _get_mms(model_id: str):
+    """Return (model, tokenizer) for the given MMS model_id, loading on first call."""
+    if model_id in _mms_models:
+        return _mms_models[model_id]
 
     with _mms_lock:
-        if _mms_model is not None:
-            return _mms_model, _mms_tokenizer
+        if model_id in _mms_models:
+            return _mms_models[model_id]
         try:
             import torch
             from transformers import VitsModel, AutoTokenizer
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            logger.info("Loading facebook/mms-tts-tel on %s …", device)
-            tokenizer = AutoTokenizer.from_pretrained("facebook/mms-tts-tel")
-            model = VitsModel.from_pretrained("facebook/mms-tts-tel").to(device)
+            logger.info("Loading %s on %s …", model_id, device)
+
+            tokenizer = AutoTokenizer.from_pretrained(model_id)
+            model = VitsModel.from_pretrained(model_id).to(device)
             model.eval()
-            _mms_model = model
-            _mms_tokenizer = tokenizer
+
+            _mms_models[model_id] = (model, tokenizer)
+            native_sr = getattr(model.config, "sampling_rate", 16_000)
             logger.info(
-                "MMS-TTS Telugu ready on %s (native %d Hz → output %d Hz)",
-                device, MMS_NATIVE_RATE, TTS_RATE,
+                "%s ready on %s (native %d Hz → output %d Hz)",
+                model_id, device, native_sr, TTS_RATE,
             )
+        except ImportError as exc:
+            logger.error(
+                "MMS-TTS load failed — missing dependency for %s: %s", model_id, exc
+            )
+            _mms_models[model_id] = (None, None)
         except Exception as exc:
-            logger.error("MMS-TTS load failed: %s", exc)
+            logger.error("MMS-TTS load failed for %s: %s", model_id, exc)
+            _mms_models[model_id] = (None, None)
 
-    return _mms_model, _mms_tokenizer
+    return _mms_models[model_id]
 
 
-def schedule_tts_warmup():
-    """Pre-load MMS-TTS model in a daemon thread at startup."""
+def schedule_tts_warmup(language: str = "dari") -> None:
+    """
+    Pre-load the MMS-TTS model for the given language in a daemon thread.
+    Call once at startup to eliminate cold-start latency on the first request.
+    """
+    lang_cfg = get_language_config(language)
+    model_id = lang_cfg["mms_tts_model"]
+
     def _warmup():
-        model, tokenizer = _get_mms()
+        model, tokenizer = _get_mms(model_id)
         if model is None or tokenizer is None:
             return
         try:
             import torch
-            # Synthesize a short Telugu phrase to compile CUDA kernels
-            inputs = tokenizer("నమస్కారం", return_tensors="pt").to(model.device)
+            # Synthesize a short phrase to compile CUDA kernels
+            # Use a simple ASCII warmup string — uroman will romanise it safely
+            warmup_text = "hello"
+            inputs = tokenizer(warmup_text, return_tensors="pt").to(model.device)
             with torch.no_grad():
                 model(**inputs)
-            logger.info("MMS-TTS warmup complete")
+            logger.info("MMS-TTS warmup complete for %s (%s)", language, model_id)
         except Exception as exc:
-            logger.warning("MMS-TTS warmup failed: %s", exc)
+            logger.warning("MMS-TTS warmup failed for %s: %s", model_id, exc)
 
-    threading.Thread(target=_warmup, daemon=True, name="mms-warmup").start()
+    threading.Thread(target=_warmup, daemon=True, name=f"mms-warmup-{language}").start()
 
 
 # ---------------------------------------------------------------------------
@@ -101,12 +117,12 @@ def schedule_tts_warmup():
 
 def _resample(audio: np.ndarray, from_hz: int, to_hz: int) -> np.ndarray:
     """
-    Resample a float32 audio array using polyphase filtering.
+    Resample a float32 audio array.
 
     Priority:
       1. torchaudio.functional.resample  (best quality, sinc filter)
       2. scipy.signal.resample_poly       (good quality, polyphase)
-      3. numpy linear interpolation       (always available, acceptable)
+      3. numpy linear interpolation       (always available)
     """
     if from_hz == to_hz:
         return audio
@@ -116,7 +132,6 @@ def _resample(audio: np.ndarray, from_hz: int, to_hz: int) -> np.ndarray:
     up   = to_hz   // g
     down = from_hz // g
 
-    # Option 1: torchaudio
     try:
         import torch, torchaudio  # type: ignore
         t = torch.from_numpy(audio).unsqueeze(0)
@@ -125,14 +140,12 @@ def _resample(audio: np.ndarray, from_hz: int, to_hz: int) -> np.ndarray:
     except ImportError:
         pass
 
-    # Option 2: scipy
     try:
         from scipy.signal import resample_poly  # type: ignore
         return resample_poly(audio, up, down).astype(np.float32)
     except ImportError:
         pass
 
-    # Option 3: numpy linear interpolation
     n_out = int(len(audio) * to_hz / from_hz)
     x_old = np.linspace(0, 1, len(audio))
     x_new = np.linspace(0, 1, n_out)
@@ -143,7 +156,7 @@ def _pcm_to_int16(audio_f32: np.ndarray) -> bytes:
     """Normalise float32 [-1,1] → int16 PCM bytes."""
     peak = np.max(np.abs(audio_f32))
     if peak > 0:
-        audio_f32 = audio_f32 * (0.92 / peak)          # headroom below clipping
+        audio_f32 = audio_f32 * (0.92 / peak)
     pcm = np.clip(audio_f32 * 32768.0, -32768, 32767).astype(np.int16)
     return pcm.tobytes()
 
@@ -160,16 +173,17 @@ def _apply_fade(audio: np.ndarray, rate: int, ms: int = 10) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# TeluguTTSHandler
+# VoiceTTSHandler
 # ---------------------------------------------------------------------------
 
-class TeluguTTSHandler:
+class VoiceTTSHandler:
     """
-    Synthesizes Telugu text to PCM audio and streams it chunk-by-chunk.
+    Synthesizes Dari or Pashto text to PCM audio and streams it chunk-by-chunk.
 
-    Primary  : facebook/mms-tts-tel  (local GPU VITS — native Telugu)
-    Fallback1: edge-tts te-IN-ShrutiNeural  (Microsoft Azure, free)
-    Fallback2: gTTS  (Google, free)
+    Primary  : facebook/mms-tts-prs (Dari) or facebook/mms-tts-pbt (Pashto)
+               — local GPU VITS with automatic uroman romanisation
+    Fallback1: edge-tts  fa-IR-DilaraNeural / ps-AF-LatifaNeural
+    Fallback2: gTTS  fa (Pashto falls back to Persian for gTTS)
     Fallback3: Silence
     """
 
@@ -178,10 +192,18 @@ class TeluguTTSHandler:
         session_id: str,
         send_audio_cb: AudioSendCallback,
         cancel_event: asyncio.Event,
+        language: str = "dari",
     ) -> None:
         self.session_id    = session_id
         self._send_audio   = send_audio_cb
         self._cancel_event = cancel_event
+
+        lang_cfg = get_language_config(language)
+        self._mms_model_id: str = lang_cfg["mms_tts_model"]
+        self._mms_native_rate: int = lang_cfg["mms_tts_sample_rate"]
+        self._edge_tts_voice: str = lang_cfg["edge_tts_voice"]
+        self._gtts_language: str = lang_cfg["gtts_language"]
+        self._language_display: str = lang_cfg["display_name"]
 
     # ------------------------------------------------------------------
     # Public API
@@ -191,30 +213,33 @@ class TeluguTTSHandler:
         if not text.strip():
             return True
         logger.info(
-            "TTS: %.70s", text,
+            "TTS [%s]: %.70s",
+            self._language_display,
+            text,
             extra={"session_id": self.session_id},
         )
         return await self._synthesize_mms(text)
 
     # ------------------------------------------------------------------
-    # MMS-TTS  (primary — native Telugu VITS)
+    # MMS-TTS  (primary — VITS, local GPU)
     # ------------------------------------------------------------------
 
     async def _synthesize_mms(self, text: str) -> bool:
         """
-        Synthesize with facebook/mms-tts-tel on GPU.
+        Synthesize with the language-specific MMS-TTS model on GPU.
 
-        Runs inference in a thread pool executor so the event loop stays
-        responsive.  Audio is resampled from 16 kHz → 24 kHz, then
-        streamed in 60 ms chunks.
+        The VitsTokenizer automatically applies uroman romanisation for
+        Dari/Pashto models (tokenizer.is_uroman == True) when the
+        `uroman` package is installed. Runs inference in a thread pool
+        to keep the event loop responsive.
         """
         if self._cancel_event.is_set():
             return False
 
         loop = asyncio.get_running_loop()
 
-        def _infer() -> np.ndarray | None:
-            model, tokenizer = _get_mms()
+        def _infer() -> "np.ndarray | None":
+            model, tokenizer = _get_mms(self._mms_model_id)
             if model is None or tokenizer is None:
                 return None
             try:
@@ -223,9 +248,18 @@ class TeluguTTSHandler:
                 with torch.no_grad():
                     waveform = model(**inputs).waveform[0]
                 return waveform.cpu().float().numpy()
+            except ImportError as exc:
+                logger.error(
+                    "MMS-TTS uroman missing — install with: pip install uroman. Error: %s",
+                    exc,
+                    extra={"session_id": self.session_id},
+                )
+                return None
             except Exception as exc:
                 logger.error(
-                    "MMS-TTS inference error: %s", exc,
+                    "MMS-TTS inference error (%s): %s",
+                    self._mms_model_id,
+                    exc,
                     extra={"session_id": self.session_id},
                 )
                 return None
@@ -238,12 +272,15 @@ class TeluguTTSHandler:
             audio_f32 = None
 
         if audio_f32 is None:
-            logger.warning("MMS-TTS failed — falling back to edge-tts",
-                           extra={"session_id": self.session_id})
+            logger.warning(
+                "MMS-TTS failed (%s) — falling back to edge-tts",
+                self._mms_model_id,
+                extra={"session_id": self.session_id},
+            )
             return await self._synthesize_edge_tts(text)
 
-        # Resample 16 kHz → 24 kHz
-        audio_f32 = _resample(audio_f32, MMS_NATIVE_RATE, TTS_RATE)
+        # Resample native rate → 24 kHz
+        audio_f32 = _resample(audio_f32, self._mms_native_rate, TTS_RATE)
         audio_f32 = _apply_fade(audio_f32, TTS_RATE)
         pcm_bytes  = _pcm_to_int16(audio_f32)
 
@@ -254,7 +291,7 @@ class TeluguTTSHandler:
     # ------------------------------------------------------------------
 
     async def _synthesize_edge_tts(self, text: str) -> bool:
-        """Fallback to Microsoft edge-tts Telugu neural voice."""
+        """Fallback to Microsoft edge-tts neural voice."""
         if self._cancel_event.is_set():
             return False
 
@@ -265,8 +302,8 @@ class TeluguTTSHandler:
             return await self._synthesize_gtts(text)
 
         try:
-            communicate  = edge_tts.Communicate(text, voice=config.tts.edge_tts_voice)
-            audio_bytes  = b""
+            communicate = edge_tts.Communicate(text, voice=self._edge_tts_voice)
+            audio_bytes = b""
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
                     audio_bytes += chunk["data"]
@@ -289,7 +326,7 @@ class TeluguTTSHandler:
                          extra={"session_id": self.session_id})
             return await self._synthesize_gtts(text)
 
-    def _decode_mp3(self, audio_bytes: bytes) -> bytes | None:
+    def _decode_mp3(self, audio_bytes: bytes) -> "bytes | None":
         """Decode MP3 → float32 PCM, resample to TTS_RATE, return int16 bytes."""
         try:
             import av
@@ -310,7 +347,6 @@ class TeluguTTSHandler:
                 return None
 
             pcm = np.concatenate(frames)
-            # Trim silence boundaries
             nz = np.where(np.abs(pcm) > 160)[0]
             if len(nz):
                 pcm = pcm[nz[0]: nz[-1] + 1]
@@ -337,10 +373,11 @@ class TeluguTTSHandler:
 
         try:
             loop = asyncio.get_running_loop()
+            gtts_lang = self._gtts_language
 
             def _run():
                 buf = io.BytesIO()
-                gTTS(text=text, lang=config.tts.gtts_language, slow=False).write_to_fp(buf)
+                gTTS(text=text, lang=gtts_lang, slow=False).write_to_fp(buf)
                 return buf.getvalue()
 
             audio_bytes = await loop.run_in_executor(None, _run)
@@ -381,13 +418,19 @@ class TeluguTTSHandler:
 
     async def _stream_pcm(self, pcm_bytes: bytes) -> bool:
         """Send PCM bytes to the client in small chunks for low cancel latency."""
-        bpc = int(TTS_RATE * config.tts.chunk_ms / 1000) * 2   # bytes per chunk
+        bpc = int(TTS_RATE * config.tts.chunk_ms / 1000) * 2
         for i in range(0, len(pcm_bytes), bpc):
             if self._cancel_event.is_set():
                 return False
             await self._send_audio(pcm_bytes[i: i + bpc])
             await asyncio.sleep(0)
         return not self._cancel_event.is_set()
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compat alias
+# ---------------------------------------------------------------------------
+TeluguTTSHandler = VoiceTTSHandler
 
 
 # ---------------------------------------------------------------------------
@@ -400,7 +443,7 @@ class TTSOrchestrator:
     def __init__(
         self,
         session_id: str,
-        tts_handler: TeluguTTSHandler,
+        tts_handler: VoiceTTSHandler,
         cancel_event: asyncio.Event,
     ) -> None:
         self.session_id     = session_id
@@ -419,7 +462,6 @@ class TTSOrchestrator:
 
         while True:
             if self._cancel_event.is_set():
-                # Drain stale fragments before stopping
                 while not self._fragment_queue.empty():
                     try:
                         self._fragment_queue.get_nowait()

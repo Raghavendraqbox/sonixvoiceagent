@@ -1,4 +1,4 @@
-# Telugu Voice AI Agent — Python dependencies
+# Dari & Pashto Voice AI Agent — Python dependencies
 # Tested on Python 3.11, CUDA 12.x, PyTorch 2.x
 #
 # ── Install order on GPU machines ──────────────────────────────────────────
@@ -18,23 +18,26 @@ httpx==0.27.0
 python-multipart==0.0.9
 
 # ---------------------------------------------------------------------------
-# ASR — Soniox (primary, best Telugu accuracy)
+# ASR — Soniox (primary cloud ASR)
 # Get API key: https://soniox.com/dashboard
-# Set SONIOX_API_KEY in .env
-# Falls back to faster-whisper when key is absent
+# Dari  → language_code="fa"  (Persian covers Afghan Dari)
+# Pashto → language_code="ps"
+# Set SONIOX_API_KEY in .env — falls back to faster-whisper without it
 # ---------------------------------------------------------------------------
 soniox>=2.0.0
 
 # ---------------------------------------------------------------------------
 # ASR fallback — faster-whisper large-v3 on GPU (no API key needed)
 # Downloads ~3 GB model on first run
+# Dari   → language="fa"
+# Pashto → language="ps"
 # ---------------------------------------------------------------------------
 faster-whisper==1.2.1
 
 # ---------------------------------------------------------------------------
 # LLM — Ollama (local GPU, open-source, no API key required)
 # Install Ollama: curl -fsSL https://ollama.com/install.sh | sh
-# Pull model:    ollama pull qwen2.5:32b
+# Pull model:    ollama pull qwen2.5:7b
 # Uses only httpx (listed above) — no extra package needed
 # ---------------------------------------------------------------------------
 # (no extra package — Ollama is accessed via httpx REST API)
@@ -43,7 +46,7 @@ faster-whisper==1.2.1
 # RAG — FAISS + sentence-transformers embeddings
 # ---------------------------------------------------------------------------
 sentence-transformers==3.0.1
-transformers>=4.40,<5.0
+transformers>=4.44,<5.0
 faiss-cpu==1.8.0
 # GPU FAISS (optional, faster retrieval on large indexes):
 #   pip uninstall faiss-cpu && pip install faiss-gpu==1.7.4
@@ -51,29 +54,39 @@ faiss-cpu==1.8.0
 numpy==1.26.4
 
 # ---------------------------------------------------------------------------
-# TTS — Primary: Meta MMS-TTS (facebook/mms-tts-tel)
-# VITS model trained specifically on Telugu speech — natural, native-sounding
-# Model downloaded automatically from HuggingFace (~460 MB) on first run
+# TTS — Primary: Meta MMS-TTS (language-specific VITS models)
+#
+# Dari  : facebook/mms-tts-prs  (~460 MB, Afghan Persian)
+# Pashto: facebook/mms-tts-pbt  (~460 MB, Southern Pashto)
+#
+# These models require uroman romanisation (uroman below).
+# The VitsTokenizer handles uroman automatically when uroman is installed.
+# Models download automatically from HuggingFace on first use.
 # Requires: transformers (already listed above), torch (install separately)
 # ---------------------------------------------------------------------------
-# (loaded via transformers — no extra package needed)
+# (loaded via transformers — no extra package needed for model itself)
+
+# uroman: required for MMS-TTS Dari/Pashto models
+# The VitsTokenizer calls uroman automatically for is_uroman=True models
+uroman>=1.3.0
 
 # Resampling: MMS-TTS outputs 16kHz, browser expects 24kHz
 # Priority: torchaudio → scipy → numpy (all three are tried in order)
-scipy>=1.11.0       # polyphase resampling for MMS-TTS 16kHz→24kHz
-# torchaudio: install alongside torch for best quality resampling:
+scipy>=1.11.0
+# torchaudio: install alongside torch for best quality:
 #   pip install torchaudio --index-url https://download.pytorch.org/whl/cu124
 
 # ---------------------------------------------------------------------------
-# TTS — Fallback 1: edge-tts Telugu neural voices (free, internet required)
-# Voices: te-IN-ShrutiNeural (F, default) | te-IN-MohanNeural (M)
-# Set TTS_VOICE in .env to switch
+# TTS — Fallback 1: edge-tts neural voices (free, internet required)
+# Dari  : fa-IR-DilaraNeural (F) | fa-IR-FaridNeural (M)
+# Pashto: ps-AF-LatifaNeural (F) | ps-AF-GulNawazNeural (M)
 # ---------------------------------------------------------------------------
 edge-tts==7.2.8
-av==17.0.0          # PyAV: MP3 decode + PCM resample for edge-tts output
+av==17.0.0      # PyAV: MP3 decode + PCM resample for edge-tts output
 
 # ---------------------------------------------------------------------------
-# TTS — Fallback 2: gTTS (Google TTS, language=te, free, internet required)
+# TTS — Fallback 2: gTTS (Google TTS, free, internet required)
+# Uses fa (Persian) for both Dari and Pashto as closest available
 # ---------------------------------------------------------------------------
 gtts>=2.5.1
 

@@ -1,16 +1,16 @@
 """
-llm.py — Open-source LLM client for the Telugu Voice AI Agent.
+llm.py — Open-source LLM client for the Dari & Pashto Voice AI Agent.
 
 Runs entirely locally via Ollama — no external API keys required.
 
-Recommended models for Telugu (pull before starting):
-  ollama pull qwen2.5:32b        ← best Telugu quality, needs ~20GB VRAM
-  ollama pull qwen2.5:14b        ← good Telugu, needs ~10GB VRAM
-  ollama pull qwen2.5:7b         ← lighter option, needs ~6GB VRAM
-  ollama pull aya:35b            ← Cohere's multilingual model
-  ollama pull gemma3:27b         ← Google Gemma 3, good Telugu
+Recommended models for Dari/Pashto (pull before starting):
+  ollama pull qwen2.5:7b         ← good Dari, reasonable Pashto, ~6GB VRAM
+  ollama pull qwen2.5:14b        ← better quality, ~10GB VRAM
+  ollama pull qwen2.5:32b        ← best Dari quality, ~20GB VRAM
+  ollama pull qwen2.5:72b        ← best overall (80GB GPU)
+  ollama pull aya-expanse         ← Cohere multilingual, Persian listed
 
-Set OLLAMA_MODEL in .env to choose, default is qwen2.5:32b.
+Set OLLAMA_MODEL in .env to choose, default is qwen2.5:7b.
 
 Sentence fragments are yielded as they arrive so TTS can begin speaking
 after the first complete sentence rather than waiting for the full response.
@@ -24,28 +24,39 @@ from typing import AsyncIterator, Optional
 
 import httpx
 
-from config import config
+from config import config, get_language_config
 from memory import ConversationMemory
 from rag import RAGRetriever
 
 logger = logging.getLogger(__name__)
 
-# Sentence boundaries: Telugu danda (।) + Western punctuation
-_SENTENCE_BOUNDARY = re.compile(r"([.!?,।|])\s*(?=\S|$)")
+# Sentence boundaries: Western + Arabic punctuation (؟ = ?, ، = comma, ۔ = full stop)
+_SENTENCE_BOUNDARY = re.compile(r"([.!?,|؟،۔])\s*(?=\S|$)")
 
 
-class TeluguLLMClient:
+class VoiceLLMClient:
     """
     Async streaming LLM client using local Ollama.
 
     Each call to `stream_response` yields sentence fragments as soon as they
     are complete, so the TTS pipeline can start speaking immediately.
 
-    No external API keys required — all inference runs on the local GPU.
+    Supports Dari and Pashto via language-specific system prompts.
     """
 
-    def __init__(self, retriever: Optional[RAGRetriever] = None) -> None:
+    def __init__(
+        self,
+        retriever: Optional[RAGRetriever] = None,
+        language: str = "dari",
+    ) -> None:
         self._retriever = retriever
+        self._language  = language
+
+        lang_cfg = get_language_config(language)
+        self._system_prompt: str = lang_cfg["system_prompt"]
+        self._neutral_stubs: list = lang_cfg["neutral_stubs"]
+        self._language_display: str = lang_cfg["display_name"]
+
         self._http = httpx.AsyncClient(
             base_url=config.ollama.base_url,
             timeout=httpx.Timeout(60.0, connect=10.0),
@@ -65,7 +76,7 @@ class TeluguLLMClient:
         Stream sentence fragments for the given user query via Ollama.
 
         Args:
-            user_query:  Latest user utterance (Telugu or English).
+            user_query:  Latest user utterance (Dari, Pashto, or English).
             memory:      Session conversation history.
             session_id:  For structured log context.
 
@@ -94,7 +105,7 @@ class TeluguLLMClient:
         Assemble the full prompt: system persona + RAG context +
         conversation history + current user turn.
         """
-        parts: list[str] = [config.system_prompt]
+        parts: list[str] = [self._system_prompt]
 
         # RAG context (may be empty if no relevant docs found)
         if self._retriever is not None:
@@ -122,7 +133,8 @@ class TeluguLLMClient:
         Stream tokens from local Ollama and yield complete sentence fragments.
 
         Uses the /api/generate endpoint with stream=True.
-        On connection failure, falls back to a neutral Telugu acknowledgement.
+        On connection failure, falls back to a neutral acknowledgement in the
+        session language.
         """
         payload = {
             "model": config.ollama.model,
@@ -153,15 +165,17 @@ class TeluguLLMClient:
                         continue
 
                     token = data.get("response", "")
-                    done = data.get("done", False)
+                    done  = data.get("done", False)
 
-                    buffer += token
+                    buffer       += token
                     full_response += token
 
                     fragment, buffer = self._split_fragment(buffer)
                     if fragment:
                         logger.debug(
-                            "LLM fragment: %s", fragment[:50],
+                            "LLM fragment [%s]: %s",
+                            self._language_display,
+                            fragment[:50],
                             extra={"session_id": session_id},
                         )
                         yield fragment
@@ -203,37 +217,29 @@ class TeluguLLMClient:
     # ------------------------------------------------------------------
 
     async def _neutral_stub(self, session_id: str) -> AsyncIterator[str]:
-        """
-        Neutral Telugu acknowledgement when Ollama is unreachable.
-        Includes a hint to the operator in logs.
-        """
+        """Neutral acknowledgement in the session language when Ollama is unreachable."""
         import random
-        stubs = [
-            "క్షమించండి, నేను అర్థం చేసుకున్నాను. కొంచెం వేచి ఉండండి.",
-            "అర్థమైంది. నేను మళ్ళీ ప్రయత్నిస్తాను.",
-            "Sorry, please give me a moment while I check on that.",
-        ]
         logger.warning(
             "Using neutral stub — is Ollama running? Run: ollama serve",
             extra={"session_id": session_id},
         )
         await asyncio.sleep(0.1)
-        yield random.choice(stubs)
+        yield random.choice(self._neutral_stubs)
 
     # ------------------------------------------------------------------
     # Fragment splitter
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _split_fragment(buffer: str) -> tuple[str, str]:
+    def _split_fragment(buffer: str) -> "tuple[str, str]":
         """
         Extract the longest complete sentence fragment from the buffer.
 
-        Telugu uses । (danda, U+0964) as sentence terminator; Western
-        punctuation (.  !  ?  ,) is also detected.
+        Handles Western punctuation (.  !  ?  ,) and Arabic punctuation
+        (؟ ،  ۔) used in Dari and Pashto text.
 
         Returns (fragment, remaining_buffer).
-        fragment is empty string if no sentence boundary has been reached yet.
+        fragment is empty string if no sentence boundary reached yet.
         """
         match = None
         for m in _SENTENCE_BOUNDARY.finditer(buffer):
@@ -243,6 +249,12 @@ class TeluguLLMClient:
             return "", buffer
 
         split_pos = match.end()
-        fragment = buffer[:split_pos].strip()
+        fragment  = buffer[:split_pos].strip()
         remaining = buffer[split_pos:]
         return fragment, remaining
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compat alias
+# ---------------------------------------------------------------------------
+TeluguLLMClient = VoiceLLMClient

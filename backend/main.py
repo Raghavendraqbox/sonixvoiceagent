@@ -1,5 +1,9 @@
 """
-main.py — FastAPI application with WebSocket endpoint for the Telugu Voice AI agent.
+main.py — FastAPI application with WebSocket endpoint for the Dari/Pashto Voice AI agent.
+
+Language selection:
+  Pass ?language=dari or ?language=pashto in the WebSocket URL.
+  Defaults to the LANGUAGE environment variable (default: "dari").
 
 WebSocket message protocol:
   CLIENT → SERVER (binary):
@@ -21,7 +25,7 @@ WebSocket message protocol:
     {"type": "bot_text_fragment",  "text": "..."}  — streamed LLM token group
     {"type": "error", "message": "..."}            — pipeline error
     {"type": "pong"}                               — keepalive reply
-    {"type": "session_ready"}                      — handshake complete
+    {"type": "session_ready", "session_id": "...", "language": "..."}
 """
 
 import asyncio
@@ -36,7 +40,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from config import config
+from config import config, SUPPORTED_LANGUAGES
 from session_manager import session_manager
 
 # ---------------------------------------------------------------------------
@@ -57,13 +61,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=" * 60)
-    logger.info("Telugu Voice AI Agent starting…")
-    logger.info("ASR  : Soniox (%s) → Whisper large-v3 fallback",
-                config.soniox.language_code)
-    logger.info("LLM  : Ollama %s @ %s",
-                config.ollama.model, config.ollama.base_url)
-    logger.info("TTS  : edge-tts %s → gTTS fallback",
-                config.tts.edge_tts_voice)
+    logger.info("Dari & Pashto Voice AI Agent starting…")
+    logger.info("Default language : %s", config.default_language)
+    logger.info("Supported        : %s", ", ".join(SUPPORTED_LANGUAGES))
+    logger.info("ASR  : Soniox (%s) → Whisper large-v3 fallback", config.soniox.model)
+    logger.info("LLM  : Ollama %s @ %s", config.ollama.model, config.ollama.base_url)
+    logger.info("TTS  : MMS-TTS (local GPU) → edge-tts → gTTS")
     logger.info("Audio: input 16kHz | TTS output 24kHz")
     logger.info("=" * 60)
     session_manager.initialize_rag()
@@ -77,9 +80,12 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="Telugu Voice AI Agent",
-    description="Real-time full-duplex Telugu conversational voice agent powered by Soniox ASR + Qwen2.5 LLM + edge-tts",
-    version="1.0.0",
+    title="Dari & Pashto Voice AI Agent",
+    description=(
+        "Real-time full-duplex Dari and Pashto conversational voice agent. "
+        "Powered by Soniox ASR + Ollama LLM + Meta MMS-TTS."
+    ),
+    version="3.0.0",
     lifespan=lifespan,
 )
 
@@ -114,13 +120,28 @@ async def health():
     """Health check — shows which ASR/LLM/TTS backend is active."""
     return {
         "status": "ok",
+        "supported_languages": SUPPORTED_LANGUAGES,
+        "default_language": config.default_language,
         "asr": (
-            f"soniox/{config.soniox.model} (language={config.soniox.language_code})"
+            f"soniox/{config.soniox.model}"
             if os.getenv("SONIOX_API_KEY")
             else "whisper-large-v3 (local GPU)"
         ),
         "llm": f"ollama/{config.ollama.model} @ {config.ollama.base_url}",
-        "tts": f"edge-tts/{config.tts.edge_tts_voice} (24kHz)",
+        "tts": "mms-tts (local GPU) → edge-tts → gTTS (24kHz output)",
+    }
+
+
+@app.get("/languages")
+async def languages():
+    """Return available language options for the frontend."""
+    from config import LANGUAGE_CONFIGS
+    return {
+        lang: {
+            "display_name": cfg["display_name"],
+            "display_name_native": cfg["display_name_native"],
+        }
+        for lang, cfg in LANGUAGE_CONFIGS.items()
     }
 
 
@@ -129,16 +150,31 @@ async def health():
 # ---------------------------------------------------------------------------
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    language: str = "dari",
+):
     """
     Main WebSocket handler.
 
-    Accepts the connection, creates a session, and:
+    Query parameter:
+      language — "dari" or "pashto" (defaults to LANGUAGE env var → "dari")
+
+    Accepts the connection, creates a language-specific session, and:
     - Forwards binary frames (PCM audio) to the ASR queue.
     - Dispatches JSON control messages (interrupt, ping).
     """
+    # Normalize and validate language
+    language = language.lower()
+    if language not in SUPPORTED_LANGUAGES:
+        language = config.default_language
+
     await websocket.accept()
-    logger.info("WebSocket connected from %s", websocket.client)
+    logger.info(
+        "WebSocket connected from %s (language=%s)",
+        websocket.client,
+        language,
+    )
 
     async def send_audio(pcm_bytes: bytes) -> None:
         try:
@@ -155,9 +191,14 @@ async def websocket_endpoint(websocket: WebSocket):
     session = session_manager.create_session(
         send_audio_cb=send_audio,
         send_json_cb=send_json_msg,
+        language=language,
     )
-    await send_json_msg({"type": "session_ready", "session_id": session.session_id})
-    logger.info("Session %s ready", session.session_id)
+    await send_json_msg({
+        "type": "session_ready",
+        "session_id": session.session_id,
+        "language": language,
+    })
+    logger.info("Session %s ready [%s]", session.session_id, language)
 
     try:
         while True:

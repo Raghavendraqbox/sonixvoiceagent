@@ -1,11 +1,9 @@
 """
 session_manager.py — Per-session state, interrupt logic, and task lifecycle.
 
-Adapted from the English voice agent for Telugu:
-  - Uses SonioxASRHandler instead of RivaASRHandler
-  - Uses TeluguTTSHandler instead of RivaTTSHandler
-  - Uses TeluguLLMClient instead of OllamaClient
-  - Greeting is in Telugu
+Supports Dari and Pashto language sessions.
+Language is determined per-session via the WebSocket ?language= query param
+(defaults to LANGUAGE env var, which defaults to "dari").
 """
 
 import asyncio
@@ -14,17 +12,17 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Callable, Awaitable, Dict, Optional
 
-from config import config
+from config import config, get_language_config
 from memory import ConversationMemory
 from rag import RAGRetriever
-from asr import SonioxASRHandler, TranscriptResult
-from tts import TeluguTTSHandler, TTSOrchestrator, schedule_tts_warmup
-from llm import TeluguLLMClient
+from asr import ASRHandler, TranscriptResult
+from tts import VoiceTTSHandler, TTSOrchestrator, schedule_tts_warmup
+from llm import VoiceLLMClient
 
 logger = logging.getLogger(__name__)
 
 AudioSendCallback = Callable[[bytes], Awaitable[None]]
-JsonSendCallback = Callable[[dict], Awaitable[None]]
+JsonSendCallback  = Callable[[dict], Awaitable[None]]
 
 
 # ---------------------------------------------------------------------------
@@ -36,6 +34,7 @@ class Session:
     """All state for a single connected client session."""
     session_id: str
     memory: ConversationMemory
+    language: str
     audio_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     transcript_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     interrupt_event: asyncio.Event = field(default_factory=asyncio.Event)
@@ -44,10 +43,10 @@ class Session:
     llm_tts_task: Optional[asyncio.Task] = field(default=None, init=False)
     greeted: bool = field(default=False, init=False)
 
-    asr_handler: Optional[SonioxASRHandler] = field(default=None, init=False)
-    tts_handler: Optional[TeluguTTSHandler] = field(default=None, init=False)
+    asr_handler: Optional[ASRHandler] = field(default=None, init=False)
+    tts_handler: Optional[VoiceTTSHandler] = field(default=None, init=False)
     tts_orchestrator: Optional[TTSOrchestrator] = field(default=None, init=False)
-    llm_client: Optional[TeluguLLMClient] = field(default=None, init=False)
+    llm_client: Optional[VoiceLLMClient] = field(default=None, init=False)
 
     def cancel_tts(self) -> None:
         """Signal TTS to stop immediately."""
@@ -93,33 +92,49 @@ class SessionManager:
         self._retriever = RAGRetriever()
         self._retriever.initialize()
         logger.info("RAG retriever initialized")
-        schedule_tts_warmup()
+        # Pre-load default language TTS model to eliminate cold-start latency
+        schedule_tts_warmup(config.default_language)
 
     def create_session(
         self,
         send_audio_cb: AudioSendCallback,
         send_json_cb: JsonSendCallback,
+        language: str = "dari",
     ) -> Session:
         """
-        Allocate a new session, wire all handlers, start async tasks.
+        Allocate a new session for the given language, wire all handlers,
+        start async tasks.
         """
+        # Validate and normalize language
+        from config import SUPPORTED_LANGUAGES
+        if language.lower() not in SUPPORTED_LANGUAGES:
+            logger.warning(
+                "Unsupported language '%s', defaulting to 'dari'", language
+            )
+            language = "dari"
+        language = language.lower()
+
+        lang_cfg = get_language_config(language)
+
         session_id = str(uuid.uuid4())
         memory = ConversationMemory(session_id=session_id)
-        session = Session(session_id=session_id, memory=memory)
+        session = Session(session_id=session_id, memory=memory, language=language)
 
         # Wire ASR
-        session.asr_handler = SonioxASRHandler(
+        session.asr_handler = ASRHandler(
             session_id=session_id,
             audio_queue=session.audio_queue,
             transcript_queue=session.transcript_queue,
             interrupt_event=session.interrupt_event,
+            language=language,
         )
 
         # Wire TTS
-        session.tts_handler = TeluguTTSHandler(
+        session.tts_handler = VoiceTTSHandler(
             session_id=session_id,
             send_audio_cb=send_audio_cb,
             cancel_event=session.tts_cancel_event,
+            language=language,
         )
         session.tts_orchestrator = TTSOrchestrator(
             session_id=session_id,
@@ -128,7 +143,10 @@ class SessionManager:
         )
 
         # Wire LLM
-        session.llm_client = TeluguLLMClient(retriever=self._retriever)
+        session.llm_client = VoiceLLMClient(
+            retriever=self._retriever,
+            language=language,
+        )
 
         # Start background tasks
         session.asr_task = asyncio.create_task(
@@ -141,7 +159,12 @@ class SessionManager:
         )
 
         self._sessions[session_id] = session
-        logger.info("Session created", extra={"session_id": session_id})
+        logger.info(
+            "Session created [%s / %s]",
+            lang_cfg["display_name"],
+            lang_cfg["display_name_native"],
+            extra={"session_id": session_id},
+        )
         return session
 
     async def destroy_session(self, session_id: str) -> None:
@@ -193,12 +216,17 @@ class SessionManager:
         """
         Full conversation loop.
 
-        Phase 0 — Greeting (deferred to first user utterance to avoid overlap):
-            Play Telugu welcome message.
+        Phase 0 — Greeting (on first user utterance):
+            Play language-specific welcome message.
         Phase 1+ — Normal LLM turn:
             Stream LLM response → TTS.
         """
-        logger.info("LLM/TTS loop started", extra={"session_id": session.session_id})
+        lang_cfg = get_language_config(session.language)
+        logger.info(
+            "LLM/TTS loop started [%s]",
+            lang_cfg["display_name"],
+            extra={"session_id": session.session_id},
+        )
 
         while True:
             # Wait for a final transcript
@@ -215,7 +243,9 @@ class SessionManager:
                 continue
 
             logger.info(
-                "Processing: %s", user_text[:80],
+                "Processing [%s]: %s",
+                lang_cfg["display_name"],
+                user_text[:80],
                 extra={"session_id": session.session_id},
             )
 
@@ -228,15 +258,11 @@ class SessionManager:
             await send_json_cb({"type": "transcript_final", "text": user_text})
 
             # ----------------------------------------------------------
-            # Phase 0: Telugu greeting (plays exactly once)
+            # Phase 0: language-specific greeting (plays exactly once)
             # ----------------------------------------------------------
             if not session.greeted:
                 session.greeted = True
-                greeting = (
-                    "Qobox కి స్వాగతం. నేను మీ వర్చువల్ అసిస్టెంట్‌ని. "
-                    "నేను మీకు తెలుగు లేదా ఇంగ్లీష్‌లో సహాయం చేయగలను. "
-                    "నేను మీకు ఎలా సహాయం చేయగలను?"
-                )
+                greeting = lang_cfg["greeting"]
                 await self._play_hardcoded(session, send_json_cb, greeting)
                 continue
 
@@ -293,7 +319,9 @@ class SessionManager:
 
             await send_json_cb({"type": "tts_end"})
             logger.info(
-                "Turn complete: %s", bot_text[:60],
+                "Turn complete [%s]: %s",
+                lang_cfg["display_name"],
+                bot_text[:60],
                 extra={"session_id": session.session_id},
             )
 

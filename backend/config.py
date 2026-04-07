@@ -1,27 +1,160 @@
 """
-config.py — Centralized configuration for the Telugu Voice AI Agent.
+config.py — Centralized configuration for the Dari & Pashto Voice AI Agent.
 
 All tunable parameters can be overridden via environment variables.
-No external API keys required for LLM inference — runs entirely on local GPU via Ollama.
+Language is selected via LANGUAGE env var (dari | pashto) or per-session via
+the WebSocket query parameter ?language=dari / ?language=pashto.
 """
 
 import os
 from dataclasses import dataclass, field
+from typing import Dict, Any, Tuple
 
+
+# ---------------------------------------------------------------------------
+# Language-specific configurations
+# ---------------------------------------------------------------------------
+
+LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
+    "dari": {
+        # Display
+        "display_name": "Dari",
+        "display_name_native": "دری",
+
+        # ASR
+        "soniox_language_code": "fa",    # Soniox: Persian covers Dari
+        "whisper_language": "fa",         # faster-whisper language code
+
+        # TTS — Meta MMS-TTS (primary, local GPU)
+        "mms_tts_model": "facebook/mms-tts-prs",   # Afghan Persian / Dari
+        "mms_tts_sample_rate": 16_000,
+
+        # TTS — edge-tts (fallback 1, Microsoft Azure)
+        "edge_tts_voice": os.getenv("TTS_VOICE_DARI", "fa-IR-DilaraNeural"),   # female
+        "edge_tts_voice_male": "fa-IR-FaridNeural",
+
+        # TTS — gTTS (fallback 2, Google)
+        "gtts_language": "fa",
+
+        # LLM sentence boundaries (Arabic punctuation added)
+        "sentence_delimiters": (".", "!", "?", ",", "؟", "،", "۔"),
+
+        # Greeting played on first user utterance
+        "greeting": (
+            "به Qobox خوش آمدید. من دستیار مجازی شما هستم. "
+            "چطور می‌توانم کمکتان کنم؟"
+        ),
+
+        # Stubs when Ollama is unreachable
+        "neutral_stubs": [
+            "ببخشید، لطفاً یک لحظه صبر کنید.",
+            "متوجه شدم، اجازه دهید بررسی کنم.",
+            "Sorry, please give me a moment while I check on that.",
+        ],
+
+        # System persona injected into every LLM prompt
+        "system_prompt": (
+            "You are a friendly and professional customer service voice agent for "
+            "Qobox (Quality Outside The Box), an Indian software quality assurance "
+            "and testing services company. You are on a live phone call.\n\n"
+            "IMPORTANT: Always respond in Dari (Afghan Persian / دری). Write your "
+            "response in Persian/Dari script. If the customer speaks English, "
+            "respond in English. Keep each response to 1-2 short sentences — this "
+            "is a voice call, so be conversational and concise. Do not use bullet "
+            "points, markdown formatting, asterisks, or emojis. Read the "
+            "conversation history carefully. If the user mentions their name, use it.\n\n"
+            "Only answer questions about Qobox services: software testing, test "
+            "automation, performance testing, security testing, API testing, and "
+            "QA consulting. For off-topic questions, say: "
+            "'متأسفم، من فقط می‌توانم در مورد خدمات Qobox کمک کنم.' "
+            "For unknown questions, say: "
+            "'اجازه دهید شما را به یک متخصص وصل کنم.'"
+        ),
+    },
+
+    "pashto": {
+        # Display
+        "display_name": "Pashto",
+        "display_name_native": "پښتو",
+
+        # ASR
+        "soniox_language_code": "ps",    # Pashto — test via Soniox API; may fall back
+        "whisper_language": "ps",         # faster-whisper supports Pashto
+
+        # TTS — Meta MMS-TTS (primary, local GPU)
+        "mms_tts_model": "facebook/mms-tts-pbt",   # Southern Pashto (most common in AF)
+        "mms_tts_sample_rate": 16_000,
+
+        # TTS — edge-tts (fallback 1, Microsoft Azure)
+        "edge_tts_voice": os.getenv("TTS_VOICE_PASHTO", "ps-AF-LatifaNeural"),   # female
+        "edge_tts_voice_male": "ps-AF-GulNawazNeural",
+
+        # TTS — gTTS (fallback 2, Google — Pashto not supported; use Persian as closest)
+        "gtts_language": "fa",
+
+        # LLM sentence boundaries (Arabic punctuation)
+        "sentence_delimiters": (".", "!", "?", ",", "؟", "،"),
+
+        # Greeting played on first user utterance
+        "greeting": (
+            "Qobox ته ښه راغلاست. زه ستاسو مجازی مرستیال یم. "
+            "زه تاسو سره څنګه مرسته کولی شم؟"
+        ),
+
+        # Stubs when Ollama is unreachable
+        "neutral_stubs": [
+            "بخښنه وغواړئ، یو شیبه صبر وکړئ.",
+            "پوه شوم، اجازه راکړئ وګورم.",
+            "Sorry, please give me a moment while I check on that.",
+        ],
+
+        # System persona injected into every LLM prompt
+        "system_prompt": (
+            "You are a friendly and professional customer service voice agent for "
+            "Qobox (Quality Outside The Box), an Indian software quality assurance "
+            "and testing services company. You are on a live phone call.\n\n"
+            "IMPORTANT: Always respond in Pashto (پښتو). Write your response in "
+            "Pashto script. If the customer speaks English, respond in English. "
+            "Keep each response to 1-2 short sentences — this is a voice call, so "
+            "be conversational and concise. Do not use bullet points, markdown "
+            "formatting, asterisks, or emojis. Read the conversation history "
+            "carefully. If the user mentions their name, use it.\n\n"
+            "Only answer questions about Qobox services: software testing, test "
+            "automation, performance testing, security testing, API testing, and "
+            "QA consulting. For off-topic questions, say: "
+            "'بخښنه غواړم، زه یوازې د Qobox خدماتو په اړه مرسته کولی شم.' "
+            "For unknown questions, say: "
+            "'اجازه راکړئ چې تاسو یو متخصص سره وصل کړم.'"
+        ),
+    },
+}
+
+SUPPORTED_LANGUAGES = list(LANGUAGE_CONFIGS.keys())
+DEFAULT_LANGUAGE: str = os.getenv("LANGUAGE", "dari").lower()
+
+if DEFAULT_LANGUAGE not in SUPPORTED_LANGUAGES:
+    DEFAULT_LANGUAGE = "dari"
+
+
+def get_language_config(language: str) -> Dict[str, Any]:
+    """Return the config dict for the given language (defaults to Dari)."""
+    return LANGUAGE_CONFIGS.get(language.lower(), LANGUAGE_CONFIGS["dari"])
+
+
+# ---------------------------------------------------------------------------
+# Soniox streaming ASR config
+# ---------------------------------------------------------------------------
 
 @dataclass
 class SonioxConfig:
-    """Soniox streaming ASR — best-in-class Telugu speech recognition."""
+    """Soniox streaming ASR — cloud-based, supports Dari (fa) and Pashto (ps)."""
 
     @property
     def api_key(self) -> str:
         return os.getenv("SONIOX_API_KEY", "")
 
-    # Telugu language code
-    language_code: str = os.getenv("SONIOX_LANGUAGE", "te")
-
-    # Multilingual model that supports Telugu
-    model: str = os.getenv("SONIOX_MODEL", "soniox_multilingual_2")
+    # Model: stt-rt-v4 is the current recommended real-time model (soniox_multilingual_2 is legacy)
+    model: str = os.getenv("SONIOX_MODEL", "stt-rt-v4")
 
     # Audio format: PCM 16-bit signed little-endian from the browser
     audio_format: str = "pcm_s16le"
@@ -30,30 +163,38 @@ class SonioxConfig:
     include_nonfinal: bool = True   # stream partial results for real-time display
 
 
+# ---------------------------------------------------------------------------
+# Ollama LLM config
+# ---------------------------------------------------------------------------
+
 @dataclass
 class OllamaConfig:
     """
     Ollama local LLM — open-source, no API key required.
 
-    Recommended Telugu models (pick one based on available VRAM):
-      qwen2.5:72b   → ~48 GB VRAM  ← best overall Telugu (default for 80GB GPU)
-      gemma4:31b    → ~63 GB VRAM  ← Google Gemma 4 (Apr 2026), excellent Telugu
-      qwen2.5:32b   → ~20 GB VRAM  ← good balance for smaller GPUs
-      qwen2.5:14b   → ~10 GB VRAM  ← lighter option
-      gemma3:27b    → ~55 GB VRAM  ← Google Gemma 3
+    Recommended models for Dari/Pashto (pull before starting):
+      qwen2.5:7b    → ~6 GB VRAM   ← good Dari, reasonable Pashto
+      qwen2.5:14b   → ~10 GB VRAM  ← better multilingual quality
+      qwen2.5:32b   → ~20 GB VRAM  ← best Dari quality
+      qwen2.5:72b   → ~48 GB VRAM  ← best overall (default for 80GB GPU)
+      aya-expanse   → varies       ← Cohere multilingual, Persian supported
+
+    For Pashto-specific fine-tuned model:
+      junaid008/qehwa-pashto-llm  ← Convert GGUF to Ollama Modelfile
 
     Pull the model before starting:
-      ollama pull qwen2.5:72b     # default — best Telugu on 80GB GPU
-      ollama pull gemma4:31b      # upgrade option (needs ~63 GB free VRAM)
+      ollama pull qwen2.5:7b
     """
     base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    model: str = os.getenv("OLLAMA_MODEL", "qwen2.5:72b")
+    model: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
     temperature: float = float(os.getenv("OLLAMA_TEMPERATURE", "0.7"))
     top_p: float = float(os.getenv("OLLAMA_TOP_P", "0.9"))
     max_tokens: int = int(os.getenv("OLLAMA_MAX_TOKENS", "150"))
-    # Sentence-boundary tokens that flush a TTS fragment
-    sentence_delimiters: tuple = (".", "!", "?", ",", "।")
 
+
+# ---------------------------------------------------------------------------
+# RAG config
+# ---------------------------------------------------------------------------
 
 @dataclass
 class RAGConfig:
@@ -69,11 +210,19 @@ class RAGConfig:
     chunk_overlap: int = int(os.getenv("RAG_CHUNK_OVERLAP", "50"))
 
 
+# ---------------------------------------------------------------------------
+# Memory config
+# ---------------------------------------------------------------------------
+
 @dataclass
 class MemoryConfig:
     """Sliding-window conversation history."""
     max_turns: int = int(os.getenv("MEMORY_MAX_TURNS", "8"))
 
+
+# ---------------------------------------------------------------------------
+# Audio config
+# ---------------------------------------------------------------------------
 
 @dataclass
 class AudioConfig:
@@ -87,7 +236,7 @@ class AudioConfig:
     # VAD: RMS energy threshold for speech vs. silence
     vad_rms_threshold: float = float(os.getenv("VAD_RMS_THRESHOLD", "0.01"))
 
-    # TTS output: edge-tts native rate after PyAV resampling
+    # TTS output: resampled to 24kHz for browser playback
     # MUST match PLAYBACK_SAMPLE_RATE in frontend/index.html
     tts_sample_rate: int = 24000
 
@@ -95,23 +244,23 @@ class AudioConfig:
     playback_prebuffer_ms: int = 200
 
 
+# ---------------------------------------------------------------------------
+# TTS config
+# ---------------------------------------------------------------------------
+
 @dataclass
 class TTSConfig:
-    """Text-to-Speech — Telugu neural voices via edge-tts (free, no API key)."""
-    # Telugu voices:
-    #   te-IN-ShrutiNeural  ← female (recommended)
-    #   te-IN-MohanNeural   ← male
-    edge_tts_voice: str = os.getenv("TTS_VOICE", "te-IN-ShrutiNeural")
-
-    # gTTS fallback language code
-    gtts_language: str = "te"
-
-    # Output sample rate (target after PyAV resample — matches AudioConfig.tts_sample_rate)
+    """Text-to-Speech output settings (language-specific voices set in LANGUAGE_CONFIGS)."""
+    # Output sample rate (target after resample — matches AudioConfig.tts_sample_rate)
     sample_rate: int = 24000
 
     # Stream in N-ms chunks for low cancel latency
     chunk_ms: int = 60
 
+
+# ---------------------------------------------------------------------------
+# Server config
+# ---------------------------------------------------------------------------
 
 @dataclass
 class ServerConfig:
@@ -121,6 +270,10 @@ class ServerConfig:
     log_level: str = os.getenv("LOG_LEVEL", "info")
     cors_origins: list = field(default_factory=lambda: ["*"])
 
+
+# ---------------------------------------------------------------------------
+# Root application config
+# ---------------------------------------------------------------------------
 
 @dataclass
 class AppConfig:
@@ -133,25 +286,8 @@ class AppConfig:
     tts: TTSConfig = field(default_factory=TTSConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
 
-    # System persona injected into every LLM prompt
-    system_prompt: str = (
-        "మీరు Qobox (Quality Outside The Box) కోసం ఒక స్నేహపూర్వక మరియు వృత్తిపరమైన "
-        "కస్టమర్ సర్వీస్ వాయిస్ ఏజెంట్. Qobox అనేది భారతీయ సాఫ్ట్‌వేర్ నాణ్యత నిర్ధారణ "
-        "మరియు పరీక్ష సేవల సంస్థ. మీరు లైవ్ ఫోన్ కాల్‌లో ఉన్నారు. "
-        "కస్టమర్ తెలుగులో మాట్లాడితే తెలుగులో సమాధానం ఇవ్వండి. "
-        "కస్టమర్ ఇంగ్లీష్‌లో మాట్లాడితే ఇంగ్లీష్‌లో సమాధానం ఇవ్వండి. "
-        "ప్రతి సమాధానం గరిష్టంగా 1-2 చిన్న వాక్యాలుగా ఉంచండి — ఇది వాయిస్ కాల్. "
-        "bullet points, markdown, asterisks లేదా emojis వాడకండి. "
-        "సంభాషణ చరిత్రను జాగ్రత్తగా చదవండి. వినియోగదారు పేరు చెప్పినట్లయితే, దాన్ని వాడండి. "
-        "Qobox సేవలకు (సాఫ్ట్‌వేర్ టెస్టింగ్, ఆటోమేషన్, పెర్ఫార్మెన్స్ టెస్టింగ్, "
-        "సెక్యూరిటీ టెస్టింగ్, API టెస్టింగ్, QA కన్సల్టింగ్) సంబంధించిన ప్రశ్నలకు మాత్రమే సమాధానం ఇవ్వండి. "
-        "Qobox కి సంబంధం లేని విషయాలకు: "
-        "'క్షమించండి, నేను Qobox విషయాలలో మాత్రమే సహాయం చేయగలను' అని చెప్పండి. "
-        "తెలియని విషయాలకు: 'అందుకు నేను మీకు నిపుణులకు కనెక్ట్ చేస్తాను' అని చెప్పండి.\n\n"
-        "ENGLISH FALLBACK: If the customer speaks English, respond naturally in English. "
-        "You are a friendly Qobox assistant. Keep responses to 1-2 short sentences. "
-        "Only answer questions about Qobox software testing and QA services."
-    )
+    # Default language for the server
+    default_language: str = DEFAULT_LANGUAGE
 
 
 # Module-level singleton — import this everywhere

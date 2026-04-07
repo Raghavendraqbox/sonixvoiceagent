@@ -1,5 +1,5 @@
 """
-asr.py — Soniox streaming ASR handler for Telugu.
+asr.py — Soniox streaming ASR handler for Dari and Pashto.
 
 Reads raw PCM audio from an asyncio.Queue, streams it to the Soniox API,
 and puts TranscriptResult objects onto an output queue.
@@ -11,9 +11,13 @@ Audio format contract (must match frontend):
   - Chunk size:  ~3200 bytes (100 ms at 16kHz)
 
 Priority chain:
-  1. Soniox cloud ASR (SONIOX_API_KEY set)       ← best Telugu accuracy
-  2. faster-whisper large-v3 on GPU              ← good Telugu, local
-  3. Null stub                                   ← placeholder only
+  1. Soniox cloud ASR (SONIOX_API_KEY set)
+       Dari   → language_code="fa" (Persian covers Afghan Dari)
+       Pashto → language_code="ps"
+  2. faster-whisper large-v3 on GPU
+       Dari   → language="fa"
+       Pashto → language="ps"
+  3. Null stub                         ← placeholder only
 """
 
 import asyncio
@@ -23,7 +27,7 @@ import threading
 from dataclasses import dataclass
 from typing import Optional
 
-from config import config
+from config import config, get_language_config
 
 logger = logging.getLogger(__name__)
 
@@ -55,15 +59,15 @@ class TranscriptResult:
 
 
 # ---------------------------------------------------------------------------
-# SonioxASRHandler
+# ASRHandler
 # ---------------------------------------------------------------------------
 
-class SonioxASRHandler:
+class ASRHandler:
     """
-    Wraps the Soniox streaming ASR service for Telugu.
+    Wraps the Soniox streaming ASR service for Dari and Pashto.
 
     Lifecycle:
-        1. Construct once per session.
+        1. Construct once per session with desired language ("dari" or "pashto").
         2. Call `run()` as an asyncio task.
         3. Push raw PCM bytes into `audio_queue`.
         4. Consume TranscriptResult objects from `transcript_queue`.
@@ -77,12 +81,18 @@ class SonioxASRHandler:
         audio_queue: asyncio.Queue,
         transcript_queue: asyncio.Queue,
         interrupt_event: asyncio.Event,
+        language: str = "dari",
     ) -> None:
         self.session_id = session_id
         self.audio_queue = audio_queue
         self.transcript_queue = transcript_queue
         self.interrupt_event = interrupt_event
         self._stopped = False
+
+        lang_cfg = get_language_config(language)
+        self._soniox_language_code: str = lang_cfg["soniox_language_code"]
+        self._whisper_language: str = lang_cfg["whisper_language"]
+        self._language_display: str = lang_cfg["display_name"]
 
     async def run(self) -> None:
         """Main ASR loop with exponential back-off reconnection."""
@@ -144,7 +154,7 @@ class SonioxASRHandler:
                         audio_gen(),
                         client,
                         model=config.soniox.model,
-                        language_code=config.soniox.language_code,
+                        language_code=self._soniox_language_code,
                         include_nonfinal=config.soniox.include_nonfinal,
                         audio_format=config.soniox.audio_format,
                         sample_rate_hertz=config.soniox.sample_rate_hertz,
@@ -159,8 +169,9 @@ class SonioxASRHandler:
         thread = threading.Thread(target=soniox_thread, daemon=True, name="soniox-asr")
         thread.start()
         logger.info(
-            "Soniox ASR started (language=%s, model=%s)",
-            config.soniox.language_code,
+            "Soniox ASR started (language=%s [%s], model=%s)",
+            self._soniox_language_code,
+            self._language_display,
             config.soniox.model,
             extra={"session_id": self.session_id},
         )
@@ -239,15 +250,16 @@ class SonioxASRHandler:
         )
 
     # ------------------------------------------------------------------
-    # faster-whisper fallback (Telugu large-v3 on GPU)
+    # faster-whisper fallback (GPU, large-v3)
     # ------------------------------------------------------------------
 
     async def _run_whisper_session(self) -> None:
         """
-        Fallback ASR using faster-whisper large-v3 with Telugu language.
+        Fallback ASR using faster-whisper large-v3 with the session language.
 
         Uses energy-based VAD to segment speech, then transcribes each utterance.
-        Large-v3 gives the best accuracy for Telugu among open-source models.
+        Dari  → language="fa"  (Persian — best available for Afghan Dari)
+        Pashto → language="ps"
         """
         try:
             import numpy as np
@@ -268,22 +280,27 @@ class SonioxASRHandler:
             device, compute = "cpu", "int8"
             logger.info("Whisper: CPU (slow for large-v3)", extra={"session_id": self.session_id})
 
-        # Load model in executor to avoid blocking the event loop
         loop = asyncio.get_running_loop()
         logger.info(
-            "Loading Whisper large-v3 for Telugu (first run downloads ~3 GB)…",
+            "Loading Whisper large-v3 for %s (first run downloads ~3 GB)…",
+            self._language_display,
             extra={"session_id": self.session_id},
         )
         model: "WhisperModel" = await loop.run_in_executor(
             None,
             lambda: WhisperModel("large-v3", device=device, compute_type=compute),
         )
-        logger.info("Whisper large-v3 ready", extra={"session_id": self.session_id})
+        logger.info(
+            "Whisper large-v3 ready (%s / %s)",
+            self._language_display,
+            self._whisper_language,
+            extra={"session_id": self.session_id},
+        )
 
         # VAD parameters
-        SILENCE_RMS_THRESHOLD = 0.008   # below → silence
+        SILENCE_RMS_THRESHOLD = 0.008
         SILENCE_FRAMES_TO_COMMIT = 6    # 0.6 s silence ends utterance
-        MIN_SPEECH_FRAMES = 1           # accept a single 100ms speech frame
+        MIN_SPEECH_FRAMES = 1
         MAX_SILENCE_FRAMES = 20         # 2 s hard reset
 
         audio_buf: list = []
@@ -343,9 +360,9 @@ class SonioxASRHandler:
                 None,
                 lambda: model.transcribe(
                     audio_array,
-                    language="te",          # Telugu
+                    language=self._whisper_language,
                     beam_size=5,
-                    vad_filter=True,        # built-in Whisper VAD
+                    vad_filter=True,
                     vad_parameters=dict(min_silence_duration_ms=500),
                 ),
             )
@@ -361,7 +378,9 @@ class SonioxASRHandler:
             return
 
         logger.info(
-            "Whisper transcript: %s", text[:80],
+            "Whisper transcript [%s]: %s",
+            self._language_display,
+            text[:80],
             extra={"session_id": self.session_id},
         )
         if not self.interrupt_event.is_set():
@@ -387,3 +406,9 @@ class SonioxASRHandler:
                 except asyncio.QueueEmpty:
                     break
             await asyncio.sleep(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compat alias
+# ---------------------------------------------------------------------------
+SonioxASRHandler = ASRHandler

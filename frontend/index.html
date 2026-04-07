@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="te">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Qobox Telugu Voice Agent</title>
+  <title>Qobox Voice Agent — Dari &amp; Pashto</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -11,7 +11,7 @@
       --bg:        #0f1117;
       --surface:   #1a1d27;
       --border:    #2a2d3a;
-      --accent:    #f97316;   /* saffron — Telugu cultural colour */
+      --accent:    #f97316;
       --accent-2:  #a78bfa;
       --danger:    #f87171;
       --success:   #34d399;
@@ -22,7 +22,7 @@
 
     html, body {
       height: 100%;
-      font-family: "Noto Sans Telugu", "Inter", system-ui, sans-serif;
+      font-family: "Inter", system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
     }
@@ -32,10 +32,12 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 28px;
+      gap: 24px;
       padding: 24px;
+      min-height: 100vh;
     }
 
+    /* ---- Header ---- */
     header { text-align: center; }
     header h1 {
       font-size: 1.6rem;
@@ -58,6 +60,48 @@
       font-size: 0.72rem;
       font-weight: 600;
       letter-spacing: 0.04em;
+    }
+
+    /* ---- Language selector ---- */
+    .lang-selector {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      width: 100%;
+      max-width: 400px;
+    }
+    .lang-selector label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+    }
+    .lang-selector select {
+      flex: 1;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .lang-selector select:focus { border-color: var(--accent); }
+    .lang-selector select:disabled { opacity: 0.5; cursor: not-allowed; }
+    .lang-native {
+      font-size: 1rem;
+      min-width: 36px;
+      text-align: center;
+      color: var(--accent);
     }
 
     /* ---- Status orb ---- */
@@ -105,7 +149,7 @@
 
     /* ---- Button ---- */
     #btn-start {
-      width: 200px; padding: 14px 0;
+      width: 220px; padding: 14px 0;
       border: none; border-radius: var(--radius);
       font-size: 0.95rem; font-weight: 600; cursor: pointer;
       transition: transform 0.12s, box-shadow 0.2s, background 0.2s;
@@ -132,14 +176,16 @@
     }
     #transcript-user {
       font-size: 0.95rem; color: var(--accent); min-height: 1.4em; word-break: break-word;
+      direction: rtl; text-align: right;
     }
     #transcript-partial {
       font-size: 0.85rem; color: var(--muted); font-style: italic;
       margin-top: 4px; min-height: 1.2em;
+      direction: rtl; text-align: right;
     }
     #transcript-bot {
       font-size: 0.95rem; color: var(--text); min-height: 1.4em; word-break: break-word;
-      line-height: 1.6;
+      line-height: 1.6; direction: rtl; text-align: right;
     }
 
     /* ---- Status bar ---- */
@@ -159,42 +205,55 @@
     }
     #energy-bar.above-threshold { background: var(--success); }
 
-    /* Telugu font hint */
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Telugu:wght@400;600&display=swap');
+    /* Noto Naskh Arabic for RTL text in cards */
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;600&display=swap');
+    #transcript-user, #transcript-partial, #transcript-bot {
+      font-family: "Noto Naskh Arabic", "Tahoma", "Arial Unicode MS", sans-serif;
+    }
   </style>
 </head>
 <body>
 
   <header>
-    <h1>Qobox అసిస్టెంట్</h1>
-    <p>Quality Outside The Box — వర్చువల్ కస్టమర్ సేవ</p>
-    <span class="badge">తెలుగు · Telugu · Full Duplex</span>
+    <h1>Qobox Voice Assistant</h1>
+    <p>Quality Outside The Box — Virtual Customer Service</p>
+    <span class="badge">Dari · Pashto · Full Duplex</span>
   </header>
+
+  <!-- Language selector — disabled once session starts -->
+  <div class="lang-selector">
+    <label for="lang-select">Language</label>
+    <span class="lang-native" id="lang-native">دری</span>
+    <select id="lang-select" onchange="onLanguageChange(this.value)">
+      <option value="dari" selected>Dari — دری</option>
+      <option value="pashto">Pashto — پښتو</option>
+    </select>
+  </div>
 
   <div class="orb-wrapper">
     <div class="orb idle" id="orb"></div>
-    <div class="orb-label" id="orb-label">నిష్క్రియంగా ఉంది</div>
+    <div class="orb-label" id="orb-label">Inactive</div>
   </div>
 
-  <button id="btn-start" onclick="toggleSession()">మాట్లాడడం ప్రారంభించండి</button>
+  <button id="btn-start" onclick="toggleSession()">Start Conversation</button>
 
   <div class="meter-wrapper">
-    <span class="meter-label">మైక్ స్థాయి</span>
+    <span class="meter-label">Mic Level</span>
     <div class="meter-track"><div id="energy-bar"></div></div>
   </div>
 
   <div class="card">
-    <div class="card-label">మీరు చెప్పారు</div>
+    <div class="card-label">You said</div>
     <div id="transcript-user">—</div>
     <div id="transcript-partial"></div>
   </div>
 
   <div class="card">
-    <div class="card-label">అసిస్టెంట్</div>
+    <div class="card-label">Assistant</div>
     <div id="transcript-bot">—</div>
   </div>
 
-  <div id="status-bar"><span id="status-text">కనెక్ట్ అవ్వలేదు</span></div>
+  <div id="status-bar"><span id="status-text">Not connected</span></div>
 
 <script>
 "use strict";
@@ -202,31 +261,36 @@
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
-const WS_URL            = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
-const SEND_INTERVAL_MS  = 100;       // Send PCM chunks every 100ms
-const VAD_THRESHOLD     = 0.018;     // RMS energy threshold for speech detection
-const VAD_HOLD_FRAMES   = 4;         // 400ms sustained speech → confirm interrupt
-// edge-tts Telugu native rate → resampled to 24kHz on backend
-// MUST match config.tts.sample_rate and TTS_RATE in tts.py
+const WS_BASE           = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+const SEND_INTERVAL_MS  = 100;
+const VAD_THRESHOLD     = 0.018;
+const VAD_HOLD_FRAMES   = 4;
 const PLAYBACK_SAMPLE_RATE = 24000;
-const PREBUFFER_MS      = 250;       // Buffer 250ms before starting playback
+const PREBUFFER_MS      = 250;
+
+// Language display data
+const LANG_INFO = {
+  dari:   { native: "دری",   name: "Dari" },
+  pashto: { native: "پښتو",  name: "Pashto" },
+};
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-let ws             = null;
-let audioCtx       = null;
-let mediaStream    = null;
-let sourceNode     = null;
-let analyserNode   = null;
-let processorNode  = null;
-let sendInterval   = null;
-let pcmBuffer      = [];
-let sessionActive  = false;
-let botSpeaking    = false;
-let userSpeaking   = false;
-let vadFrameCount  = 0;
-let interruptSent  = false;
+let selectedLanguage  = "dari";
+let ws                = null;
+let audioCtx          = null;
+let mediaStream       = null;
+let sourceNode        = null;
+let analyserNode      = null;
+let processorNode     = null;
+let sendInterval      = null;
+let pcmBuffer         = [];
+let sessionActive     = false;
+let botSpeaking       = false;
+let userSpeaking      = false;
+let vadFrameCount     = 0;
+let interruptSent     = false;
 
 // TTS playback queue
 let ttsAudioCtx       = null;
@@ -247,6 +311,18 @@ const transcriptUser    = document.getElementById("transcript-user");
 const transcriptPartial = document.getElementById("transcript-partial");
 const transcriptBot     = document.getElementById("transcript-bot");
 const energyBar         = document.getElementById("energy-bar");
+const langSelect        = document.getElementById("lang-select");
+const langNative        = document.getElementById("lang-native");
+
+// ---------------------------------------------------------------------------
+// Language selector
+// ---------------------------------------------------------------------------
+function onLanguageChange(lang) {
+  if (sessionActive) return;   // cannot change language mid-session
+  selectedLanguage = lang;
+  const info = LANG_INFO[lang] || LANG_INFO.dari;
+  langNative.textContent = info.native;
+}
 
 // ---------------------------------------------------------------------------
 // UI helpers
@@ -266,8 +342,9 @@ async function toggleSession() {
 }
 
 async function startSession() {
-  setStatus("మైక్రోఫోన్ అనుమతి కోసం అభ్యర్థిస్తోంది…");
+  setStatus("Requesting microphone permission…");
   btnStart.disabled = true;
+  langSelect.disabled = true;
 
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -280,8 +357,9 @@ async function startSession() {
       },
     });
   } catch (err) {
-    setStatus("మైక్రోఫోన్ అనుమతి లేదు: " + err.message);
+    setStatus("Microphone permission denied: " + err.message);
     btnStart.disabled = false;
+    langSelect.disabled = false;
     return;
   }
 
@@ -291,7 +369,7 @@ async function startSession() {
     latencyHint: "interactive",
   });
 
-  // Playback context — 24kHz for edge-tts Telugu
+  // Playback context — 24kHz for TTS
   ttsAudioCtx = new (window.AudioContext || window.webkitAudioContext)({
     sampleRate: PLAYBACK_SAMPLE_RATE,
     latencyHint: "playback",
@@ -301,17 +379,20 @@ async function startSession() {
   connectWebSocket();
 
   sessionActive = true;
-  btnStart.textContent = "ఆపండి";
+  btnStart.textContent = "Stop";
   btnStart.classList.add("active");
   btnStart.disabled = false;
-  setOrb("idle", "వింటోంది");
-  setStatus("కనెక్ట్ అయింది — మాట్లాడడం ప్రారంభించండి…");
+
+  const info = LANG_INFO[selectedLanguage] || LANG_INFO.dari;
+  setOrb("idle", "Listening");
+  setStatus(`Connected — speak in ${info.name} (${info.native})`);
 }
 
 function stopSession() {
   sessionActive = false;
-  btnStart.textContent = "మాట్లాడడం ప్రారంభించండి";
+  btnStart.textContent = "Start Conversation";
   btnStart.classList.remove("active");
+  langSelect.disabled = false;
 
   if (sendInterval)  { clearInterval(sendInterval); sendInterval = null; }
   if (processorNode) { processorNode.disconnect(); processorNode = null; }
@@ -328,8 +409,9 @@ function stopSession() {
 
   ttsQueue = []; ttsBufferedMs = 0; ttsPrebufferDone = false;
   ttsScheduledUntil = 0; botSpeaking = false; userSpeaking = false;
-  setOrb("idle", "నిష్క్రియంగా ఉంది");
-  setStatus("కనెక్ట్ అవ్వలేదు");
+  vadFrameCount = 0; interruptSent = false;
+  setOrb("idle", "Inactive");
+  setStatus("Not connected");
 }
 
 // ---------------------------------------------------------------------------
@@ -351,7 +433,6 @@ async function setupAudioPipeline() {
   sendInterval = setInterval(sendAudioChunk, SEND_INTERVAL_MS);
 }
 
-// AudioWorklet (preferred — zero-copy)
 const WORKLET_CODE = `
 class PCMCapture extends AudioWorkletProcessor {
   process(inputs) {
@@ -439,24 +520,23 @@ function checkVAD(rms) {
   if (rms > VAD_THRESHOLD) {
     vadFrameCount++;
 
-    // Immediate interrupt when bot is speaking — every ms of overlap is bad UX
     if (botSpeaking && !interruptSent) {
       interruptSent = true;
       sendJSON({ type: "interrupt" });
       stopTTSPlayback();
-      setOrb("user-speaking", "మీరు మాట్లాడుతున్నారు…");
+      setOrb("user-speaking", "You are speaking…");
       userSpeaking = true;
     }
 
     if (vadFrameCount >= VAD_HOLD_FRAMES && !userSpeaking) {
       userSpeaking = true;
-      setOrb("user-speaking", "మీరు మాట్లాడుతున్నారు…");
+      setOrb("user-speaking", "You are speaking…");
     }
   } else {
     vadFrameCount = 0;
     if (userSpeaking) {
       userSpeaking = false;
-      if (!botSpeaking) setOrb("idle", "వింటోంది");
+      if (!botSpeaking) setOrb("idle", "Listening");
     }
     interruptSent = false;
   }
@@ -466,19 +546,20 @@ function checkVAD(rms) {
 // WebSocket
 // ---------------------------------------------------------------------------
 function connectWebSocket() {
-  setStatus("సర్వర్‌కు కనెక్ట్ అవుతోంది…");
-  ws = new WebSocket(WS_URL);
+  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(selectedLanguage)}`;
+  setStatus("Connecting to server…");
+  ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";
 
-  ws.onopen  = () => setStatus("కనెక్ట్ అయింది — సెషన్ ప్రారంభమవుతోంది…");
+  ws.onopen  = () => setStatus("Connected — starting session…");
   ws.onclose = (e) => {
-    setStatus("డిస్‌కనెక్ట్ అయింది (code " + e.code + ")");
+    setStatus("Disconnected (code " + e.code + ")");
     if (sessionActive) {
-      setOrb("idle", "మళ్ళీ కనెక్ట్ అవుతోంది…");
+      setOrb("idle", "Reconnecting…");
       setTimeout(connectWebSocket, 2000);
     }
   };
-  ws.onerror = () => setStatus("WebSocket లోపం");
+  ws.onerror = () => setStatus("WebSocket error");
 
   ws.onmessage = (event) => {
     if (event.data instanceof ArrayBuffer) onAudioReceived(event.data);
@@ -497,9 +578,11 @@ function onJSONReceived(raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch { return; }
 
+  const info = LANG_INFO[selectedLanguage] || LANG_INFO.dari;
+
   switch (msg.type) {
     case "session_ready":
-      setStatus("సిద్ధంగా ఉంది — అసిస్టెంట్‌తో మాట్లాడండి");
+      setStatus(`Ready — speak in ${info.name} (${info.native})`);
       break;
 
     case "transcript_partial":
@@ -510,7 +593,7 @@ function onJSONReceived(raw) {
       transcriptUser.textContent = msg.text || "—";
       transcriptPartial.textContent = "";
       transcriptBot.textContent = "—";
-      setOrb("thinking", "ఆలోచిస్తోంది…");
+      setOrb("thinking", "Thinking…");
       botSpeaking = false;
       break;
 
@@ -526,17 +609,17 @@ function onJSONReceived(raw) {
       ttsScheduledUntil = 0;
       ttsBufferedMs = 0;
       if (ttsAudioCtx && ttsAudioCtx.state !== "running") ttsAudioCtx.resume();
-      setOrb("bot-speaking", "అసిస్టెంట్ మాట్లాడుతోంది…");
+      setOrb("bot-speaking", "Assistant speaking…");
       break;
 
     case "tts_end":
     case "tts_stopped":
       botSpeaking = false;
-      if (!userSpeaking) setOrb("idle", "వింటోంది");
+      if (!userSpeaking) setOrb("idle", "Listening");
       break;
 
     case "error":
-      setStatus("లోపం: " + (msg.message || "తెలియదు"));
+      setStatus("Error: " + (msg.message || "Unknown error"));
       console.error("Server error:", msg.message);
       break;
 
@@ -551,11 +634,6 @@ function onJSONReceived(raw) {
 // ---------------------------------------------------------------------------
 // TTS playback (24kHz PCM)
 // ---------------------------------------------------------------------------
-
-/**
- * Receive a raw PCM ArrayBuffer from the server.
- * Format: 16-bit signed LE, mono, 24000 Hz (edge-tts Telugu)
- */
 function onAudioReceived(arrayBuffer) {
   if (!ttsAudioCtx || !botSpeaking) return;
 
@@ -573,10 +651,6 @@ function onAudioReceived(arrayBuffer) {
   }
 }
 
-/**
- * Schedule all queued TTS chunks back-to-back on the Web Audio timeline.
- * Uses integer sample-count tracking to avoid floating-point drift gaps.
- */
 function drainTTSQueue() {
   if (!ttsAudioCtx) return;
   const now = ttsAudioCtx.currentTime;
@@ -598,7 +672,6 @@ function drainTTSQueue() {
       ttsSourceNodes = ttsSourceNodes.filter(n => n !== source);
     });
 
-    // Advance by exact sample count to prevent drift
     ttsScheduledUntil += float32.length / PLAYBACK_SAMPLE_RATE;
   }
   ttsBufferedMs = 0;
