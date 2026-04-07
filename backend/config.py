@@ -26,7 +26,7 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "whisper_language": "fa",         # faster-whisper language code
 
         # TTS — Meta MMS-TTS (primary, local GPU)
-        "mms_tts_model": "facebook/mms-tts-prs",   # Afghan Persian / Dari
+        "mms_tts_model": "facebook/mms-tts-fas",   # Afghan Persian / Dari (ISO 639-3: fas)
         "mms_tts_sample_rate": 16_000,
 
         # TTS — edge-tts (fallback 1, Microsoft Azure)
