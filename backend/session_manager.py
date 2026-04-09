@@ -140,7 +140,6 @@ class SessionManager:
             session_id=session_id,
             tts_handler=session.tts_handler,
             cancel_event=session.tts_cancel_event,
-            merge_fragments=(session.tts_handler._tts_primary == "edge"),
         )
 
         # Wire LLM
@@ -192,7 +191,6 @@ class SessionManager:
             session_id=session.session_id,
             tts_handler=session.tts_handler,
             cancel_event=session.tts_cancel_event,
-            merge_fragments=(session.tts_handler._tts_primary == "edge"),
         )
         orch_task = asyncio.create_task(session.tts_orchestrator.run())
         await send_json_cb({"type": "tts_start"})
@@ -277,7 +275,6 @@ class SessionManager:
                 session_id=session.session_id,
                 tts_handler=session.tts_handler,
                 cancel_event=session.tts_cancel_event,
-                merge_fragments=(session.tts_handler._tts_primary == "edge"),
             )
             orch_task = asyncio.create_task(
                 session.tts_orchestrator.run(),

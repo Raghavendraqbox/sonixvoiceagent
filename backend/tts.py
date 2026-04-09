@@ -27,7 +27,6 @@ Cancel semantics:
 import asyncio
 import io
 import logging
-import re
 import threading
 from typing import Callable, Awaitable
 
@@ -205,9 +204,6 @@ class VoiceTTSHandler:
         self._edge_tts_voice: str = lang_cfg["edge_tts_voice"]
         self._gtts_language: str = lang_cfg["gtts_language"]
         self._language_display: str = lang_cfg["display_name"]
-        # "edge" means edge-tts is primary, MMS-TTS is fallback (used for Pashto).
-        # "mms" (default) means MMS-TTS is primary (used for Dari).
-        self._tts_primary: str = lang_cfg.get("tts_primary", "mms")
         # Once MMS fails once in a session, use edge-tts for all subsequent
         # sentences so the voice stays consistent (no mid-response voice switch).
         self._mms_available: bool = True
@@ -225,8 +221,6 @@ class VoiceTTSHandler:
             text,
             extra={"session_id": self.session_id},
         )
-        if self._tts_primary == "edge":
-            return await self._synthesize_edge_tts(text)
         return await self._synthesize_mms(text)
 
     # ------------------------------------------------------------------
@@ -244,11 +238,6 @@ class VoiceTTSHandler:
         """
         if self._cancel_event.is_set():
             return False
-
-        # If MMS already failed this session, go straight to edge-tts
-        # so the voice stays consistent throughout the response.
-        if not self._mms_available:
-            return await self._synthesize_edge_tts(text)
 
         loop = asyncio.get_running_loop()
 
@@ -329,7 +318,7 @@ class VoiceTTSHandler:
                 return await self._synthesize_gtts(text)
 
             pcm_bytes = await asyncio.get_running_loop().run_in_executor(
-                None, lambda: self._decode_mp3_neural(audio_bytes)
+                None, lambda: self._decode_mp3(audio_bytes)
             )
             if pcm_bytes is None:
                 return await self._synthesize_gtts(text)
@@ -339,49 +328,7 @@ class VoiceTTSHandler:
         except Exception as exc:
             logger.error("edge-tts error: %s", exc,
                          extra={"session_id": self.session_id})
-            # When edge-tts is primary (Pashto), fall back to MMS-TTS then gTTS
-            if self._tts_primary == "edge":
-                return await self._synthesize_mms(text)
             return await self._synthesize_gtts(text)
-
-    def _decode_mp3_neural(self, audio_bytes: bytes) -> "bytes | None":
-        """
-        Decode MP3 from a neural TTS voice (edge-tts) to int16 PCM.
-
-        Unlike _decode_mp3, this does NOT peak-normalize. Neural voices are
-        already well-leveled at ~46% peak. Normalizing to 92% peak doubles
-        the gain, amplifying MP3 quantization noise by 2x and causing the
-        audio to sound 'noisy'. A gentle fixed gain (1.5x) is applied instead,
-        bringing levels to ~70% peak with natural dynamics preserved.
-        """
-        try:
-            import av
-            buf       = io.BytesIO(audio_bytes)
-            container = av.open(buf)
-            resampler = av.audio.resampler.AudioResampler(
-                format="s16", layout="mono", rate=TTS_RATE
-            )
-            frames: list = []
-            for frame in container.decode(audio=0):
-                for r in resampler.resample(frame):
-                    frames.append(np.frombuffer(bytes(r.planes[0]), dtype=np.int16))
-            for r in resampler.resample(None):
-                frames.append(np.frombuffer(bytes(r.planes[0]), dtype=np.int16))
-            container.close()
-
-            if not frames:
-                return None
-
-            pcm = np.concatenate(frames)
-            f   = pcm.astype(np.float32) / 32768.0
-            f   = _apply_fade(f, TTS_RATE)
-            # Fixed gentle gain — do NOT peak-normalize neural TTS output
-            f   = np.clip(f * 1.5, -1.0, 1.0)
-            return (f * 32767.0).astype(np.int16).tobytes()
-
-        except Exception as exc:
-            logger.error("MP3 decode (neural) error: %s", exc)
-            return None
 
     def _decode_mp3(self, audio_bytes: bytes) -> "bytes | None":
         """Decode MP3 → float32 PCM, resample to TTS_RATE, return int16 bytes."""
@@ -494,31 +441,20 @@ TeluguTTSHandler = VoiceTTSHandler
 # TTSOrchestrator
 # ---------------------------------------------------------------------------
 
-_SENTENCE_END = re.compile(r"[.!?؟]\s*$")
-
-
 class TTSOrchestrator:
-    """Drains a queue of sentence fragments, synthesizes them in order.
-
-    When merge_fragments=True (used for edge-tts languages like Pashto),
-    comma-split fragments are buffered and merged into full sentences before
-    synthesis. This avoids per-fragment encode/decode cycles and the clicking
-    artifacts they introduce at fragment boundaries.
-    """
+    """Drains a queue of sentence fragments, synthesizes them in order."""
 
     def __init__(
         self,
         session_id: str,
         tts_handler: VoiceTTSHandler,
         cancel_event: asyncio.Event,
-        merge_fragments: bool = False,
     ) -> None:
         self.session_id     = session_id
         self._tts           = tts_handler
         self._cancel_event  = cancel_event
         self._fragment_queue: asyncio.Queue = asyncio.Queue()
         self._active        = False
-        self._merge         = merge_fragments
 
     @property
     def fragment_queue(self) -> asyncio.Queue:
@@ -527,8 +463,6 @@ class TTSOrchestrator:
     async def run(self) -> None:
         self._active = True
         logger.debug("TTSOrchestrator started", extra={"session_id": self.session_id})
-
-        merge_buf = ""
 
         while True:
             if self._cancel_event.is_set():
@@ -546,37 +480,20 @@ class TTSOrchestrator:
             except asyncio.CancelledError:
                 break
 
+            if fragment is None:
+                break
+
             if self._cancel_event.is_set():
                 break
 
-            # None sentinel — flush any buffered text and stop
-            if fragment is None:
-                if self._merge and merge_buf.strip():
-                    await self._tts.synthesize_and_stream(merge_buf.strip())
-                break
-
-            if self._merge:
-                merge_buf += " " + fragment if merge_buf else fragment
-                # Synthesize when we reach a proper sentence boundary
-                if _SENTENCE_END.search(merge_buf):
-                    completed = await self._tts.synthesize_and_stream(merge_buf.strip())
-                    merge_buf = ""
-                    if not completed:
-                        while not self._fragment_queue.empty():
-                            try:
-                                self._fragment_queue.get_nowait()
-                            except asyncio.QueueEmpty:
-                                break
+            completed = await self._tts.synthesize_and_stream(fragment)
+            if not completed:
+                while not self._fragment_queue.empty():
+                    try:
+                        self._fragment_queue.get_nowait()
+                    except asyncio.QueueEmpty:
                         break
-            else:
-                completed = await self._tts.synthesize_and_stream(fragment)
-                if not completed:
-                    while not self._fragment_queue.empty():
-                        try:
-                            self._fragment_queue.get_nowait()
-                        except asyncio.QueueEmpty:
-                            break
-                    break
+                break
 
         self._active = False
         logger.debug("TTSOrchestrator stopped", extra={"session_id": self.session_id})
