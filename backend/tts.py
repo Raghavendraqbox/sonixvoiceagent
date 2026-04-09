@@ -193,6 +193,7 @@ class VoiceTTSHandler:
         send_audio_cb: AudioSendCallback,
         cancel_event: asyncio.Event,
         language: str = "dari",
+        voice: str = "male",
     ) -> None:
         self.session_id    = session_id
         self._send_audio   = send_audio_cb
@@ -201,9 +202,18 @@ class VoiceTTSHandler:
         lang_cfg = get_language_config(language)
         self._mms_model_id: str = lang_cfg["mms_tts_model"]
         self._mms_native_rate: int = lang_cfg["mms_tts_sample_rate"]
-        self._edge_tts_voice: str = lang_cfg["edge_tts_voice"]
         self._gtts_language: str = lang_cfg["gtts_language"]
         self._language_display: str = lang_cfg["display_name"]
+
+        # Female voice: use edge-tts (fa-IR-DilaraNeural for Dari).
+        # Male voice (default): use MMS-TTS on local GPU.
+        if voice == "female":
+            self._edge_tts_voice: str = lang_cfg["edge_tts_voice"]   # female neural voice
+            self._use_edge_primary: bool = True
+        else:
+            self._edge_tts_voice: str = lang_cfg.get("edge_tts_voice_male", lang_cfg["edge_tts_voice"])
+            self._use_edge_primary: bool = False
+
         # Once MMS fails once in a session, use edge-tts for all subsequent
         # sentences so the voice stays consistent (no mid-response voice switch).
         self._mms_available: bool = True
@@ -221,6 +231,8 @@ class VoiceTTSHandler:
             text,
             extra={"session_id": self.session_id},
         )
+        if self._use_edge_primary:
+            return await self._synthesize_edge_tts(text)
         return await self._synthesize_mms(text)
 
     # ------------------------------------------------------------------

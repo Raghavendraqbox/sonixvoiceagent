@@ -153,27 +153,27 @@ async def languages():
 async def websocket_endpoint(
     websocket: WebSocket,
     language: str = "dari",
+    voice: str = "male",
 ):
     """
     Main WebSocket handler.
 
-    Query parameter:
+    Query parameters:
       language — "dari" or "pashto" (defaults to LANGUAGE env var → "dari")
-
-    Accepts the connection, creates a language-specific session, and:
-    - Forwards binary frames (PCM audio) to the ASR queue.
-    - Dispatches JSON control messages (interrupt, ping).
+      voice    — "male" (MMS-TTS GPU, default) or "female" (edge-tts neural)
     """
-    # Normalize and validate language
+    # Normalize and validate
     language = language.lower()
     if language not in SUPPORTED_LANGUAGES:
         language = config.default_language
+    voice = voice.lower() if voice.lower() in ("male", "female") else "male"
 
     await websocket.accept()
     logger.info(
-        "WebSocket connected from %s (language=%s)",
+        "WebSocket connected from %s (language=%s, voice=%s)",
         websocket.client,
         language,
+        voice,
     )
 
     async def send_audio(pcm_bytes: bytes) -> None:
@@ -192,6 +192,7 @@ async def websocket_endpoint(
         send_audio_cb=send_audio,
         send_json_cb=send_json_msg,
         language=language,
+        voice=voice,
     )
     await send_json_msg({
         "type": "session_ready",

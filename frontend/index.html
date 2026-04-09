@@ -230,6 +230,15 @@
     </select>
   </div>
 
+  <!-- Voice selector — only shown for Dari -->
+  <div class="lang-selector" id="voice-selector" style="margin-top:8px;">
+    <label for="voice-select">Voice</label>
+    <select id="voice-select">
+      <option value="male" selected>Male (default)</option>
+      <option value="female">Female</option>
+    </select>
+  </div>
+
   <div class="orb-wrapper">
     <div class="orb idle" id="orb"></div>
     <div class="orb-label" id="orb-label">Inactive</div>
@@ -278,6 +287,7 @@ const LANG_INFO = {
 // State
 // ---------------------------------------------------------------------------
 let selectedLanguage  = "dari";
+let selectedVoice     = "male";
 let ws                = null;
 let audioCtx          = null;
 let mediaStream       = null;
@@ -313,6 +323,8 @@ const transcriptBot     = document.getElementById("transcript-bot");
 const energyBar         = document.getElementById("energy-bar");
 const langSelect        = document.getElementById("lang-select");
 const langNative        = document.getElementById("lang-native");
+const voiceSelector     = document.getElementById("voice-selector");
+const voiceSelect       = document.getElementById("voice-select");
 
 // ---------------------------------------------------------------------------
 // Language selector
@@ -320,6 +332,8 @@ const langNative        = document.getElementById("lang-native");
 function onLanguageChange(lang) {
   if (sessionActive) return;   // cannot change language mid-session
   selectedLanguage = lang;
+  // Voice selection only applies to Dari (MMS-TTS has one voice per language)
+  voiceSelector.style.display = (lang === "dari") ? "flex" : "none";
   const info = LANG_INFO[lang] || LANG_INFO.dari;
   langNative.textContent = info.native;
 }
@@ -345,6 +359,7 @@ async function startSession() {
   setStatus("Requesting microphone permission…");
   btnStart.disabled = true;
   langSelect.disabled = true;
+  voiceSelect.disabled = true;
 
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -360,6 +375,7 @@ async function startSession() {
     setStatus("Microphone permission denied: " + err.message);
     btnStart.disabled = false;
     langSelect.disabled = false;
+    voiceSelect.disabled = false;
     return;
   }
 
@@ -393,6 +409,7 @@ function stopSession() {
   btnStart.textContent = "Start Conversation";
   btnStart.classList.remove("active");
   langSelect.disabled = false;
+  voiceSelect.disabled = false;
 
   if (sendInterval)  { clearInterval(sendInterval); sendInterval = null; }
   if (processorNode) { processorNode.disconnect(); processorNode = null; }
@@ -554,7 +571,8 @@ function checkVAD(rms) {
 // WebSocket
 // ---------------------------------------------------------------------------
 function connectWebSocket() {
-  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(selectedLanguage)}`;
+  selectedVoice = voiceSelect.value;
+  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(selectedLanguage)}&voice=${encodeURIComponent(selectedVoice)}`;
   setStatus("Connecting to server…");
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";

@@ -100,6 +100,7 @@ class SessionManager:
         send_audio_cb: AudioSendCallback,
         send_json_cb: JsonSendCallback,
         language: str = "dari",
+        voice: str = "male",
     ) -> Session:
         """
         Allocate a new session for the given language, wire all handlers,
@@ -135,6 +136,7 @@ class SessionManager:
             send_audio_cb=send_audio_cb,
             cancel_event=session.tts_cancel_event,
             language=language,
+            voice=voice,
         )
         session.tts_orchestrator = TTSOrchestrator(
             session_id=session_id,
