@@ -89,7 +89,7 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # TTS — edge-tts (PRIMARY for Pashto — ps-AF neural voices sound significantly
         # better than MMS-TTS for Pashto; MMS-TTS retained as fallback)
         "tts_primary": "edge",
-        "edge_tts_voice": os.getenv("TTS_VOICE_PASHTO", "ps-AF-GulNawazNeural"),   # male
+        "edge_tts_voice": os.getenv("TTS_VOICE_PASHTO", "ps-AF-LatifaNeural"),   # female — clearer for voice agent
         "edge_tts_voice_male": "ps-AF-GulNawazNeural",
 
         # TTS — gTTS (fallback 2, Google — Pashto not supported; use Persian as closest)

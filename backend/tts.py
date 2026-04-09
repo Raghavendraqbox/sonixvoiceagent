@@ -329,7 +329,7 @@ class VoiceTTSHandler:
                 return await self._synthesize_gtts(text)
 
             pcm_bytes = await asyncio.get_running_loop().run_in_executor(
-                None, lambda: self._decode_mp3(audio_bytes)
+                None, lambda: self._decode_mp3_neural(audio_bytes)
             )
             if pcm_bytes is None:
                 return await self._synthesize_gtts(text)
@@ -343,6 +343,45 @@ class VoiceTTSHandler:
             if self._tts_primary == "edge":
                 return await self._synthesize_mms(text)
             return await self._synthesize_gtts(text)
+
+    def _decode_mp3_neural(self, audio_bytes: bytes) -> "bytes | None":
+        """
+        Decode MP3 from a neural TTS voice (edge-tts) to int16 PCM.
+
+        Unlike _decode_mp3, this does NOT peak-normalize. Neural voices are
+        already well-leveled at ~46% peak. Normalizing to 92% peak doubles
+        the gain, amplifying MP3 quantization noise by 2x and causing the
+        audio to sound 'noisy'. A gentle fixed gain (1.5x) is applied instead,
+        bringing levels to ~70% peak with natural dynamics preserved.
+        """
+        try:
+            import av
+            buf       = io.BytesIO(audio_bytes)
+            container = av.open(buf)
+            resampler = av.audio.resampler.AudioResampler(
+                format="s16", layout="mono", rate=TTS_RATE
+            )
+            frames: list = []
+            for frame in container.decode(audio=0):
+                for r in resampler.resample(frame):
+                    frames.append(np.frombuffer(bytes(r.planes[0]), dtype=np.int16))
+            for r in resampler.resample(None):
+                frames.append(np.frombuffer(bytes(r.planes[0]), dtype=np.int16))
+            container.close()
+
+            if not frames:
+                return None
+
+            pcm = np.concatenate(frames)
+            f   = pcm.astype(np.float32) / 32768.0
+            f   = _apply_fade(f, TTS_RATE)
+            # Fixed gentle gain — do NOT peak-normalize neural TTS output
+            f   = np.clip(f * 1.5, -1.0, 1.0)
+            return (f * 32767.0).astype(np.int16).tobytes()
+
+        except Exception as exc:
+            logger.error("MP3 decode (neural) error: %s", exc)
+            return None
 
     def _decode_mp3(self, audio_bytes: bytes) -> "bytes | None":
         """Decode MP3 → float32 PCM, resample to TTS_RATE, return int16 bytes."""
