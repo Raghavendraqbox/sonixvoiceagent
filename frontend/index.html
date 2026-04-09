@@ -230,7 +230,7 @@
     </select>
   </div>
 
-  <!-- Voice selector — only shown for Dari -->
+  <!-- Voice selector —  Male = MMS-TTS GPU | Female = edge-tts neural -->
   <div class="lang-selector" id="voice-selector" style="margin-top:8px;">
     <label for="voice-select">Voice</label>
     <select id="voice-select">
@@ -332,8 +332,8 @@ const voiceSelect       = document.getElementById("voice-select");
 function onLanguageChange(lang) {
   if (sessionActive) return;   // cannot change language mid-session
   selectedLanguage = lang;
-  // Voice selection only applies to Dari (MMS-TTS has one voice per language)
-  voiceSelector.style.display = (lang === "dari") ? "flex" : "none";
+  // Voice selector applies to all languages
+  voiceSelector.style.display = "flex";
   const info = LANG_INFO[lang] || LANG_INFO.dari;
   langNative.textContent = info.native;
 }
