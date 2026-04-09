@@ -204,6 +204,9 @@ class VoiceTTSHandler:
         self._edge_tts_voice: str = lang_cfg["edge_tts_voice"]
         self._gtts_language: str = lang_cfg["gtts_language"]
         self._language_display: str = lang_cfg["display_name"]
+        # Once MMS fails once in a session, use edge-tts for all subsequent
+        # sentences so the voice stays consistent (no mid-response voice switch).
+        self._mms_available: bool = True
 
     # ------------------------------------------------------------------
     # Public API
@@ -235,6 +238,11 @@ class VoiceTTSHandler:
         """
         if self._cancel_event.is_set():
             return False
+
+        # If MMS already failed this session, go straight to edge-tts
+        # so the voice stays consistent throughout the response.
+        if not self._mms_available:
+            return await self._synthesize_edge_tts(text)
 
         loop = asyncio.get_running_loop()
 
@@ -272,8 +280,9 @@ class VoiceTTSHandler:
             audio_f32 = None
 
         if audio_f32 is None:
+            self._mms_available = False
             logger.warning(
-                "MMS-TTS failed (%s) — falling back to edge-tts",
+                "MMS-TTS failed (%s) — switching to edge-tts for rest of session",
                 self._mms_model_id,
                 extra={"session_id": self.session_id},
             )

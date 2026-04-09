@@ -49,7 +49,7 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "neutral_stubs": [
             "ببخشید، لطفاً یک لحظه صبر کنید.",
             "متوجه شدم، اجازه دهید بررسی کنم.",
-            "Sorry, please give me a moment while I check on that.",
+            "بسیار ممنون، یک لحظه صبر کنید.",
         ],
 
         # System persona injected into every LLM prompt
@@ -58,8 +58,9 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "Qobox (Quality Outside The Box), an Indian software quality assurance "
             "and testing services company. You are on a live phone call.\n\n"
             "IMPORTANT: Always respond in Dari (Afghan Persian / دری). Write your "
-            "response in Persian/Dari script. If the customer speaks English, "
-            "respond in English. Keep each response to 1-2 short sentences — this "
+            "response in Persian/Dari script only. Never respond in English or any "
+            "other language — even if the transcription appears in English, always "
+            "reply in Dari. Keep each response to 1-2 short sentences — this "
             "is a voice call, so be conversational and concise. Do not use bullet "
             "points, markdown formatting, asterisks, or emojis. Read the "
             "conversation history carefully. If the user mentions their name, use it.\n\n"
@@ -105,7 +106,7 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "neutral_stubs": [
             "بخښنه وغواړئ، یو شیبه صبر وکړئ.",
             "پوه شوم، اجازه راکړئ وګورم.",
-            "Sorry, please give me a moment while I check on that.",
+            "مننه، یو شیبه صبر وکړئ.",
         ],
 
         # System persona injected into every LLM prompt
@@ -114,7 +115,8 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "Qobox (Quality Outside The Box), an Indian software quality assurance "
             "and testing services company. You are on a live phone call.\n\n"
             "IMPORTANT: Always respond in Pashto (پښتو). Write your response in "
-            "Pashto script. If the customer speaks English, respond in English. "
+            "Pashto script only. Never respond in English or any other language — "
+            "even if the transcription appears in English, always reply in Pashto. "
             "Keep each response to 1-2 short sentences — this is a voice call, so "
             "be conversational and concise. Do not use bullet points, markdown "
             "formatting, asterisks, or emojis. Read the conversation history "

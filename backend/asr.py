@@ -32,11 +32,19 @@ from config import config, get_language_config
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Soniox SDK import guard
+# Internal exceptions
+# ---------------------------------------------------------------------------
+
+class _SonioxFatalError(Exception):
+    """Raised on non-retryable Soniox errors (e.g. 402 balance exhausted)."""
+
+
+# ---------------------------------------------------------------------------
+# Soniox SDK import guard (v2.x API)
 # ---------------------------------------------------------------------------
 try:
-    from soniox.transcribe_live import transcribe_stream
-    from soniox.speech_service import SpeechClient
+    from soniox import SonioxClient
+    from soniox.realtime import RealtimeSTTConfig
     _SONIOX_AVAILABLE = True
 except ImportError:
     _SONIOX_AVAILABLE = False
@@ -88,6 +96,7 @@ class ASRHandler:
         self.transcript_queue = transcript_queue
         self.interrupt_event = interrupt_event
         self._stopped = False
+        self._soniox_failed = False  # set True on fatal Soniox errors → permanent Whisper fallback
 
         lang_cfg = get_language_config(language)
         self._soniox_language_code: str = lang_cfg["soniox_language_code"]
@@ -99,13 +108,24 @@ class ASRHandler:
         backoff = 1.0
         while not self._stopped:
             try:
-                if _SONIOX_AVAILABLE and config.soniox.api_key:
+                use_soniox = _SONIOX_AVAILABLE and bool(config.soniox.api_key) and not self._soniox_failed
+                if use_soniox:
                     await self._run_soniox_streaming()
                 else:
                     await self._run_whisper_session()
                 backoff = 1.0
             except asyncio.CancelledError:
                 break
+            except _SonioxFatalError as exc:
+                if self._stopped:
+                    break
+                self._soniox_failed = True
+                logger.warning(
+                    "Soniox fatal error (%s) — switching to Whisper large-v3 fallback",
+                    exc,
+                    extra={"session_id": self.session_id},
+                )
+                backoff = 1.0  # retry immediately with Whisper
             except Exception as exc:
                 if self._stopped:
                     break
@@ -126,108 +146,107 @@ class ASRHandler:
 
     async def _run_soniox_streaming(self) -> None:
         """
-        Stream audio to Soniox and forward transcript results.
+        Stream audio to Soniox v2 and forward transcript results.
 
-        Runs the blocking Soniox SDK call in a daemon thread, bridged to the
-        async loop via thread-safe queues.
+        Uses two daemon threads (send + recv) bridged to the async loop via
+        thread-safe queues, matching the v2 RealtimeSTTSession API.
         """
         loop = asyncio.get_running_loop()
         sync_audio_q: _queue.Queue = _queue.Queue()
         response_q: _queue.Queue = _queue.Queue()
 
-        def audio_gen():
-            """Synchronous generator consumed by the Soniox SDK."""
-            while not self._stopped:
-                try:
-                    chunk = sync_audio_q.get(timeout=0.5)
-                    if chunk is None:
-                        return
-                    yield chunk
-                except _queue.Empty:
-                    continue
-
-        def soniox_thread():
-            """Blocking Soniox call in a daemon thread."""
-            try:
-                with SpeechClient(api_key=config.soniox.api_key) as client:
-                    for result in transcribe_stream(
-                        audio_gen(),
-                        client,
-                        model=config.soniox.model,
-                        language_code=self._soniox_language_code,
-                        include_nonfinal=config.soniox.include_nonfinal,
-                        audio_format=config.soniox.audio_format,
-                        sample_rate_hertz=config.soniox.sample_rate_hertz,
-                        num_audio_channels=config.soniox.num_audio_channels,
-                    ):
-                        response_q.put(result)
-            except Exception as exc:
-                response_q.put(exc)
-            finally:
-                response_q.put(None)  # sentinel
-
-        thread = threading.Thread(target=soniox_thread, daemon=True, name="soniox-asr")
-        thread.start()
-        logger.info(
-            "Soniox ASR started (language=%s [%s], model=%s)",
-            self._soniox_language_code,
-            self._language_display,
-            config.soniox.model,
-            extra={"session_id": self.session_id},
+        soniox_cfg = RealtimeSTTConfig(
+            model=config.soniox.model,
+            audio_format=config.soniox.audio_format,
+            sample_rate=config.soniox.sample_rate_hertz,
+            num_channels=config.soniox.num_audio_channels,
+            language_hints=[self._soniox_language_code],
+            language_hints_strict=True,
+            enable_language_identification=False,  # prevent auto-switching to English
         )
 
-        async def pump_audio():
-            """Pump async audio queue → sync queue for the Soniox thread."""
-            while not self._stopped:
+        with SonioxClient(api_key=config.soniox.api_key) as client:
+            session = client.realtime.stt.connect(config=soniox_cfg)
+
+            with session:
+                def recv_thread_fn():
+                    try:
+                        session.handle_events(lambda e: response_q.put(e))
+                    except Exception as exc:
+                        response_q.put(exc)
+                    finally:
+                        response_q.put(None)  # sentinel
+
+                def send_thread_fn():
+                    while not self._stopped:
+                        try:
+                            chunk = sync_audio_q.get(timeout=0.5)
+                            if chunk is None:
+                                break
+                            session.send_byte_chunk(chunk)
+                        except _queue.Empty:
+                            continue
+                        except Exception:
+                            break
+
+                recv_t = threading.Thread(target=recv_thread_fn, daemon=True, name="soniox-recv")
+                send_t = threading.Thread(target=send_thread_fn, daemon=True, name="soniox-send")
+                recv_t.start()
+                send_t.start()
+
+                logger.info(
+                    "Soniox ASR v2 started (language=%s [%s], model=%s)",
+                    self._soniox_language_code,
+                    self._language_display,
+                    config.soniox.model,
+                    extra={"session_id": self.session_id},
+                )
+
+                async def pump_audio():
+                    """Pump async audio queue → sync queue for the send thread."""
+                    while not self._stopped:
+                        try:
+                            chunk = await asyncio.wait_for(self.audio_queue.get(), timeout=1.0)
+                            sync_audio_q.put(chunk)
+                        except asyncio.TimeoutError:
+                            continue
+                        except asyncio.CancelledError:
+                            break
+                    sync_audio_q.put(None)  # sentinel to unblock send thread
+
+                pump_task = asyncio.create_task(pump_audio())
+
                 try:
-                    chunk = await asyncio.wait_for(self.audio_queue.get(), timeout=1.0)
-                    sync_audio_q.put(chunk)
-                except asyncio.TimeoutError:
-                    continue
-                except asyncio.CancelledError:
-                    break
-            sync_audio_q.put(None)  # sentinel to unblock audio_gen
+                    while True:
+                        item = await loop.run_in_executor(None, response_q.get)
+                        if item is None:
+                            break
+                        if isinstance(item, Exception):
+                            raise item
+                        await self._process_soniox_event(item)
+                finally:
+                    pump_task.cancel()
+                    try:
+                        await pump_task
+                    except asyncio.CancelledError:
+                        pass
+                    send_t.join(timeout=2.0)
+                    recv_t.join(timeout=2.0)
 
-        pump_task = asyncio.create_task(pump_audio())
-
-        try:
-            while True:
-                item = await loop.run_in_executor(None, response_q.get)
-                if item is None:
-                    break
-                if isinstance(item, Exception):
-                    raise item
-                await self._process_soniox_result(item)
-        finally:
-            pump_task.cancel()
-            try:
-                await pump_task
-            except asyncio.CancelledError:
-                pass
-            thread.join(timeout=2.0)
-
-    async def _process_soniox_result(self, result) -> None:
+    async def _process_soniox_event(self, event) -> None:
         """
-        Parse a Soniox result and push TranscriptResult to the output queue.
+        Parse a Soniox v2 RealtimeEvent and push TranscriptResult to the output queue.
 
-        Soniox results have a `tokens` list. Each token has `.text` and `.is_final`.
-        A result is considered final when `result.final_proc_time_ms > 0` or all
-        tokens are final (handles both v1 and v2 SDK formats).
+        Events have a `tokens` list and `final_audio_proc_ms` (set when the batch is final).
         """
-        if not hasattr(result, "tokens") or not result.tokens:
+        if getattr(event, "error_code", None):
+            raise _SonioxFatalError(f"{event.error_code}: {event.error_message}")
+
+        if not event.tokens:
             return
 
-        # Determine if this result is final
-        is_final = False
-        if hasattr(result, "final_proc_time_ms") and result.final_proc_time_ms > 0:
-            is_final = True
-        elif hasattr(result, "is_final"):
-            is_final = result.is_final
-        else:
-            is_final = all(getattr(t, "is_final", False) for t in result.tokens)
-
-        # Build the transcript text from tokens
-        text = "".join(t.text for t in result.tokens).strip()
+        is_final = event.final_audio_proc_ms is not None
+        text = "".join(t.text for t in event.tokens).strip()
         if not text:
             return
 

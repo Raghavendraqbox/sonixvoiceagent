@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.1.0] - 2026-04-09
+
+### Fixed — ASR (Soniox v2 API migration)
+
+- **Migrated** Soniox ASR from deprecated v1 API (`soniox.transcribe_live`, `soniox.speech_service`) to v2 API (`SonioxClient`, `RealtimeSTTSession`, `RealtimeSTTConfig`)
+- **Fixed** `_SONIOX_AVAILABLE = False` caused by broken v1 imports — Soniox is now correctly detected and used when API key is present
+- **Added** `enable_language_identification=False` to `RealtimeSTTConfig` — prevents Soniox auto-switching transcription to English mid-speech
+- **Added** `_SonioxFatalError` exception class for non-retryable errors (e.g. 402 balance exhausted)
+- **Fixed** tight retry loop on Soniox 402 error — now immediately falls back to Whisper large-v3 permanently for the session instead of hammering the API every second
+
+### Fixed — TTS voice consistency
+
+- **Fixed** mid-response voice change: MMS-TTS failing on a single sentence would silently fall back to edge-tts, causing a jarring voice switch mid-conversation
+- **Added** `_mms_available` session flag to `VoiceTTSHandler` — once MMS-TTS fails, edge-tts is used for all subsequent sentences in that session, keeping the voice consistent
+
+### Fixed — LLM / neutral stubs
+
+- **Removed** English string `"Sorry, please give me a moment while I check on that."` from `neutral_stubs` for both Dari and Pashto — MMS-TTS synthesising English text caused voice distortion and quality degradation
+- **Replaced** with native Dari (`بسیار ممنون، یک لحظه صبر کنید.`) and Pashto (`مننه، یو شیبه صبر وکړئ.`) equivalents
+- **Updated** system prompt for both Dari and Pashto: explicitly instructs the LLM to always respond in the target language even when ASR transcription appears in English
+
+---
+
 ## [2.0.0] - 2026-04-06
 
 ### Changed — TTS (Breaking improvement)
