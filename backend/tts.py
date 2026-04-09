@@ -27,6 +27,7 @@ Cancel semantics:
 import asyncio
 import io
 import logging
+import re
 import threading
 from typing import Callable, Awaitable
 
@@ -454,20 +455,31 @@ TeluguTTSHandler = VoiceTTSHandler
 # TTSOrchestrator
 # ---------------------------------------------------------------------------
 
+_SENTENCE_END = re.compile(r"[.!?؟]\s*$")
+
+
 class TTSOrchestrator:
-    """Drains a queue of sentence fragments, synthesizes them in order."""
+    """Drains a queue of sentence fragments, synthesizes them in order.
+
+    When merge_fragments=True (used for edge-tts languages like Pashto),
+    comma-split fragments are buffered and merged into full sentences before
+    synthesis. This avoids per-fragment encode/decode cycles and the clicking
+    artifacts they introduce at fragment boundaries.
+    """
 
     def __init__(
         self,
         session_id: str,
         tts_handler: VoiceTTSHandler,
         cancel_event: asyncio.Event,
+        merge_fragments: bool = False,
     ) -> None:
         self.session_id     = session_id
         self._tts           = tts_handler
         self._cancel_event  = cancel_event
         self._fragment_queue: asyncio.Queue = asyncio.Queue()
         self._active        = False
+        self._merge         = merge_fragments
 
     @property
     def fragment_queue(self) -> asyncio.Queue:
@@ -476,6 +488,8 @@ class TTSOrchestrator:
     async def run(self) -> None:
         self._active = True
         logger.debug("TTSOrchestrator started", extra={"session_id": self.session_id})
+
+        merge_buf = ""
 
         while True:
             if self._cancel_event.is_set():
@@ -493,20 +507,37 @@ class TTSOrchestrator:
             except asyncio.CancelledError:
                 break
 
-            if fragment is None:
-                break
-
             if self._cancel_event.is_set():
                 break
 
-            completed = await self._tts.synthesize_and_stream(fragment)
-            if not completed:
-                while not self._fragment_queue.empty():
-                    try:
-                        self._fragment_queue.get_nowait()
-                    except asyncio.QueueEmpty:
-                        break
+            # None sentinel — flush any buffered text and stop
+            if fragment is None:
+                if self._merge and merge_buf.strip():
+                    await self._tts.synthesize_and_stream(merge_buf.strip())
                 break
+
+            if self._merge:
+                merge_buf += " " + fragment if merge_buf else fragment
+                # Synthesize when we reach a proper sentence boundary
+                if _SENTENCE_END.search(merge_buf):
+                    completed = await self._tts.synthesize_and_stream(merge_buf.strip())
+                    merge_buf = ""
+                    if not completed:
+                        while not self._fragment_queue.empty():
+                            try:
+                                self._fragment_queue.get_nowait()
+                            except asyncio.QueueEmpty:
+                                break
+                        break
+            else:
+                completed = await self._tts.synthesize_and_stream(fragment)
+                if not completed:
+                    while not self._fragment_queue.empty():
+                        try:
+                            self._fragment_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            break
+                    break
 
         self._active = False
         logger.debug("TTSOrchestrator stopped", extra={"session_id": self.session_id})
