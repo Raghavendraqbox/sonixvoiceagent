@@ -204,6 +204,9 @@ class VoiceTTSHandler:
         self._edge_tts_voice: str = lang_cfg["edge_tts_voice"]
         self._gtts_language: str = lang_cfg["gtts_language"]
         self._language_display: str = lang_cfg["display_name"]
+        # "edge" means edge-tts is primary, MMS-TTS is fallback (used for Pashto).
+        # "mms" (default) means MMS-TTS is primary (used for Dari).
+        self._tts_primary: str = lang_cfg.get("tts_primary", "mms")
         # Once MMS fails once in a session, use edge-tts for all subsequent
         # sentences so the voice stays consistent (no mid-response voice switch).
         self._mms_available: bool = True
@@ -221,6 +224,8 @@ class VoiceTTSHandler:
             text,
             extra={"session_id": self.session_id},
         )
+        if self._tts_primary == "edge":
+            return await self._synthesize_edge_tts(text)
         return await self._synthesize_mms(text)
 
     # ------------------------------------------------------------------
@@ -333,6 +338,9 @@ class VoiceTTSHandler:
         except Exception as exc:
             logger.error("edge-tts error: %s", exc,
                          extra={"session_id": self.session_id})
+            # When edge-tts is primary (Pashto), fall back to MMS-TTS then gTTS
+            if self._tts_primary == "edge":
+                return await self._synthesize_mms(text)
             return await self._synthesize_gtts(text)
 
     def _decode_mp3(self, audio_bytes: bytes) -> "bytes | None":

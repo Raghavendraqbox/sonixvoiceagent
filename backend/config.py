@@ -82,12 +82,14 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "soniox_language_code": "ps",    # Pashto — test via Soniox API; may fall back
         "whisper_language": "ps",         # faster-whisper supports Pashto
 
-        # TTS — Meta MMS-TTS (primary, local GPU)
+        # TTS — Meta MMS-TTS (fallback, local GPU — edge-tts is primary for Pashto)
         "mms_tts_model": "facebook/mms-tts-pbt",   # Southern Pashto (most common in AF)
         "mms_tts_sample_rate": 16_000,
 
-        # TTS — edge-tts (fallback 1, Microsoft Azure)
-        "edge_tts_voice": os.getenv("TTS_VOICE_PASHTO", "ps-AF-LatifaNeural"),   # female
+        # TTS — edge-tts (PRIMARY for Pashto — ps-AF neural voices sound significantly
+        # better than MMS-TTS for Pashto; MMS-TTS retained as fallback)
+        "tts_primary": "edge",
+        "edge_tts_voice": os.getenv("TTS_VOICE_PASHTO", "ps-AF-GulNawazNeural"),   # male
         "edge_tts_voice_male": "ps-AF-GulNawazNeural",
 
         # TTS — gTTS (fallback 2, Google — Pashto not supported; use Persian as closest)
