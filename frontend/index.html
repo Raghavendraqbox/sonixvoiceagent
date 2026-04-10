@@ -230,21 +230,12 @@
     </select>
   </div>
 
-  <!-- Voice selector —  Male = MMS-TTS GPU | Female = edge-tts neural -->
+  <!-- Voice selector — ElevenLabs male / female -->
   <div class="lang-selector" id="voice-selector" style="margin-top:8px;">
     <label for="voice-select">Voice</label>
     <select id="voice-select">
-      <option value="male" selected>Male (default)</option>
-      <option value="female">Female</option>
-    </select>
-  </div>
-
-  <!-- TTS Engine selector — only shown for Pashto -->
-  <div class="lang-selector" id="tts-engine-selector" style="margin-top:8px; display:none;">
-    <label for="tts-engine-select">TTS Engine</label>
-    <select id="tts-engine-select">
-      <option value="auto"       selected>Auto (server default)</option>
-      <option value="elevenlabs"         >ElevenLabs (Cloud)</option>
+      <option value="male"   selected>Male</option>
+      <option value="female"         >Female</option>
     </select>
   </div>
 
@@ -297,7 +288,6 @@ const LANG_INFO = {
 // ---------------------------------------------------------------------------
 let selectedLanguage  = "dari";
 let selectedVoice     = "male";
-let selectedTTSEngine = "auto";
 let sessionLanguage   = "dari";   // locked at session start — used for all WS reconnects
 let reconnectTimer    = null;     // debounce: only one reconnect pending at a time
 let ws                = null;
@@ -337,8 +327,6 @@ const langSelect          = document.getElementById("lang-select");
 const langNative          = document.getElementById("lang-native");
 const voiceSelector       = document.getElementById("voice-selector");
 const voiceSelect         = document.getElementById("voice-select");
-const ttsEngineSelector   = document.getElementById("tts-engine-selector");
-const ttsEngineSelect     = document.getElementById("tts-engine-select");
 
 // ---------------------------------------------------------------------------
 // Language selector
@@ -347,8 +335,6 @@ function onLanguageChange(lang) {
   if (sessionActive) return;   // cannot change language mid-session
   selectedLanguage = lang;
   voiceSelector.style.display = "flex";
-  // TTS engine selector only makes sense for Pashto (multiple engines available)
-  ttsEngineSelector.style.display = lang === "pashto" ? "flex" : "none";
   const info = LANG_INFO[lang] || LANG_INFO.dari;
   langNative.textContent = info.native;
 }
@@ -380,7 +366,6 @@ async function startSession() {
   btnStart.disabled = true;
   langSelect.disabled = true;
   voiceSelect.disabled = true;
-  ttsEngineSelect.disabled = true;
 
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -431,7 +416,6 @@ function stopSession() {
   btnStart.classList.remove("active");
   langSelect.disabled = false;
   voiceSelect.disabled = false;
-  ttsEngineSelect.disabled = false;
 
   if (reconnectTimer)  { clearTimeout(reconnectTimer); reconnectTimer = null; }
   if (sendInterval)    { clearInterval(sendInterval); sendInterval = null; }
@@ -594,17 +578,13 @@ function checkVAD(rms) {
 // WebSocket
 // ---------------------------------------------------------------------------
 function connectWebSocket() {
-  selectedVoice     = voiceSelect.value;
-  selectedTTSEngine = ttsEngineSelect.value;
+  selectedVoice = voiceSelect.value;
   // Always reconnect with the language that was active when the session
   // started (sessionLanguage), not the current dropdown value — prevents
   // a language-switch + reconnect from spawning a second session in a
   // different language and playing two voices simultaneously.
   const lang = sessionLanguage;
-  let wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&voice=${encodeURIComponent(selectedVoice)}`;
-  if (lang === "pashto" && selectedTTSEngine !== "auto") {
-    wsUrl += `&tts_engine=${encodeURIComponent(selectedTTSEngine)}`;
-  }
+  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&voice=${encodeURIComponent(selectedVoice)}`;
   setStatus("Connecting to server…");
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";
