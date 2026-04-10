@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Qobox Voice Agent — Dari &amp; Pashto</title>
+  <title>Dari &amp; Pashto Voice Assistant</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -250,8 +250,8 @@
 <body>
 
   <header>
-    <h1>Qobox Voice Assistant</h1>
-    <p>Quality Outside The Box — Virtual Customer Service</p>
+    <h1>Voice Assistant — مرستیار مجازی</h1>
+    <p>Dari &amp; Pashto AI Voice Agent</p>
     <span class="badge">Dari · Pashto · Full Duplex</span>
   </header>
 
@@ -723,7 +723,7 @@ function downloadTranscript() {
   const divider   = "─".repeat(52);
 
   let lines = [
-    "Qobox Voice Agent — Conversation Transcript",
+    "Dari & Pashto Voice Agent — Conversation Transcript",
     divider,
     `Language : ${langInfo.name} (${langInfo.native})`,
     `Date     : ${dateStr}`,
@@ -747,7 +747,7 @@ function downloadTranscript() {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
   a.href     = url;
-  a.download = `qobox-${sessionLanguage}-transcript-${dateStr.replace(/[ :]/g,"-")}.txt`;
+  a.download = `dari-pashto-transcript-${dateStr.replace(/[ :]/g,"-")}.txt`;
   a.click();
   URL.revokeObjectURL(url);
 }
