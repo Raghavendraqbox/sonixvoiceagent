@@ -5,6 +5,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.4.0] - 2026-04-10
+
+### Fixed — Afghan Dari TTS (not Iranian Persian)
+
+- **Fixed** `backend/config.py`: Dari MMS-TTS model changed from `facebook/mms-tts-fas` (general/Iranian Persian) to `facebook/mms-tts-prs` (ISO 639-3 `prs` = Dari, Afghan Persian specifically). This ensures the synthesised voice uses the correct Afghan Dari accent rather than Iranian Farsi.
+- **Fixed** Dari greeting text — now uses Afghan Dari vocabulary: `مرستیار` (assistant), `استم` (not Iranian `هستم`), Afghan phrasing throughout.
+- **Fixed** Dari neutral stubs — `بخشش می‌خواهم` (Afghan) replaces `ببخشید` (Iranian).
+- **Rewritten** Dari LLM system prompt to explicitly enforce Afghan Dari grammar and vocabulary over Iranian Persian: instructs model to use `استم/استید`, `بلی` not `بله`, `بخشش می‌خواهم` not `ببخشید`, `مرستیار` for assistant, and Afghan sentence patterns.
+
+### Added — Conversation History UI + Download Transcript
+
+- **Added** scrollable conversation history panel replacing the simple single-turn "You said / Assistant" cards. Every user utterance and bot response stacks as labelled chat bubbles (user = orange, right-aligned; assistant = purple, left-aligned).
+- **Added** live bot response streaming — LLM fragments appear word by word in the bubble as they arrive from the server, with a subtle streaming opacity until the turn completes.
+- **Added** partial ASR preview below the log — italic live text shows while the user is still speaking, then disappears when the final transcript arrives.
+- **Added** **Download Transcript** button — appears automatically when a session is stopped. Exports the full conversation as a timestamped plain-text `.txt` file (`qobox-transcript-YYYY-MM-DD-HH-MM-SS.txt`) with language, date, turn-by-turn user/assistant lines.
+- **Changed** conversation log and history are cleared automatically when a new session starts.
+
+### Changed — UI cleanup
+
+- **Removed** TTS Engine dropdown from the UI (ElevenLabs runs automatically via server-side priority; no engine selection needed).
+- **Simplified** Voice dropdown label: `Male (default)` → `Male`, `Female` unchanged.
+
+---
+
 ## [2.3.0] - 2026-04-10
 
 ### Fixed — ElevenLabs voice selection and echo-triggered interrupts
