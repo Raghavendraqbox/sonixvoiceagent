@@ -316,6 +316,23 @@ class ASRHandler:
             extra={"session_id": self.session_id},
         )
 
+        # Drain audio that piled up while the model was loading (~2s).
+        # Without this drain, all buffered chunks are processed at once →
+        # multiple identical transcripts → multiple simultaneous TTS responses.
+        drained = 0
+        while not self.audio_queue.empty():
+            try:
+                self.audio_queue.get_nowait()
+                drained += 1
+            except asyncio.QueueEmpty:
+                break
+        if drained:
+            logger.info(
+                "Drained %d stale audio chunks accumulated during Whisper load",
+                drained,
+                extra={"session_id": self.session_id},
+            )
+
         # VAD parameters
         SILENCE_RMS_THRESHOLD = 0.008
         SILENCE_FRAMES_TO_COMMIT = 6    # 0.6 s silence ends utterance

@@ -216,15 +216,22 @@ def _smooth_noise_gate(audio: np.ndarray, rate: int,
     return out
 
 
-def _mp3_bytes_to_pcm(audio_bytes: bytes) -> "bytes | None":
+def _mp3_bytes_to_pcm(audio_bytes: bytes, denoise: bool = False) -> "bytes | None":
     """
     Decode MP3 bytes → int16 PCM at TTS_RATE using PyAV.
 
-    Noise pipeline:
-      1. Bandpass 80 Hz–8 kHz  — removes sub-bass rumble & ultrasonic hiss
-      2. Smooth RMS noise gate  — fades quiet windows without click artefacts
+    Args:
+        denoise: Apply bandpass + noise gate. Set True for local MMS output
+                 which has a noisy floor. Leave False for cloud TTS (ElevenLabs,
+                 Narakeet, etc.) which already produce clean audio — noise
+                 reduction would gate out quiet consonants and degrade quality.
+
+    Pipeline:
+      1. (if denoise) Bandpass 80 Hz–8 kHz  — removes sub-bass rumble & hiss
+      2. (if denoise) Smooth RMS noise gate  — fades quiet windows (no clicks)
       3. Silence trim           — clean start/end cuts
-      4. Level cap at 0.92      — only reduce if near clipping; never boost
+      4. Fade in/out            — avoids click artefacts at boundaries
+      5. Level cap at 0.92      — only reduce if near clipping; never boost
     """
     try:
         import av
@@ -247,11 +254,12 @@ def _mp3_bytes_to_pcm(audio_bytes: bytes) -> "bytes | None":
         pcm = np.concatenate(frames)
         f   = pcm.astype(np.float32) / 32768.0
 
-        # Step 1 — bandpass: keep only speech-range frequencies
-        f = _bandpass_filter(f, TTS_RATE)
+        if denoise:
+            # Step 1 — bandpass: keep only speech-range frequencies
+            f = _bandpass_filter(f, TTS_RATE)
 
-        # Step 2 — smooth noise gate (no clicks)
-        f = _smooth_noise_gate(f, TTS_RATE, threshold=0.012, window_ms=10)
+            # Step 2 — smooth noise gate (no clicks)
+            f = _smooth_noise_gate(f, TTS_RATE, threshold=0.012, window_ms=10)
 
         # Step 3 — trim edges (silence + noise-only start/end)
         nz = np.where(np.abs(f) > 0.005)[0]
@@ -543,7 +551,7 @@ class VoiceTTSHandler:
 
             loop = asyncio.get_running_loop()
             pcm_bytes = await loop.run_in_executor(
-                None, lambda: _mp3_bytes_to_pcm(audio_bytes)
+                None, lambda: _mp3_bytes_to_pcm(audio_bytes, denoise=False)
             )
             if pcm_bytes is None:
                 return False
@@ -623,7 +631,7 @@ class VoiceTTSHandler:
 
             loop = asyncio.get_running_loop()
             pcm_bytes = await loop.run_in_executor(
-                None, lambda: _mp3_bytes_to_pcm(audio_bytes)
+                None, lambda: _mp3_bytes_to_pcm(audio_bytes, denoise=False)
             )
             if pcm_bytes is None:
                 return False
@@ -721,7 +729,7 @@ class VoiceTTSHandler:
 
             loop = asyncio.get_running_loop()
             pcm_bytes = await loop.run_in_executor(
-                None, lambda: _mp3_bytes_to_pcm(audio_bytes)
+                None, lambda: _mp3_bytes_to_pcm(audio_bytes, denoise=False)
             )
             if pcm_bytes is None:
                 return False
@@ -820,7 +828,7 @@ class VoiceTTSHandler:
 
             loop = asyncio.get_running_loop()
             pcm_bytes = await loop.run_in_executor(
-                None, lambda: _mp3_bytes_to_pcm(audio_bytes)
+                None, lambda: _mp3_bytes_to_pcm(audio_bytes, denoise=False)
             )
             if pcm_bytes is None:
                 return False
@@ -868,7 +876,7 @@ class VoiceTTSHandler:
 
             loop = asyncio.get_running_loop()
             pcm_bytes = await loop.run_in_executor(
-                None, lambda: _mp3_bytes_to_pcm(audio_bytes)
+                None, lambda: _mp3_bytes_to_pcm(audio_bytes, denoise=False)
             )
             if pcm_bytes is None:
                 return False
@@ -910,7 +918,7 @@ class VoiceTTSHandler:
                 return not self._cancel_event.is_set()
 
             pcm_bytes = await loop.run_in_executor(
-                None, lambda: _mp3_bytes_to_pcm(audio_bytes)
+                None, lambda: _mp3_bytes_to_pcm(audio_bytes, denoise=False)
             )
             if pcm_bytes is None:
                 return False

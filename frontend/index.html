@@ -304,6 +304,8 @@ const LANG_INFO = {
 let selectedLanguage  = "dari";
 let selectedVoice     = "male";
 let selectedTTSEngine = "auto";
+let sessionLanguage   = "dari";   // locked at session start — used for all WS reconnects
+let reconnectTimer    = null;     // debounce: only one reconnect pending at a time
 let ws                = null;
 let audioCtx          = null;
 let mediaStream       = null;
@@ -375,6 +377,11 @@ async function toggleSession() {
 }
 
 async function startSession() {
+  // Lock language for this session — reconnects must use the same language
+  // or a language-change mid-session could start a second session in a
+  // different language and play two voices simultaneously.
+  sessionLanguage = selectedLanguage;
+
   setStatus("Requesting microphone permission…");
   btnStart.disabled = true;
   langSelect.disabled = true;
@@ -432,12 +439,13 @@ function stopSession() {
   voiceSelect.disabled = false;
   ttsEngineSelect.disabled = false;
 
-  if (sendInterval)  { clearInterval(sendInterval); sendInterval = null; }
-  if (processorNode) { processorNode.disconnect(); processorNode = null; }
-  if (sourceNode)    { sourceNode.disconnect();    sourceNode    = null; }
-  if (analyserNode)  { analyserNode.disconnect();  analyserNode  = null; }
-  if (audioCtx)      { audioCtx.close();           audioCtx      = null; }
-  if (mediaStream)   { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+  if (reconnectTimer)  { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  if (sendInterval)    { clearInterval(sendInterval); sendInterval = null; }
+  if (processorNode)   { processorNode.disconnect(); processorNode = null; }
+  if (sourceNode)      { sourceNode.disconnect();    sourceNode    = null; }
+  if (analyserNode)    { analyserNode.disconnect();  analyserNode  = null; }
+  if (audioCtx)        { audioCtx.close();           audioCtx      = null; }
+  if (mediaStream)     { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
 
   ttsSourceNodes.forEach(s => { try { s.stop(0); } catch (_) {} });
   ttsSourceNodes = [];
@@ -594,20 +602,28 @@ function checkVAD(rms) {
 function connectWebSocket() {
   selectedVoice     = voiceSelect.value;
   selectedTTSEngine = ttsEngineSelect.value;
-  let wsUrl = `${WS_BASE}?language=${encodeURIComponent(selectedLanguage)}&voice=${encodeURIComponent(selectedVoice)}`;
-  if (selectedLanguage === "pashto" && selectedTTSEngine !== "auto") {
+  // Always reconnect with the language that was active when the session
+  // started (sessionLanguage), not the current dropdown value — prevents
+  // a language-switch + reconnect from spawning a second session in a
+  // different language and playing two voices simultaneously.
+  const lang = sessionLanguage;
+  let wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&voice=${encodeURIComponent(selectedVoice)}`;
+  if (lang === "pashto" && selectedTTSEngine !== "auto") {
     wsUrl += `&tts_engine=${encodeURIComponent(selectedTTSEngine)}`;
   }
   setStatus("Connecting to server…");
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";
 
-  ws.onopen  = () => setStatus("Connected — starting session…");
+  ws.onopen  = () => { reconnectTimer = null; setStatus("Connected — starting session…"); };
   ws.onclose = (e) => {
     setStatus("Disconnected (code " + e.code + ")");
-    if (sessionActive) {
+    if (sessionActive && !reconnectTimer) {
       setOrb("idle", "Reconnecting…");
-      setTimeout(connectWebSocket, 2000);
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectWebSocket();
+      }, 2000);
     }
   };
   ws.onerror = () => setStatus("WebSocket error");
