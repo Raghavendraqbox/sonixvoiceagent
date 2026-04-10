@@ -46,6 +46,7 @@ class Session:
     asr_handler: Optional[ASRHandler] = field(default=None, init=False)
     tts_handler: Optional[VoiceTTSHandler] = field(default=None, init=False)
     tts_orchestrator: Optional[TTSOrchestrator] = field(default=None, init=False)
+    tts_orch_task: Optional[asyncio.Task] = field(default=None, init=False)
     llm_client: Optional[VoiceLLMClient] = field(default=None, init=False)
 
     def cancel_tts(self) -> None:
@@ -54,8 +55,35 @@ class Session:
         self.interrupt_event.set()
         logger.info("TTS cancel signalled", extra={"session_id": self.session_id})
 
+    async def cancel_and_wait_tts(self, timeout: float = 3.0) -> None:
+        """
+        Signal TTS to stop AND wait for the current orchestrator task to finish
+        before clearing the cancel event.
+
+        This prevents the race condition where:
+          1. cancel_tts() sets the event
+          2. reset clears it after 50 ms
+          3. an MMS thread-executor still in-flight completes AFTER the reset
+             and streams audio alongside the next response.
+        """
+        self.cancel_tts()
+        task = self.tts_orch_task
+        if task and not task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+        self.interrupt_event.clear()
+        self.tts_cancel_event.clear()
+        logger.debug("TTS fully stopped and events reset",
+                     extra={"session_id": self.session_id})
+
     def reset_for_new_turn(self) -> None:
-        """Reset interrupt/cancel events for a new utterance."""
+        """Reset interrupt/cancel events for a new utterance (sync — no waiting)."""
         self.interrupt_event.clear()
         self.tts_cancel_event.clear()
         logger.debug("Session events reset", extra={"session_id": self.session_id})
@@ -197,6 +225,7 @@ class SessionManager:
             cancel_event=session.tts_cancel_event,
         )
         orch_task = asyncio.create_task(session.tts_orchestrator.run())
+        session.tts_orch_task = orch_task
         await send_json_cb({"type": "tts_start"})
         await send_json_cb({"type": "bot_text_fragment", "text": text})
         await session.tts_orchestrator.fragment_queue.put(text)
@@ -253,10 +282,10 @@ class SessionManager:
                 extra={"session_id": session.session_id},
             )
 
-            # Interrupt any ongoing TTS
-            session.cancel_tts()
-            await asyncio.sleep(0.05)
-            session.reset_for_new_turn()
+            # Interrupt any ongoing TTS and wait until it fully stops
+            # before clearing the cancel event — prevents old MMS thread
+            # from streaming audio alongside the new response.
+            await session.cancel_and_wait_tts(timeout=3.0)
 
             session.memory.add_user_turn(user_text)
             await send_json_cb({"type": "transcript_final", "text": user_text})
@@ -284,6 +313,7 @@ class SessionManager:
                 session.tts_orchestrator.run(),
                 name=f"tts-orch-{session.session_id}",
             )
+            session.tts_orch_task = orch_task
 
             full_bot_response = ""
             try:
