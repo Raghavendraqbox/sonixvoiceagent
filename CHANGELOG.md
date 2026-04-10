@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.7.0] - 2026-04-10
+
+### Fixed — Dari LLM response quality (natural Afghan Dari, no Iranian Persian mixing)
+
+- **Rewrote** Afghan Dari system prompt in `backend/config.py` with explicit vocabulary enforcement:
+  - Banned Iranian Persian words with direct Afghan Dari replacements: `استم` not `هستم`, `بلی` not `بله`, `می‌خواهید` not `در نظر دارید`, `اتومیشن تست` not `خودکارسازی`, `چه قسم` not `چه نوع`
+  - Banned literary/formal connectors unnatural in spoken Dari: `چنین`, `مذکور`, `لذا`, `بنابراین`
+  - Added explicit grammar examples: `می‌توانم کمک کنم` (not `کمک کرده می‌توانم`)
+  - Added instruction to ask for repetition on garbled ASR: `'بخشش می‌خواهم، دوباره بگویید لطفاً.'`
+  - Replaced English service names with Afghan Dari-natural forms: `سافت‌ویر تیستنگ`, `اتومیشن تست`, `پرفارمنس تست`
+- **Fixed** off-topic template sentence the LLM was copying verbatim — previously it used `کمک کرده می‌توانم` which LLM echoed in all responses; now uses `می‌توانم کمک کنم`
+- **Result**: LLM now produces natural-sounding Afghan phone-call Dari without Iranian Persian vocabulary or grammatical constructions
+
+---
+
 ## [2.6.0] - 2026-04-10
 
 ### Fixed — Dari female voice, transcript UI, and timestamp accuracy
