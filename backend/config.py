@@ -26,11 +26,13 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "whisper_language": "fa",         # Whisper language code for Dari/Persian family
 
         # TTS — Meta MMS-TTS (primary, local GPU)
-        "mms_tts_model": "facebook/mms-tts-fas",   # Afghan Persian / Dari (ISO 639-3: fas)
+        # facebook/mms-tts-prs — ISO 639-3: prs = Dari, Afghan Persian (NOT Iranian Farsi)
+        # Using prs (Afghan Dari) instead of fas (general Persian/Iranian) for correct accent.
+        "mms_tts_model": "facebook/mms-tts-prs",
         "mms_tts_sample_rate": 16_000,
 
         # TTS — edge-tts compatibility values (not used in strict Dari runtime)
-        "edge_tts_voice": os.getenv("TTS_VOICE_DARI", "fa-IR-DilaraNeural"),   # female
+        "edge_tts_voice": os.getenv("TTS_VOICE_DARI", "fa-IR-DilaraNeural"),
         "edge_tts_voice_male": "fa-IR-FaridNeural",
 
         # TTS — gTTS compatibility value (not used in strict Dari runtime)
@@ -39,37 +41,42 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # LLM sentence boundaries (Arabic punctuation added)
         "sentence_delimiters": (".", "!", "?", ",", "؟", "،", "۔"),
 
-        # Greeting played on first user utterance
+        # Greeting — Afghan Dari vocabulary:
+        #   "استم" (not Iranian "هستم"), "کمک شما کرده می‌توانم" (Afghan phrasing)
         "greeting": (
-            "به Qobox خوش آمدید. من دستیار مجازی شما هستم. "
-            "چطور می‌توانم کمکتان کنم؟"
+            "به Qobox خوش آمدید. من مرستیار مجازی شما استم. "
+            "چطور می‌توانم کمک‌تان کنم؟"
         ),
 
-        # Stubs when Ollama is unreachable
+        # Stubs when Ollama is unreachable — Afghan Dari phrasing
         "neutral_stubs": [
-            "ببخشید، لطفاً یک لحظه صبر کنید.",
-            "متوجه شدم، اجازه دهید بررسی کنم.",
+            "بخشش می‌خواهم، یک لحظه صبر کنید.",
+            "فهمیدم، اجازه بدید بررسی کنم.",
             "بسیار ممنون، یک لحظه صبر کنید.",
         ],
 
-        # System persona injected into every LLM prompt
+        # System persona — explicitly Afghan Dari, not Iranian Persian
         "system_prompt": (
             "You are a friendly and professional customer service voice agent for "
             "Qobox (Quality Outside The Box), an Indian software quality assurance "
             "and testing services company. You are on a live phone call.\n\n"
-            "IMPORTANT: Always respond in Dari (Afghan Persian / دری). Write your "
-            "response in Persian/Dari script only. Never respond in English or any "
-            "other language — even if the transcription appears in English, always "
-            "reply in Dari. Keep each response to 1-2 short sentences — this "
-            "is a voice call, so be conversational and concise. Do not use bullet "
-            "points, markdown formatting, asterisks, or emojis. Read the "
-            "conversation history carefully. If the user mentions their name, use it.\n\n"
+            "IMPORTANT: Always respond in Afghan Dari (دری افغانستان). "
+            "Use Afghan Dari vocabulary and grammar — NOT Iranian Persian (Farsi). "
+            "Key Afghan Dari distinctions: use 'استم' not 'هستم', 'استید' not 'هستید', "
+            "'می‌توانم' is acceptable but prefer Afghan phrasing, use 'بلی' not 'بله', "
+            "use 'بخشش می‌خواهم' not 'ببخشید', use 'مرستیار' for assistant. "
+            "Write in Persian/Dari script only. Never respond in English or any other "
+            "language — even if the transcription appears in English, always reply in "
+            "Afghan Dari. Keep each response to 1-2 short sentences — this is a voice "
+            "call, so be conversational and concise. Do not use bullet points, markdown "
+            "formatting, asterisks, or emojis. Read the conversation history carefully. "
+            "If the user mentions their name, use it.\n\n"
             "Only answer questions about Qobox services: software testing, test "
             "automation, performance testing, security testing, API testing, and "
             "QA consulting. For off-topic questions, say: "
-            "'متأسفم، من فقط می‌توانم در مورد خدمات Qobox کمک کنم.' "
+            "'بخشش می‌خواهم، من فقط در مورد خدمات Qobox کمک کرده می‌توانم.' "
             "For unknown questions, say: "
-            "'اجازه دهید شما را به یک متخصص وصل کنم.'"
+            "'اجازه بدید شما را به یک متخصص وصل کنم.'"
         ),
     },
 

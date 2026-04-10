@@ -164,29 +164,69 @@
     }
     #btn-start:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
-    /* ---- Cards ---- */
-    .card {
+    /* ---- Conversation log ---- */
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;600&display=swap');
+
+    #conversation-wrap {
       width: 100%; max-width: 640px;
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 18px 20px;
+      border-radius: var(--radius); display: flex; flex-direction: column;
+      overflow: hidden;
     }
-    .card-label {
+    #conversation-header {
+      padding: 10px 16px; border-bottom: 1px solid var(--border);
       font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px;
+      letter-spacing: 0.08em; color: var(--muted);
     }
-    #transcript-user {
-      font-size: 0.95rem; color: var(--accent); min-height: 1.4em; word-break: break-word;
+    #conversation-log {
+      flex: 1; overflow-y: auto; padding: 14px 16px;
+      display: flex; flex-direction: column; gap: 12px;
+      min-height: 220px; max-height: 360px;
+    }
+    #conversation-log:empty::before {
+      content: "Conversation will appear here…";
+      color: var(--muted); font-size: 0.85rem; margin: auto;
+      text-align: center; padding: 20px 0;
+    }
+    .msg-row { display: flex; flex-direction: column; gap: 2px; }
+    .msg-label {
+      font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+    .msg-label.user  { color: var(--accent);   text-align: right; }
+    .msg-label.bot   { color: var(--accent-2);  text-align: left; }
+    .msg-bubble {
+      max-width: 88%; padding: 9px 13px; border-radius: 10px;
+      font-size: 0.93rem; line-height: 1.6; word-break: break-word;
+      font-family: "Noto Naskh Arabic", "Tahoma", "Arial Unicode MS", sans-serif;
       direction: rtl; text-align: right;
     }
+    .msg-bubble.user {
+      background: rgba(249,115,22,0.12); border: 1px solid rgba(249,115,22,0.3);
+      color: var(--text); align-self: flex-end;
+    }
+    .msg-bubble.bot {
+      background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.25);
+      color: var(--text); align-self: flex-start;
+    }
+    .msg-bubble.bot.streaming { opacity: 0.75; }
+
+    /* partial ASR */
     #transcript-partial {
-      font-size: 0.85rem; color: var(--muted); font-style: italic;
-      margin-top: 4px; min-height: 1.2em;
-      direction: rtl; text-align: right;
+      font-size: 0.82rem; color: var(--muted); font-style: italic;
+      text-align: right; direction: rtl; min-height: 1.1em; padding: 2px 4px;
+      font-family: "Noto Naskh Arabic", "Tahoma", "Arial Unicode MS", sans-serif;
     }
-    #transcript-bot {
-      font-size: 0.95rem; color: var(--text); min-height: 1.4em; word-break: break-word;
-      line-height: 1.6; direction: rtl; text-align: right;
+
+    /* ---- Download button ---- */
+    #btn-download {
+      display: none;
+      padding: 10px 24px; border-radius: 8px; border: 1px solid var(--success);
+      background: rgba(52,211,153,0.1); color: var(--success);
+      font-size: 0.88rem; font-weight: 600; cursor: pointer;
+      transition: background 0.2s;
     }
+    #btn-download:hover { background: rgba(52,211,153,0.22); }
 
     /* ---- Status bar ---- */
     #status-bar { font-size: 0.75rem; color: var(--muted); text-align: center; }
@@ -204,12 +244,6 @@
       border-radius: 3px; transition: width 0.08s ease;
     }
     #energy-bar.above-threshold { background: var(--success); }
-
-    /* Noto Naskh Arabic for RTL text in cards */
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;600&display=swap');
-    #transcript-user, #transcript-partial, #transcript-bot {
-      font-family: "Noto Naskh Arabic", "Tahoma", "Arial Unicode MS", sans-serif;
-    }
   </style>
 </head>
 <body>
@@ -251,16 +285,17 @@
     <div class="meter-track"><div id="energy-bar"></div></div>
   </div>
 
-  <div class="card">
-    <div class="card-label">You said</div>
-    <div id="transcript-user">—</div>
-    <div id="transcript-partial"></div>
+  <!-- Conversation history log -->
+  <div id="conversation-wrap">
+    <div id="conversation-header">Conversation</div>
+    <div id="conversation-log"></div>
   </div>
 
-  <div class="card">
-    <div class="card-label">Assistant</div>
-    <div id="transcript-bot">—</div>
-  </div>
+  <!-- Live partial ASR (italic preview while user is speaking) -->
+  <div id="transcript-partial" style="width:100%;max-width:640px;"></div>
+
+  <!-- Download button — shown after session stops -->
+  <button id="btn-download" onclick="downloadTranscript()">⬇ Download Transcript</button>
 
   <div id="status-bar"><span id="status-text">Not connected</span></div>
 
@@ -289,6 +324,9 @@ const LANG_INFO = {
 let selectedLanguage  = "dari";
 let selectedVoice     = "male";
 let sessionLanguage   = "dari";   // locked at session start — used for all WS reconnects
+// Conversation history: [{role:"user"|"bot", text:"...", ts: Date}]
+let conversationHistory = [];
+let currentBotMsgEl    = null;   // the streaming bot bubble currently being built
 let reconnectTimer    = null;     // debounce: only one reconnect pending at a time
 let ws                = null;
 let audioCtx          = null;
@@ -319,14 +357,14 @@ const orbEl             = document.getElementById("orb");
 const orbLabel          = document.getElementById("orb-label");
 const btnStart          = document.getElementById("btn-start");
 const statusText        = document.getElementById("status-text");
-const transcriptUser    = document.getElementById("transcript-user");
 const transcriptPartial = document.getElementById("transcript-partial");
-const transcriptBot     = document.getElementById("transcript-bot");
 const energyBar         = document.getElementById("energy-bar");
 const langSelect          = document.getElementById("lang-select");
 const langNative          = document.getElementById("lang-native");
 const voiceSelector       = document.getElementById("voice-selector");
 const voiceSelect         = document.getElementById("voice-select");
+const conversationLog     = document.getElementById("conversation-log");
+const btnDownload         = document.getElementById("btn-download");
 
 // ---------------------------------------------------------------------------
 // Language selector
@@ -357,6 +395,12 @@ async function toggleSession() {
 }
 
 async function startSession() {
+  // Clear previous conversation log and history for a fresh session
+  conversationLog.innerHTML = "";
+  conversationHistory = [];
+  currentBotMsgEl = null;
+  btnDownload.style.display = "none";
+
   // Lock language for this session — reconnects must use the same language
   // or a language-change mid-session could start a second session in a
   // different language and play two voices simultaneously.
@@ -416,6 +460,9 @@ function stopSession() {
   btnStart.classList.remove("active");
   langSelect.disabled = false;
   voiceSelect.disabled = false;
+  finalizeBotBubble();
+  // Show download button only if there's something to download
+  if (conversationHistory.length > 0) btnDownload.style.display = "inline-block";
 
   if (reconnectTimer)  { clearTimeout(reconnectTimer); reconnectTimer = null; }
   if (sendInterval)    { clearInterval(sendInterval); sendInterval = null; }
@@ -615,6 +662,78 @@ function sendJSON(obj) {
 // ---------------------------------------------------------------------------
 // Incoming messages
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Conversation log helpers
+// ---------------------------------------------------------------------------
+function addUserBubble(text) {
+  const row = document.createElement("div");
+  row.className = "msg-row";
+  row.innerHTML = `<span class="msg-label user">You</span>
+                   <div class="msg-bubble user">${escHtml(text)}</div>`;
+  conversationLog.appendChild(row);
+  conversationLog.scrollTop = conversationLog.scrollHeight;
+  conversationHistory.push({ role: "user", text, ts: new Date() });
+}
+
+function startBotBubble() {
+  const row = document.createElement("div");
+  row.className = "msg-row";
+  const bubble = document.createElement("div");
+  bubble.className = "msg-bubble bot streaming";
+  row.innerHTML = `<span class="msg-label bot">Assistant</span>`;
+  row.appendChild(bubble);
+  conversationLog.appendChild(row);
+  conversationLog.scrollTop = conversationLog.scrollHeight;
+  currentBotMsgEl = bubble;
+  conversationHistory.push({ role: "bot", text: "", ts: new Date() });
+}
+
+function appendBotFragment(text) {
+  if (!currentBotMsgEl) startBotBubble();
+  const last = conversationHistory[conversationHistory.length - 1];
+  if (last && last.role === "bot") last.text += text + " ";
+  currentBotMsgEl.textContent = (currentBotMsgEl.textContent || "") + text + " ";
+  conversationLog.scrollTop = conversationLog.scrollHeight;
+}
+
+function finalizeBotBubble() {
+  if (currentBotMsgEl) {
+    currentBotMsgEl.classList.remove("streaming");
+    currentBotMsgEl = null;
+  }
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ---------------------------------------------------------------------------
+// Download transcript
+// ---------------------------------------------------------------------------
+function downloadTranscript() {
+  if (!conversationHistory.length) return;
+  const lang  = sessionLanguage;
+  const date  = new Date().toISOString().slice(0,19).replace("T"," ");
+  let lines   = [`Qobox Voice Agent — Conversation Transcript`, `Language: ${lang}`, `Date: ${date}`, ``, `---`, ``];
+  conversationHistory.forEach(({ role, text, ts }) => {
+    const label = role === "user" ? "User" : "Assistant";
+    const time  = ts.toTimeString().slice(0,8);
+    lines.push(`[${time}] ${label}:`);
+    lines.push(text.trim());
+    lines.push("");
+  });
+  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `qobox-transcript-${date.replace(/[ :]/g,"-")}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket message handler
+// ---------------------------------------------------------------------------
 function onJSONReceived(raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch { return; }
@@ -631,16 +750,14 @@ function onJSONReceived(raw) {
       break;
 
     case "transcript_final":
-      transcriptUser.textContent = msg.text || "—";
       transcriptPartial.textContent = "";
-      transcriptBot.textContent = "—";
+      addUserBubble(msg.text || "");
       setOrb("thinking", "Thinking…");
       botSpeaking = false;
       break;
 
     case "bot_text_fragment":
-      if (transcriptBot.textContent === "—") transcriptBot.textContent = "";
-      transcriptBot.textContent += msg.text + " ";
+      appendBotFragment(msg.text || "");
       break;
 
     case "tts_start":
@@ -649,14 +766,16 @@ function onJSONReceived(raw) {
       ttsPrebufferDone = false;
       ttsScheduledUntil = 0;
       ttsBufferedMs = 0;
+      startBotBubble();
       if (ttsAudioCtx && ttsAudioCtx.state !== "running") ttsAudioCtx.resume();
       setOrb("bot-speaking", "Assistant speaking…");
       break;
 
     case "tts_end":
     case "tts_stopped":
+      finalizeBotBubble();
       botSpeaking = false;
-      interruptSent = false;   // safe to allow interrupts again next turn
+      interruptSent = false;
       if (!userSpeaking) setOrb("idle", "Listening");
       break;
 
