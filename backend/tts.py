@@ -176,7 +176,16 @@ def _apply_fade(audio: np.ndarray, rate: int, ms: int = 10) -> np.ndarray:
 
 
 def _mp3_bytes_to_pcm(audio_bytes: bytes) -> "bytes | None":
-    """Decode MP3 bytes → int16 PCM at TTS_RATE using PyAV."""
+    """
+    Decode MP3 bytes → int16 PCM at TTS_RATE using PyAV.
+
+    Noise handling:
+      - Silence trim threshold raised to 800 (int16) to cleanly cut API TTS edges.
+      - Noise gate at 0.004 float32 (~131 int16) zeroes the noise floor before
+        normalization so ElevenLabs/cloud TTS hiss isn't amplified.
+      - Gentle normalization: only boost if the signal is under-leveled (peak < 0.5);
+        if already well-leveled, apply minimal headroom trim only.
+    """
     try:
         import av
         buf       = io.BytesIO(audio_bytes)
@@ -196,13 +205,33 @@ def _mp3_bytes_to_pcm(audio_bytes: bytes) -> "bytes | None":
             return None
 
         pcm = np.concatenate(frames)
-        nz = np.where(np.abs(pcm) > 160)[0]
+
+        # Trim leading/trailing silence — higher threshold (800) for clean API audio
+        nz = np.where(np.abs(pcm) > 800)[0]
         if len(nz):
             pcm = pcm[nz[0]: nz[-1] + 1]
+        else:
+            return None  # pure silence — discard
 
         f = pcm.astype(np.float32) / 32768.0
+
+        # Noise gate: zero out samples below noise floor to kill background hiss
+        NOISE_GATE = 0.004   # ≈ -48 dB
+        f[np.abs(f) < NOISE_GATE] = 0.0
+
         f = _apply_fade(f, TTS_RATE)
-        return _pcm_to_int16(f)
+
+        # Gentle level control:
+        #  - Under-leveled (peak < 0.5) → boost to 0.80
+        #  - Already well-leveled         → just apply 0.92 headroom cap
+        peak = float(np.max(np.abs(f))) if len(f) else 0.0
+        if peak < 1e-6:
+            return None
+        target = 0.80 if peak < 0.5 else 0.92
+        f = f * (target / peak)
+
+        pcm_out = np.clip(f * 32768.0, -32768, 32767).astype(np.int16)
+        return pcm_out.tobytes()
 
     except Exception as exc:
         logger.error("MP3 decode error: %s", exc)
