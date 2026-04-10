@@ -192,15 +192,39 @@ def _bandpass_filter(audio: np.ndarray, rate: int,
         return audio  # scipy unavailable — skip filter
 
 
+def _smooth_noise_gate(audio: np.ndarray, rate: int,
+                       threshold: float = 0.012,
+                       window_ms: int = 10) -> np.ndarray:
+    """
+    Smooth RMS-based noise gate — avoids click artefacts from hard clipping.
+
+    Computes RMS over overlapping windows; windows whose RMS falls below
+    `threshold` are faded to silence using a cosine taper so there are no
+    discontinuities at the gate boundary.
+    """
+    win   = max(1, int(rate * window_ms / 1000))
+    out   = audio.copy()
+    n     = len(audio)
+    for start in range(0, n, win):
+        end  = min(start + win, n)
+        seg  = audio[start:end]
+        rms  = float(np.sqrt(np.mean(seg ** 2)))
+        if rms < threshold:
+            # cosine fade to zero so boundary is smooth
+            taper = np.cos(np.linspace(0, np.pi / 2, end - start)).astype(np.float32)
+            out[start:end] = seg * taper * (rms / threshold if threshold > 0 else 0)
+    return out
+
+
 def _mp3_bytes_to_pcm(audio_bytes: bytes) -> "bytes | None":
     """
     Decode MP3 bytes → int16 PCM at TTS_RATE using PyAV.
 
-    Noise pipeline (applied in order):
-      1. Bandpass 80 Hz–8 kHz  — eliminates sub-bass rumble & ultrasonic hiss
-      2. Noise gate at 0.015   — zeros residual floor between phonemes
-      3. Silence trim at 1000  — clean start/end cuts
-      4. Level cap at 0.92     — only reduce if near clipping; never boost
+    Noise pipeline:
+      1. Bandpass 80 Hz–8 kHz  — removes sub-bass rumble & ultrasonic hiss
+      2. Smooth RMS noise gate  — fades quiet windows without click artefacts
+      3. Silence trim           — clean start/end cuts
+      4. Level cap at 0.92      — only reduce if near clipping; never boost
     """
     try:
         import av
@@ -223,26 +247,24 @@ def _mp3_bytes_to_pcm(audio_bytes: bytes) -> "bytes | None":
         pcm = np.concatenate(frames)
         f   = pcm.astype(np.float32) / 32768.0
 
-        # Step 1 — bandpass filter: keep only speech-range frequencies
+        # Step 1 — bandpass: keep only speech-range frequencies
         f = _bandpass_filter(f, TTS_RATE)
 
-        # Step 2 — noise gate: zero anything below the noise floor
-        NOISE_GATE = 0.015   # ≈ -36 dB  (raised from 0.004 — kills residual hiss)
-        f[np.abs(f) < NOISE_GATE] = 0.0
+        # Step 2 — smooth noise gate (no clicks)
+        f = _smooth_noise_gate(f, TTS_RATE, threshold=0.012, window_ms=10)
 
-        # Step 3 — trim silent/noise-only edges
-        pcm_gated = (f * 32768.0).astype(np.int16)
-        nz = np.where(np.abs(pcm_gated) > 1000)[0]
+        # Step 3 — trim edges (silence + noise-only start/end)
+        nz = np.where(np.abs(f) > 0.005)[0]
         if len(nz) == 0:
-            return None   # nothing above noise floor — discard
+            return None
         f = f[nz[0]: nz[-1] + 1]
 
-        # Step 4 — gentle fade + level cap (never boost — API TTS is already leveled)
+        # Step 4 — fade + level cap (never boost)
         f    = _apply_fade(f, TTS_RATE)
         peak = float(np.max(np.abs(f))) if len(f) else 0.0
         if peak < 1e-6:
             return None
-        if peak > 0.92:                    # only reduce if near clipping
+        if peak > 0.92:
             f = f * (0.92 / peak)
 
         pcm_out = np.clip(f * 32768.0, -32768, 32767).astype(np.int16)
