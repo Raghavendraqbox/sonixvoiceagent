@@ -161,26 +161,32 @@ async def websocket_endpoint(
     websocket: WebSocket,
     language: str = "dari",
     voice: str = "male",
+    tts_engine: str = "auto",
 ):
     """
     Main WebSocket handler.
 
     Query parameters:
-      language — "dari" or "pashto" (defaults to LANGUAGE env var → "dari")
-      voice    — "male" (MMS-TTS GPU, default) or "female" (edge-tts neural)
+      language   — "dari" or "pashto" (defaults to LANGUAGE env var → "dari")
+      voice      — "male" (default) or "female"
+      tts_engine — Pashto TTS engine override: auto | elevenlabs | mms | edge |
+                   narakeet | micmonster | speakatoo | gtts
+                   "auto" uses PASHTO_TTS_ENGINE_PRIORITY from .env
     """
     # Normalize and validate
     language = language.lower()
     if language not in SUPPORTED_LANGUAGES:
         language = config.default_language
     voice = voice.lower() if voice.lower() in ("male", "female") else "male"
+    tts_engine = tts_engine.lower().strip()
 
     await websocket.accept()
     logger.info(
-        "WebSocket connected from %s (language=%s, voice=%s)",
+        "WebSocket connected from %s (language=%s, voice=%s, tts_engine=%s)",
         websocket.client,
         language,
         voice,
+        tts_engine,
     )
 
     async def send_audio(pcm_bytes: bytes) -> None:
@@ -200,6 +206,7 @@ async def websocket_endpoint(
         send_json_cb=send_json_msg,
         language=language,
         voice=voice,
+        tts_engine=tts_engine,
     )
     await send_json_msg({
         "type": "session_ready",

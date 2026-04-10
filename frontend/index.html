@@ -239,6 +239,21 @@
     </select>
   </div>
 
+  <!-- TTS Engine selector — only shown for Pashto -->
+  <div class="lang-selector" id="tts-engine-selector" style="margin-top:8px; display:none;">
+    <label for="tts-engine-select">TTS Engine</label>
+    <select id="tts-engine-select">
+      <option value="auto"        selected>Auto (server default)</option>
+      <option value="elevenlabs"         >ElevenLabs (Cloud)</option>
+      <option value="mms"                >MMS — Local GPU</option>
+      <option value="edge"               >Edge TTS (Microsoft)</option>
+      <option value="narakeet"           >Narakeet (Cloud)</option>
+      <option value="micmonster"         >MicMonster (Cloud)</option>
+      <option value="speakatoo"          >Speakatoo (Cloud)</option>
+      <option value="gtts"               >gTTS (Google fallback)</option>
+    </select>
+  </div>
+
   <div class="orb-wrapper">
     <div class="orb idle" id="orb"></div>
     <div class="orb-label" id="orb-label">Inactive</div>
@@ -288,6 +303,7 @@ const LANG_INFO = {
 // ---------------------------------------------------------------------------
 let selectedLanguage  = "dari";
 let selectedVoice     = "male";
+let selectedTTSEngine = "auto";
 let ws                = null;
 let audioCtx          = null;
 let mediaStream       = null;
@@ -321,10 +337,12 @@ const transcriptUser    = document.getElementById("transcript-user");
 const transcriptPartial = document.getElementById("transcript-partial");
 const transcriptBot     = document.getElementById("transcript-bot");
 const energyBar         = document.getElementById("energy-bar");
-const langSelect        = document.getElementById("lang-select");
-const langNative        = document.getElementById("lang-native");
-const voiceSelector     = document.getElementById("voice-selector");
-const voiceSelect       = document.getElementById("voice-select");
+const langSelect          = document.getElementById("lang-select");
+const langNative          = document.getElementById("lang-native");
+const voiceSelector       = document.getElementById("voice-selector");
+const voiceSelect         = document.getElementById("voice-select");
+const ttsEngineSelector   = document.getElementById("tts-engine-selector");
+const ttsEngineSelect     = document.getElementById("tts-engine-select");
 
 // ---------------------------------------------------------------------------
 // Language selector
@@ -332,8 +350,9 @@ const voiceSelect       = document.getElementById("voice-select");
 function onLanguageChange(lang) {
   if (sessionActive) return;   // cannot change language mid-session
   selectedLanguage = lang;
-  // Voice selector applies to all languages
   voiceSelector.style.display = "flex";
+  // TTS engine selector only makes sense for Pashto (multiple engines available)
+  ttsEngineSelector.style.display = lang === "pashto" ? "flex" : "none";
   const info = LANG_INFO[lang] || LANG_INFO.dari;
   langNative.textContent = info.native;
 }
@@ -360,6 +379,7 @@ async function startSession() {
   btnStart.disabled = true;
   langSelect.disabled = true;
   voiceSelect.disabled = true;
+  ttsEngineSelect.disabled = true;
 
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -410,6 +430,7 @@ function stopSession() {
   btnStart.classList.remove("active");
   langSelect.disabled = false;
   voiceSelect.disabled = false;
+  ttsEngineSelect.disabled = false;
 
   if (sendInterval)  { clearInterval(sendInterval); sendInterval = null; }
   if (processorNode) { processorNode.disconnect(); processorNode = null; }
@@ -571,8 +592,12 @@ function checkVAD(rms) {
 // WebSocket
 // ---------------------------------------------------------------------------
 function connectWebSocket() {
-  selectedVoice = voiceSelect.value;
-  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(selectedLanguage)}&voice=${encodeURIComponent(selectedVoice)}`;
+  selectedVoice     = voiceSelect.value;
+  selectedTTSEngine = ttsEngineSelect.value;
+  let wsUrl = `${WS_BASE}?language=${encodeURIComponent(selectedLanguage)}&voice=${encodeURIComponent(selectedVoice)}`;
+  if (selectedLanguage === "pashto" && selectedTTSEngine !== "auto") {
+    wsUrl += `&tts_engine=${encodeURIComponent(selectedTTSEngine)}`;
+  }
   setStatus("Connecting to server…");
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";

@@ -240,6 +240,7 @@ class VoiceTTSHandler:
         cancel_event: asyncio.Event,
         language: str = "dari",
         voice: str = "male",
+        tts_engine: str = "auto",
     ) -> None:
         self.session_id    = session_id
         self._send_audio   = send_audio_cb
@@ -262,13 +263,21 @@ class VoiceTTSHandler:
             self._edge_tts_voice: str       = lang_cfg.get("edge_tts_voice_male", lang_cfg["edge_tts_voice"])
             self._use_edge_primary: bool    = False
 
-        # Build Pashto engine priority list from config
+        # Build Pashto engine priority list
+        # If a specific engine is requested from the UI, put it first with fallbacks.
+        # "auto" → use PASHTO_TTS_ENGINE_PRIORITY from .env
         if self._language == "pashto":
-            raw = config.tts.pashto_engine_priority
-            self._pashto_engines: list[str] = [e.strip() for e in raw.split(",") if e.strip()]
+            VALID_ENGINES = {"mms", "elevenlabs", "narakeet", "micmonster", "speakatoo", "edge", "gtts"}
+            if tts_engine and tts_engine != "auto" and tts_engine in VALID_ENGINES:
+                # Place the chosen engine first, append remaining as fallbacks
+                fallbacks = [e for e in ["mms", "edge", "gtts"] if e != tts_engine]
+                self._pashto_engines: list[str] = [tts_engine] + fallbacks
+            else:
+                raw = config.tts.pashto_engine_priority
+                self._pashto_engines = [e.strip() for e in raw.split(",") if e.strip()]
             logger.info(
-                "Pashto TTS engine priority: %s (voice=%s)",
-                self._pashto_engines, voice,
+                "Pashto TTS engine priority: %s (voice=%s, requested=%s)",
+                self._pashto_engines, voice, tts_engine,
                 extra={"session_id": session_id},
             )
         else:
