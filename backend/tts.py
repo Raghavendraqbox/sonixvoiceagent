@@ -175,16 +175,32 @@ def _apply_fade(audio: np.ndarray, rate: int, ms: int = 10) -> np.ndarray:
     return audio
 
 
+def _bandpass_filter(audio: np.ndarray, rate: int,
+                     low_hz: float = 80.0, high_hz: float = 8000.0) -> np.ndarray:
+    """
+    Butterworth bandpass filter — keeps human speech frequencies (80 Hz–8 kHz)
+    and removes sub-bass rumble, ultrasonic hiss, and encoder artefacts.
+    """
+    try:
+        from scipy.signal import butter, sosfilt
+        nyq    = rate / 2.0
+        lo     = max(low_hz  / nyq, 1e-4)
+        hi     = min(high_hz / nyq, 0.9999)
+        sos    = butter(4, [lo, hi], btype="bandpass", output="sos")
+        return sosfilt(sos, audio).astype(np.float32)
+    except Exception:
+        return audio  # scipy unavailable — skip filter
+
+
 def _mp3_bytes_to_pcm(audio_bytes: bytes) -> "bytes | None":
     """
     Decode MP3 bytes → int16 PCM at TTS_RATE using PyAV.
 
-    Noise handling:
-      - Silence trim threshold raised to 800 (int16) to cleanly cut API TTS edges.
-      - Noise gate at 0.004 float32 (~131 int16) zeroes the noise floor before
-        normalization so ElevenLabs/cloud TTS hiss isn't amplified.
-      - Gentle normalization: only boost if the signal is under-leveled (peak < 0.5);
-        if already well-leveled, apply minimal headroom trim only.
+    Noise pipeline (applied in order):
+      1. Bandpass 80 Hz–8 kHz  — eliminates sub-bass rumble & ultrasonic hiss
+      2. Noise gate at 0.015   — zeros residual floor between phonemes
+      3. Silence trim at 1000  — clean start/end cuts
+      4. Level cap at 0.92     — only reduce if near clipping; never boost
     """
     try:
         import av
@@ -205,30 +221,29 @@ def _mp3_bytes_to_pcm(audio_bytes: bytes) -> "bytes | None":
             return None
 
         pcm = np.concatenate(frames)
+        f   = pcm.astype(np.float32) / 32768.0
 
-        # Trim leading/trailing silence — higher threshold (800) for clean API audio
-        nz = np.where(np.abs(pcm) > 800)[0]
-        if len(nz):
-            pcm = pcm[nz[0]: nz[-1] + 1]
-        else:
-            return None  # pure silence — discard
+        # Step 1 — bandpass filter: keep only speech-range frequencies
+        f = _bandpass_filter(f, TTS_RATE)
 
-        f = pcm.astype(np.float32) / 32768.0
-
-        # Noise gate: zero out samples below noise floor to kill background hiss
-        NOISE_GATE = 0.004   # ≈ -48 dB
+        # Step 2 — noise gate: zero anything below the noise floor
+        NOISE_GATE = 0.015   # ≈ -36 dB  (raised from 0.004 — kills residual hiss)
         f[np.abs(f) < NOISE_GATE] = 0.0
 
-        f = _apply_fade(f, TTS_RATE)
+        # Step 3 — trim silent/noise-only edges
+        pcm_gated = (f * 32768.0).astype(np.int16)
+        nz = np.where(np.abs(pcm_gated) > 1000)[0]
+        if len(nz) == 0:
+            return None   # nothing above noise floor — discard
+        f = f[nz[0]: nz[-1] + 1]
 
-        # Gentle level control:
-        #  - Under-leveled (peak < 0.5) → boost to 0.80
-        #  - Already well-leveled         → just apply 0.92 headroom cap
+        # Step 4 — gentle fade + level cap (never boost — API TTS is already leveled)
+        f    = _apply_fade(f, TTS_RATE)
         peak = float(np.max(np.abs(f))) if len(f) else 0.0
         if peak < 1e-6:
             return None
-        target = 0.80 if peak < 0.5 else 0.92
-        f = f * (target / peak)
+        if peak > 0.92:                    # only reduce if near clipping
+            f = f * (0.92 / peak)
 
         pcm_out = np.clip(f * 32768.0, -32768, 32767).astype(np.int16)
         return pcm_out.tobytes()
