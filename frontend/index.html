@@ -181,7 +181,8 @@
     #conversation-log {
       flex: 1; overflow-y: auto; padding: 14px 16px;
       display: flex; flex-direction: column; gap: 12px;
-      min-height: 220px; max-height: 360px;
+      min-height: 260px; max-height: 460px;
+      scroll-behavior: smooth;
     }
     #conversation-log:empty::before {
       content: "Conversation will appear here…";
@@ -685,7 +686,8 @@ function startBotBubble() {
   conversationLog.appendChild(row);
   conversationLog.scrollTop = conversationLog.scrollHeight;
   currentBotMsgEl = bubble;
-  conversationHistory.push({ role: "bot", text: "", ts: new Date() });
+  // ts is set to null here; finalizeBotBubble() stamps it when complete
+  conversationHistory.push({ role: "bot", text: "", ts: null });
 }
 
 function appendBotFragment(text) {
@@ -700,6 +702,9 @@ function finalizeBotBubble() {
   if (currentBotMsgEl) {
     currentBotMsgEl.classList.remove("streaming");
     currentBotMsgEl = null;
+    // Stamp the timestamp now that the full response is delivered
+    const last = conversationHistory[conversationHistory.length - 1];
+    if (last && last.role === "bot" && !last.ts) last.ts = new Date();
   }
 }
 
@@ -712,21 +717,37 @@ function escHtml(str) {
 // ---------------------------------------------------------------------------
 function downloadTranscript() {
   if (!conversationHistory.length) return;
-  const lang  = sessionLanguage;
-  const date  = new Date().toISOString().slice(0,19).replace("T"," ");
-  let lines   = [`Qobox Voice Agent — Conversation Transcript`, `Language: ${lang}`, `Date: ${date}`, ``, `---`, ``];
-  conversationHistory.forEach(({ role, text, ts }) => {
-    const label = role === "user" ? "User" : "Assistant";
-    const time  = ts.toTimeString().slice(0,8);
-    lines.push(`[${time}] ${label}:`);
+  const langInfo  = LANG_INFO[sessionLanguage] || LANG_INFO.dari;
+  const now       = new Date();
+  const dateStr   = now.toISOString().slice(0,19).replace("T"," ");
+  const divider   = "─".repeat(52);
+
+  let lines = [
+    "Qobox Voice Agent — Conversation Transcript",
+    divider,
+    `Language : ${langInfo.name} (${langInfo.native})`,
+    `Date     : ${dateStr}`,
+    `Turns    : ${Math.floor(conversationHistory.length / 2)}`,
+    divider,
+    "",
+  ];
+
+  conversationHistory.forEach(({ role, text, ts }, i) => {
+    const isUser  = role === "user";
+    const label   = isUser ? "You" : "Assistant";
+    const time    = ts ? ts.toTimeString().slice(0,8) : "--:--:--";
+    if (isUser && i > 0) lines.push(""); // blank line between turns
+    lines.push(`[${time}]  ${label}`);
     lines.push(text.trim());
-    lines.push("");
   });
+
+  lines.push("", divider);
+
   const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
   a.href     = url;
-  a.download = `qobox-transcript-${date.replace(/[ :]/g,"-")}.txt`;
+  a.download = `qobox-${sessionLanguage}-transcript-${dateStr.replace(/[ :]/g,"-")}.txt`;
   a.click();
   URL.revokeObjectURL(url);
 }

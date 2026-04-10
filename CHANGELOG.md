@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.6.0] - 2026-04-10
+
+### Fixed — Dari female voice, transcript UI, and timestamp accuracy
+
+#### Dari female voice now uses ElevenLabs Bella
+- **Fixed** Dari female was silently getting male voice because the old backend (MMS strict mode, single-voice) was still running. New `_synthesize_dari()` now correctly maps `voice=female` → `ELEVENLABS_VOICE_ID_DARI_FEMALE` (Bella) and `voice=male` → `ELEVENLABS_VOICE_ID_DARI_MALE` (Adam).
+- **Fixed** Backend startup message in `main.py`: was `Dari=MMS-TTS strict` — now reads `Dari=ElevenLabs→MMS(prs) fallback` to accurately reflect the active code path.
+
+#### Scrollable conversation transcript
+- **Fixed** Conversation log height: `min-height: 260px; max-height: 460px` with `scroll-behavior: smooth` — conversation now scrolls naturally without overflowing the page layout.
+
+#### Bot response timestamp accuracy
+- **Fixed** Bot bubble timestamp was stamped at `tts_start` (fired immediately after user turn) so User and Assistant showed the same time. Now stamped inside `finalizeBotBubble()` when the LLM + TTS cycle actually completes — gives accurate per-turn timestamps.
+
+#### Download transcript format
+- **Improved** Transcript file format: language native name header (`دری` / `پښتو`), turn count, `─────` dividers between turns, per-turn timestamps matching the UI display time.
+
+---
+
 ## [2.5.0] - 2026-04-10
 
 ### Added — ElevenLabs TTS for Dari (male & female)
