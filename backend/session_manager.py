@@ -212,6 +212,31 @@ class SessionManager:
     # Helpers
     # ------------------------------------------------------------------
 
+    def _drain_echo_transcripts(self, session: Session) -> None:
+        """
+        Discard any transcripts queued while the bot was speaking.
+
+        When TTS audio plays through speakers, the microphone picks it up and
+        ASR transcribes it as a new user utterance. Without draining, that echo
+        transcript is picked up on the next loop iteration and interrupts or
+        doubles the bot's response. We drain synchronously so the next
+        ``await transcript_queue.get()`` always waits for genuine user speech.
+        """
+        drained = 0
+        while not session.transcript_queue.empty():
+            try:
+                session.transcript_queue.get_nowait()
+                drained += 1
+            except asyncio.QueueEmpty:
+                break
+        if drained:
+            logger.debug(
+                "Echo suppression: discarded %d stale transcript(s) accumulated "
+                "during TTS playback",
+                drained,
+                extra={"session_id": session.session_id},
+            )
+
     async def _play_hardcoded(
         self,
         session: Session,
@@ -236,6 +261,9 @@ class SessionManager:
             orch_task.cancel()
         await send_json_cb({"type": "tts_end"})
         session.memory.add_bot_turn(text)
+        # Drain any transcripts that arrived while the bot was speaking —
+        # these are almost always microphone echo of the TTS output itself.
+        self._drain_echo_transcripts(session)
 
     # ------------------------------------------------------------------
     # LLM + TTS conversation loop
@@ -358,6 +386,11 @@ class SessionManager:
                 bot_text[:60],
                 extra={"session_id": session.session_id},
             )
+
+            # Drain transcripts that accumulated while the bot was speaking.
+            # Prevents TTS audio echo from triggering a false barge-in on the
+            # next loop iteration.
+            self._drain_echo_transcripts(session)
 
         logger.info("LLM/TTS loop exiting", extra={"session_id": session.session_id})
 

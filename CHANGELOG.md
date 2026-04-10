@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.3.0] - 2026-04-10
+
+### Fixed — ElevenLabs voice selection and echo-triggered interrupts
+
+#### ElevenLabs now actually called on every turn
+- **Fixed** `backend/tts.py`: ElevenLabs was short-circuiting before making any HTTP request because `ELEVENLABS_VOICE_ID_PASHTO_MALE` / `_FEMALE` were empty. Added default stock voice IDs (`pNInz6obpgDQGcFmaJgB` Adam / `EXAVITQu4vr4xnSDxMaL` Bella) as fallback so the API is always called when a key is present.
+- **Added** distinct HTTP error log lines for 401 (bad key) and 402 (free-plan limit) to make account issues immediately obvious in logs.
+- **Improved** synthesis log: now prints `selected_voice=male/female → voice_id=<id>` and success line includes voice name + byte count for easy tracing.
+
+#### Male / Female voice selection respected by ElevenLabs
+- **Fixed** `backend/tts.py`: when `voice=female` is selected in the UI, `ELEVENLABS_VOICE_ID_PASHTO_FEMALE` (Bella) is used; `voice=male` uses `ELEVENLABS_VOICE_ID_PASHTO_MALE` (Adam). Previously both resolved to empty string and short-circuited.
+- **Updated** `.env`: `ELEVENLABS_VOICE_ID_PASHTO_MALE` and `ELEVENLABS_VOICE_ID_PASHTO_FEMALE` now have explicit default values with override instructions.
+
+#### Girl-voice (MMS-TTS) eliminated from ElevenLabs sessions
+- **Fixed** `backend/tts.py` engine priority: when a cloud TTS engine (ElevenLabs, Narakeet, etc.) is explicitly selected from the UI, MMS-TTS (`facebook/mms-tts-pps`) is no longer inserted as fallback #2. MMS produces a robotic female-sounding voice that was heard mid-conversation when ElevenLabs failed. Cloud sessions now fall back only to `edge → gtts`.
+- **Result**: consistent single voice throughout a session — no more sudden voice switches mid-conversation.
+
+#### Echo-triggered barge-in / mid-sentence interrupts suppressed
+- **Fixed** `backend/session_manager.py`: ASR kept running while TTS was playing through speakers. The bot's own audio was picked up by the microphone, re-transcribed, and treated as a new user utterance — cancelling the bot's current speech mid-sentence (especially visible on the greeting).
+- **Added** `SessionManager._drain_echo_transcripts()`: after every TTS turn (greeting + LLM responses), any transcripts that queued while the bot was speaking are discarded before waiting for the next real user utterance.
+
+---
+
 ## [2.2.0] - 2026-04-10
 
 ### Fixed — ElevenLabs in-app noise diagnostics and decode integrity

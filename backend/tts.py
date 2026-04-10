@@ -416,8 +416,15 @@ class VoiceTTSHandler:
         if self._language == "pashto":
             VALID_ENGINES = {"mms", "elevenlabs", "narakeet", "micmonster", "speakatoo", "edge", "gtts"}
             if tts_engine and tts_engine != "auto" and tts_engine in VALID_ENGINES:
-                # Place the chosen engine first, append remaining as fallbacks
-                fallbacks = [e for e in ["mms", "edge", "gtts"] if e != tts_engine]
+                # Place the chosen engine first with appropriate fallbacks.
+                # Cloud engines (elevenlabs, narakeet, etc.) fall back only to other
+                # cloud/neural engines — never MMS, which sounds like a different
+                # (female-robotic) voice and would confuse callers mid-conversation.
+                # MMS only falls back to edge/gtts (same "local" tier).
+                if tts_engine == "mms":
+                    fallbacks = ["edge", "gtts"]
+                else:
+                    fallbacks = [e for e in ["edge", "gtts"] if e != tts_engine]
                 self._pashto_engines: list[str] = [tts_engine] + fallbacks
             else:
                 raw = config.tts.pashto_engine_priority
@@ -576,19 +583,26 @@ class VoiceTTSHandler:
             )
             return False
 
+        # Default ElevenLabs multilingual voice IDs used when no custom voice is
+        # configured.  These are stock library voices — they work on paid plans.
+        # Override by setting ELEVENLABS_VOICE_ID_PASHTO_MALE / _FEMALE in .env.
+        _DEFAULT_MALE_VOICE   = "pNInz6obpgDQGcFmaJgB"   # Adam — multilingual
+        _DEFAULT_FEMALE_VOICE = "EXAVITQu4vr4xnSDxMaL"   # Bella — multilingual
+
         voice_id = (
             self._lang_cfg.get("elevenlabs_voice_id_female", "")
             if self._voice == "female"
             else self._lang_cfg.get("elevenlabs_voice_id_male", "")
         )
         if not voice_id:
-            logger.warning(
-                "ElevenLabs: no voice ID configured for Pashto %s — "
-                "set ELEVENLABS_VOICE_ID_PASHTO_MALE / _FEMALE",
+            voice_id = _DEFAULT_FEMALE_VOICE if self._voice == "female" else _DEFAULT_MALE_VOICE
+            logger.info(
+                "ElevenLabs: no custom voice ID set — using default %s voice (%s). "
+                "Set ELEVENLABS_VOICE_ID_PASHTO_MALE / _FEMALE in .env to override.",
                 self._voice,
+                voice_id,
                 extra={"session_id": self.session_id},
             )
-            return False
 
         try:
             import httpx
@@ -611,9 +625,30 @@ class VoiceTTSHandler:
             "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
         }
 
+        logger.info(
+            "ElevenLabs: selected_voice=%s → voice_id=%s (eleven_multilingual_v2)",
+            self._voice,
+            voice_id,
+            extra={"session_id": self.session_id},
+        )
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code == 401:
+                    logger.error(
+                        "ElevenLabs: invalid API key (401) — check ELEVENLABS_API_KEY",
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+                if resp.status_code == 402:
+                    logger.error(
+                        "ElevenLabs: payment required (402) — account is on free plan "
+                        "which cannot use library voices via API. "
+                        "Either upgrade your plan or clone a custom voice at elevenlabs.io "
+                        "and set ELEVENLABS_VOICE_ID_PASHTO_MALE in .env",
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
                 if resp.status_code != 200:
                     logger.error(
                         "ElevenLabs API error %d: %s",
@@ -643,7 +678,9 @@ class VoiceTTSHandler:
             )
 
             logger.info(
-                "ElevenLabs TTS success (%d bytes audio)",
+                "ElevenLabs TTS success: voice=%s voice_id=%s (%d bytes)",
+                self._voice,
+                voice_id,
                 len(audio_bytes),
                 extra={"session_id": self.session_id},
             )
