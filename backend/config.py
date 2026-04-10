@@ -83,7 +83,7 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "whisper_language": "ps",         # faster-whisper supports Pashto
 
         # TTS — Meta MMS-TTS (primary, local GPU — same engine as Dari)
-        "mms_tts_model": "facebook/mms-tts-pbt",   # Southern Pashto (most common in AF)
+        "mms_tts_model": "facebook/mms-tts-pps",   # Pashto (correct HuggingFace model ID)
         "mms_tts_sample_rate": 16_000,
 
         # TTS — edge-tts (fallback 1, Microsoft Azure)
@@ -92,6 +92,19 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # TTS — gTTS (fallback 2, Google — Pashto not supported; use Persian as closest)
         "gtts_language": "fa",
+
+        # TTS — ElevenLabs (API-based, high quality Pashto)
+        "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_PASHTO_MALE",   ""),
+        "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_PASHTO_FEMALE", ""),
+
+        # TTS — Narakeet (REST API, Afghan Pashto)
+        "narakeet_voice": os.getenv("NARAKEET_VOICE_PASHTO", "hamid"),   # ps-AF speaker
+
+        # TTS — MicMonster (REST API)
+        "micmonster_voice_id": os.getenv("MICMONSTER_VOICE_ID_PASHTO", ""),
+
+        # TTS — Speakatoo (REST API)
+        "speakatoo_voice_id": os.getenv("SPEAKATOO_VOICE_ID_PASHTO", ""),
 
         # LLM sentence boundaries (Arabic punctuation)
         "sentence_delimiters": (".", "!", "?", ",", "؟", "،"),
@@ -258,6 +271,24 @@ class TTSConfig:
 
     # Stream in N-ms chunks for low cancel latency
     chunk_ms: int = 60
+
+    # ---------------------------------------------------------------------------
+    # Pashto TTS engine priority for male voice
+    # Comma-separated list tried in order until one succeeds.
+    # Options: mms | elevenlabs | narakeet | micmonster | speakatoo | edge | gtts
+    # Default: mms,edge,gtts  (same as before unless overridden)
+    # ---------------------------------------------------------------------------
+    pashto_engine_priority: str = os.getenv(
+        "PASHTO_TTS_ENGINE_PRIORITY", "mms,edge,gtts"
+    )
+
+    # ---------------------------------------------------------------------------
+    # Third-party TTS API keys
+    # ---------------------------------------------------------------------------
+    elevenlabs_api_key: str = field(default_factory=lambda: os.getenv("ELEVENLABS_API_KEY", ""))
+    narakeet_api_key:   str = field(default_factory=lambda: os.getenv("NARAKEET_API_KEY",   ""))
+    micmonster_api_key: str = field(default_factory=lambda: os.getenv("MICMONSTER_API_KEY", ""))
+    speakatoo_api_key:  str = field(default_factory=lambda: os.getenv("SPEAKATOO_API_KEY",  ""))
 
 
 # ---------------------------------------------------------------------------

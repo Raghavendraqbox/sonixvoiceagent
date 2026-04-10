@@ -35,6 +35,13 @@ import os
 import sys
 from contextlib import asynccontextmanager
 
+# Load .env from repo root (one level above backend/)
+from pathlib import Path
+_env_path = Path(__file__).parent.parent / ".env"
+if _env_path.exists():
+    from dotenv import load_dotenv
+    load_dotenv(_env_path, override=True)
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse

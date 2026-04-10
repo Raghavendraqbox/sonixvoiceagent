@@ -2,19 +2,24 @@
 tts.py — Multi-language TTS handler for Dari and Pashto.
 
 Priority chain per language:
-  1. facebook/mms-tts-prs  (Dari  — Meta MMS VITS, local GPU)
-     facebook/mms-tts-pbt  (Pashto — Meta MMS VITS, local GPU)
-  2. edge-tts  fa-IR-DilaraNeural   (Dari  — Microsoft Azure, free)
-               ps-AF-LatifaNeural   (Pashto — Microsoft Azure, free)
-  3. gTTS  fa  (fallback for both languages)
-  4. Silence padding  (last resort)
+  Dari (unchanged):
+    1. facebook/mms-tts-fas  (local GPU)
+    2. edge-tts  fa-IR-DilaraNeural / fa-IR-FaridNeural
+    3. gTTS  fa
+    4. Silence
 
-MMS-TTS models:
-  - VITS architecture; natural, non-robotic pronunciation
-  - Run fully on local GPU (CUDA), ~460 MB each
-  - Output: 16 000 Hz PCM → resampled to 24 000 Hz for the browser
-  - Dari/Pashto models require uroman romanisation: the VitsTokenizer
-    handles this automatically when the `uroman` package is installed.
+  Pashto (configurable via PASHTO_TTS_ENGINE_PRIORITY):
+    Engines available:
+      mms        — facebook/mms-tts-pbt  (local GPU, default primary)
+      elevenlabs — ElevenLabs REST API   (requires ELEVENLABS_API_KEY)
+      narakeet   — Narakeet REST API     (requires NARAKEET_API_KEY)
+      micmonster — MicMonster REST API   (requires MICMONSTER_API_KEY)
+      speakatoo  — Speakatoo REST API    (requires SPEAKATOO_API_KEY)
+      edge       — Microsoft edge-tts    (free, ps-AF-LatifaNeural / GulNawazNeural)
+      gtts       — Google gTTS           (fallback, uses Persian fa)
+
+    Default priority: mms,edge,gtts
+    Override via env: PASHTO_TTS_ENGINE_PRIORITY=elevenlabs,edge,gtts
 
 Audio output contract:
   PCM 16-bit signed LE, 24 000 Hz, mono
@@ -98,8 +103,6 @@ def schedule_tts_warmup(language: str = "dari") -> None:
             return
         try:
             import torch
-            # Synthesize a short phrase to compile CUDA kernels
-            # Use a simple ASCII warmup string — uroman will romanise it safely
             warmup_text = "hello"
             inputs = tokenizer(warmup_text, return_tensors="pt").to(model.device)
             with torch.no_grad():
@@ -172,6 +175,40 @@ def _apply_fade(audio: np.ndarray, rate: int, ms: int = 10) -> np.ndarray:
     return audio
 
 
+def _mp3_bytes_to_pcm(audio_bytes: bytes) -> "bytes | None":
+    """Decode MP3 bytes → int16 PCM at TTS_RATE using PyAV."""
+    try:
+        import av
+        buf       = io.BytesIO(audio_bytes)
+        container = av.open(buf)
+        resampler = av.audio.resampler.AudioResampler(
+            format="s16", layout="mono", rate=TTS_RATE
+        )
+        frames: list = []
+        for frame in container.decode(audio=0):
+            for r in resampler.resample(frame):
+                frames.append(np.frombuffer(bytes(r.planes[0]), dtype=np.int16))
+        for r in resampler.resample(None):
+            frames.append(np.frombuffer(bytes(r.planes[0]), dtype=np.int16))
+        container.close()
+
+        if not frames:
+            return None
+
+        pcm = np.concatenate(frames)
+        nz = np.where(np.abs(pcm) > 160)[0]
+        if len(nz):
+            pcm = pcm[nz[0]: nz[-1] + 1]
+
+        f = pcm.astype(np.float32) / 32768.0
+        f = _apply_fade(f, TTS_RATE)
+        return _pcm_to_int16(f)
+
+    except Exception as exc:
+        logger.error("MP3 decode error: %s", exc)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # VoiceTTSHandler
 # ---------------------------------------------------------------------------
@@ -180,11 +217,20 @@ class VoiceTTSHandler:
     """
     Synthesizes Dari or Pashto text to PCM audio and streams it chunk-by-chunk.
 
-    Primary  : facebook/mms-tts-prs (Dari) or facebook/mms-tts-pbt (Pashto)
-               — local GPU VITS with automatic uroman romanisation
-    Fallback1: edge-tts  fa-IR-DilaraNeural / ps-AF-LatifaNeural
-    Fallback2: gTTS  fa (Pashto falls back to Persian for gTTS)
-    Fallback3: Silence
+    Dari:
+      Primary  : facebook/mms-tts-fas (local GPU)
+      Fallback1: edge-tts  fa-IR-DilaraNeural / fa-IR-FaridNeural
+      Fallback2: gTTS  fa
+      Fallback3: Silence
+
+    Pashto (order set by PASHTO_TTS_ENGINE_PRIORITY):
+      mms        — facebook/mms-tts-pbt (local GPU)
+      elevenlabs — ElevenLabs REST API
+      narakeet   — Narakeet REST API
+      micmonster — MicMonster REST API
+      speakatoo  — Speakatoo REST API
+      edge       — Microsoft edge-tts (ps-AF)
+      gtts       — Google gTTS (Persian fallback)
     """
 
     def __init__(
@@ -198,25 +244,35 @@ class VoiceTTSHandler:
         self.session_id    = session_id
         self._send_audio   = send_audio_cb
         self._cancel_event = cancel_event
+        self._language     = language.lower()
+        self._voice        = voice.lower()
 
         lang_cfg = get_language_config(language)
-        self._mms_model_id: str = lang_cfg["mms_tts_model"]
-        self._mms_native_rate: int = lang_cfg["mms_tts_sample_rate"]
-        self._gtts_language: str = lang_cfg["gtts_language"]
+        self._mms_model_id: str     = lang_cfg["mms_tts_model"]
+        self._mms_native_rate: int  = lang_cfg["mms_tts_sample_rate"]
+        self._gtts_language: str    = lang_cfg["gtts_language"]
         self._language_display: str = lang_cfg["display_name"]
+        self._lang_cfg              = lang_cfg
 
-        # Female voice: use edge-tts (fa-IR-DilaraNeural for Dari).
-        # Male voice (default): use MMS-TTS on local GPU.
+        # Female voice → use edge-tts as primary (Dari behaviour unchanged)
         if voice == "female":
-            self._edge_tts_voice: str = lang_cfg["edge_tts_voice"]   # female neural voice
-            self._use_edge_primary: bool = True
+            self._edge_tts_voice: str       = lang_cfg["edge_tts_voice"]
+            self._use_edge_primary: bool    = True
         else:
-            self._edge_tts_voice: str = lang_cfg.get("edge_tts_voice_male", lang_cfg["edge_tts_voice"])
-            self._use_edge_primary: bool = False
+            self._edge_tts_voice: str       = lang_cfg.get("edge_tts_voice_male", lang_cfg["edge_tts_voice"])
+            self._use_edge_primary: bool    = False
 
-        # Once MMS fails once in a session, use edge-tts for all subsequent
-        # sentences so the voice stays consistent (no mid-response voice switch).
-        self._mms_available: bool = True
+        # Build Pashto engine priority list from config
+        if self._language == "pashto":
+            raw = config.tts.pashto_engine_priority
+            self._pashto_engines: list[str] = [e.strip() for e in raw.split(",") if e.strip()]
+            logger.info(
+                "Pashto TTS engine priority: %s (voice=%s)",
+                self._pashto_engines, voice,
+                extra={"session_id": session_id},
+            )
+        else:
+            self._pashto_engines = []
 
     # ------------------------------------------------------------------
     # Public API
@@ -231,23 +287,66 @@ class VoiceTTSHandler:
             text,
             extra={"session_id": self.session_id},
         )
+
+        if self._language == "pashto":
+            return await self._synthesize_pashto(text)
+
+        # Dari — original logic unchanged
         if self._use_edge_primary:
             return await self._synthesize_edge_tts(text)
         return await self._synthesize_mms(text)
+
+    # ------------------------------------------------------------------
+    # Pashto — walk the engine priority list
+    # ------------------------------------------------------------------
+
+    async def _synthesize_pashto(self, text: str) -> bool:
+        """Try each configured Pashto TTS engine in order."""
+        for engine in self._pashto_engines:
+            if self._cancel_event.is_set():
+                return False
+
+            logger.info(
+                "Pashto TTS trying engine: %s", engine,
+                extra={"session_id": self.session_id},
+            )
+
+            if engine == "mms":
+                result = await self._synthesize_mms(text)
+            elif engine == "elevenlabs":
+                result = await self._synthesize_elevenlabs(text)
+            elif engine == "narakeet":
+                result = await self._synthesize_narakeet(text)
+            elif engine == "micmonster":
+                result = await self._synthesize_micmonster(text)
+            elif engine == "speakatoo":
+                result = await self._synthesize_speakatoo(text)
+            elif engine == "edge":
+                result = await self._synthesize_edge_tts(text)
+            elif engine == "gtts":
+                result = await self._synthesize_gtts(text)
+            else:
+                logger.warning(
+                    "Unknown Pashto TTS engine '%s', skipping", engine,
+                    extra={"session_id": self.session_id},
+                )
+                continue
+
+            if result:
+                return True
+            # engine failed → try next
+
+        logger.error(
+            "All Pashto TTS engines exhausted — falling back to silence",
+            extra={"session_id": self.session_id},
+        )
+        return await self._synthesize_silence(text)
 
     # ------------------------------------------------------------------
     # MMS-TTS  (primary — VITS, local GPU)
     # ------------------------------------------------------------------
 
     async def _synthesize_mms(self, text: str) -> bool:
-        """
-        Synthesize with the language-specific MMS-TTS model on GPU.
-
-        The VitsTokenizer automatically applies uroman romanisation for
-        Dari/Pashto models (tokenizer.is_uroman == True) when the
-        `uroman` package is installed. Runs inference in a thread pool
-        to keep the event loop responsive.
-        """
         if self._cancel_event.is_set():
             return False
 
@@ -287,27 +386,390 @@ class VoiceTTSHandler:
             audio_f32 = None
 
         if audio_f32 is None:
-            self._mms_available = False
-            logger.warning(
-                "MMS-TTS failed (%s) — switching to edge-tts for rest of session",
-                self._mms_model_id,
-                extra={"session_id": self.session_id},
-            )
-            return await self._synthesize_edge_tts(text)
+            return False
 
-        # Resample native rate → 24 kHz
         audio_f32 = _resample(audio_f32, self._mms_native_rate, TTS_RATE)
         audio_f32 = _apply_fade(audio_f32, TTS_RATE)
         pcm_bytes  = _pcm_to_int16(audio_f32)
-
         return await self._stream_pcm(pcm_bytes)
 
     # ------------------------------------------------------------------
-    # edge-tts  (fallback 1)
+    # ElevenLabs  (API-based — high quality, multilingual)
+    # ------------------------------------------------------------------
+
+    async def _synthesize_elevenlabs(self, text: str) -> bool:
+        """
+        ElevenLabs REST API — requires ELEVENLABS_API_KEY.
+        Voice IDs for Pashto set via:
+          ELEVENLABS_VOICE_ID_PASHTO_MALE   (or any multilingual voice)
+          ELEVENLABS_VOICE_ID_PASHTO_FEMALE
+        """
+        if self._cancel_event.is_set():
+            return False
+
+        api_key = config.tts.elevenlabs_api_key
+        if not api_key:
+            logger.warning(
+                "ElevenLabs: ELEVENLABS_API_KEY not set, skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        voice_id = (
+            self._lang_cfg.get("elevenlabs_voice_id_female", "")
+            if self._voice == "female"
+            else self._lang_cfg.get("elevenlabs_voice_id_male", "")
+        )
+        if not voice_id:
+            logger.warning(
+                "ElevenLabs: no voice ID configured for Pashto %s — "
+                "set ELEVENLABS_VOICE_ID_PASHTO_MALE / _FEMALE",
+                self._voice,
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        try:
+            import httpx
+        except ImportError:
+            logger.error(
+                "ElevenLabs: httpx not installed — pip install httpx",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+        headers = {
+            "xi-api-key": api_key,
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg",
+        }
+        payload = {
+            "text": text,
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code != 200:
+                    logger.error(
+                        "ElevenLabs API error %d: %s",
+                        resp.status_code,
+                        resp.text[:200],
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+                audio_bytes = resp.content
+
+            if not audio_bytes:
+                return False
+
+            loop = asyncio.get_running_loop()
+            pcm_bytes = await loop.run_in_executor(
+                None, lambda: _mp3_bytes_to_pcm(audio_bytes)
+            )
+            if pcm_bytes is None:
+                return False
+
+            logger.info(
+                "ElevenLabs TTS success (%d bytes audio)",
+                len(audio_bytes),
+                extra={"session_id": self.session_id},
+            )
+            return await self._stream_pcm(pcm_bytes)
+
+        except Exception as exc:
+            logger.error(
+                "ElevenLabs TTS error: %s", exc,
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+    # ------------------------------------------------------------------
+    # Narakeet  (REST API — Afghan Pashto voices)
+    # ------------------------------------------------------------------
+
+    async def _synthesize_narakeet(self, text: str) -> bool:
+        """
+        Narakeet REST API — requires NARAKEET_API_KEY.
+        Voice set via NARAKEET_VOICE_PASHTO (default: hamid).
+        Afghan Pashto voices: hamid, zeba, etc.
+        Docs: https://www.narakeet.com/docs/text-to-audio-api.html
+        """
+        if self._cancel_event.is_set():
+            return False
+
+        api_key = config.tts.narakeet_api_key
+        if not api_key:
+            logger.warning(
+                "Narakeet: NARAKEET_API_KEY not set, skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        voice = self._lang_cfg.get("narakeet_voice", "hamid")
+
+        try:
+            import httpx
+        except ImportError:
+            logger.error(
+                "Narakeet: httpx not installed — pip install httpx",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        url = "https://api.narakeet.com/text-to-speech/mp3"
+        headers = {
+            "x-api-key": api_key,
+            "Content-Type": "text/plain",
+            "Accept": "application/octet-stream",
+        }
+        params = {"voice": voice}
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    url, headers=headers, params=params, content=text.encode("utf-8")
+                )
+                if resp.status_code != 200:
+                    logger.error(
+                        "Narakeet API error %d: %s",
+                        resp.status_code,
+                        resp.text[:200],
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+                audio_bytes = resp.content
+
+            if not audio_bytes:
+                return False
+
+            loop = asyncio.get_running_loop()
+            pcm_bytes = await loop.run_in_executor(
+                None, lambda: _mp3_bytes_to_pcm(audio_bytes)
+            )
+            if pcm_bytes is None:
+                return False
+
+            logger.info(
+                "Narakeet TTS success (%d bytes audio, voice=%s)",
+                len(audio_bytes), voice,
+                extra={"session_id": self.session_id},
+            )
+            return await self._stream_pcm(pcm_bytes)
+
+        except Exception as exc:
+            logger.error(
+                "Narakeet TTS error: %s", exc,
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+    # ------------------------------------------------------------------
+    # MicMonster  (REST API)
+    # ------------------------------------------------------------------
+
+    async def _synthesize_micmonster(self, text: str) -> bool:
+        """
+        MicMonster REST API — requires MICMONSTER_API_KEY.
+        Voice ID set via MICMONSTER_VOICE_ID_PASHTO.
+        Docs: https://micmonster.com/api-documentation
+        """
+        if self._cancel_event.is_set():
+            return False
+
+        api_key = config.tts.micmonster_api_key
+        if not api_key:
+            logger.warning(
+                "MicMonster: MICMONSTER_API_KEY not set, skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        voice_id = self._lang_cfg.get("micmonster_voice_id", "")
+        if not voice_id:
+            logger.warning(
+                "MicMonster: MICMONSTER_VOICE_ID_PASHTO not set, skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        try:
+            import httpx
+        except ImportError:
+            logger.error(
+                "MicMonster: httpx not installed — pip install httpx",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        url = "https://api.micmonster.com/tts"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {"voice": voice_id, "text": text, "format": "mp3"}
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code != 200:
+                    logger.error(
+                        "MicMonster API error %d: %s",
+                        resp.status_code,
+                        resp.text[:200],
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+
+                # MicMonster returns JSON with audio_url or base64
+                data = resp.json()
+                audio_url = data.get("audio_url") or data.get("url", "")
+                if audio_url:
+                    audio_resp = await client.get(audio_url, timeout=30.0)
+                    audio_bytes = audio_resp.content
+                else:
+                    import base64
+                    b64 = data.get("audio", "")
+                    if not b64:
+                        logger.error(
+                            "MicMonster: no audio in response",
+                            extra={"session_id": self.session_id},
+                        )
+                        return False
+                    audio_bytes = base64.b64decode(b64)
+
+            if not audio_bytes:
+                return False
+
+            loop = asyncio.get_running_loop()
+            pcm_bytes = await loop.run_in_executor(
+                None, lambda: _mp3_bytes_to_pcm(audio_bytes)
+            )
+            if pcm_bytes is None:
+                return False
+
+            logger.info(
+                "MicMonster TTS success (%d bytes audio)",
+                len(audio_bytes),
+                extra={"session_id": self.session_id},
+            )
+            return await self._stream_pcm(pcm_bytes)
+
+        except Exception as exc:
+            logger.error(
+                "MicMonster TTS error: %s", exc,
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+    # ------------------------------------------------------------------
+    # Speakatoo  (REST API)
+    # ------------------------------------------------------------------
+
+    async def _synthesize_speakatoo(self, text: str) -> bool:
+        """
+        Speakatoo REST API — requires SPEAKATOO_API_KEY.
+        Voice ID set via SPEAKATOO_VOICE_ID_PASHTO.
+        Docs: https://www.speakatoo.com/api
+        """
+        if self._cancel_event.is_set():
+            return False
+
+        api_key = config.tts.speakatoo_api_key
+        if not api_key:
+            logger.warning(
+                "Speakatoo: SPEAKATOO_API_KEY not set, skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        voice_id = self._lang_cfg.get("speakatoo_voice_id", "")
+        if not voice_id:
+            logger.warning(
+                "Speakatoo: SPEAKATOO_VOICE_ID_PASHTO not set, skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        try:
+            import httpx
+        except ImportError:
+            logger.error(
+                "Speakatoo: httpx not installed — pip install httpx",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        url = "https://www.speakatoo.com/api/v1/convert"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "api_key": api_key,
+            "voice_id": voice_id,
+            "content": text,
+            "output_format": "mp3",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code != 200:
+                    logger.error(
+                        "Speakatoo API error %d: %s",
+                        resp.status_code,
+                        resp.text[:200],
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+
+                # Response may be raw MP3 bytes or JSON with URL
+                content_type = resp.headers.get("content-type", "")
+                if "audio" in content_type or "octet" in content_type:
+                    audio_bytes = resp.content
+                else:
+                    data = resp.json()
+                    audio_url = data.get("url") or data.get("audio_url", "")
+                    if not audio_url:
+                        logger.error(
+                            "Speakatoo: no audio URL in response",
+                            extra={"session_id": self.session_id},
+                        )
+                        return False
+                    audio_resp = await client.get(audio_url, timeout=30.0)
+                    audio_bytes = audio_resp.content
+
+            if not audio_bytes:
+                return False
+
+            loop = asyncio.get_running_loop()
+            pcm_bytes = await loop.run_in_executor(
+                None, lambda: _mp3_bytes_to_pcm(audio_bytes)
+            )
+            if pcm_bytes is None:
+                return False
+
+            logger.info(
+                "Speakatoo TTS success (%d bytes audio)",
+                len(audio_bytes),
+                extra={"session_id": self.session_id},
+            )
+            return await self._stream_pcm(pcm_bytes)
+
+        except Exception as exc:
+            logger.error(
+                "Speakatoo TTS error: %s", exc,
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+    # ------------------------------------------------------------------
+    # edge-tts  (fallback 1 for Dari, configurable for Pashto)
     # ------------------------------------------------------------------
 
     async def _synthesize_edge_tts(self, text: str) -> bool:
-        """Fallback to Microsoft edge-tts neural voice."""
+        """Microsoft edge-tts neural voice (free, no API key required)."""
         if self._cancel_event.is_set():
             return False
 
@@ -315,7 +777,7 @@ class VoiceTTSHandler:
             import edge_tts
             import av
         except ImportError:
-            return await self._synthesize_gtts(text)
+            return False
 
         try:
             communicate = edge_tts.Communicate(text, voice=self._edge_tts_voice)
@@ -327,53 +789,25 @@ class VoiceTTSHandler:
                     return False
 
             if not audio_bytes:
-                return await self._synthesize_gtts(text)
+                return False
 
-            pcm_bytes = await asyncio.get_running_loop().run_in_executor(
-                None, lambda: self._decode_mp3(audio_bytes)
+            loop = asyncio.get_running_loop()
+            pcm_bytes = await loop.run_in_executor(
+                None, lambda: _mp3_bytes_to_pcm(audio_bytes)
             )
             if pcm_bytes is None:
-                return await self._synthesize_gtts(text)
+                return False
 
+            logger.info(
+                "edge-tts success (voice=%s)", self._edge_tts_voice,
+                extra={"session_id": self.session_id},
+            )
             return await self._stream_pcm(pcm_bytes)
 
         except Exception as exc:
             logger.error("edge-tts error: %s", exc,
                          extra={"session_id": self.session_id})
-            return await self._synthesize_gtts(text)
-
-    def _decode_mp3(self, audio_bytes: bytes) -> "bytes | None":
-        """Decode MP3 → float32 PCM, resample to TTS_RATE, return int16 bytes."""
-        try:
-            import av
-            buf       = io.BytesIO(audio_bytes)
-            container = av.open(buf)
-            resampler = av.audio.resampler.AudioResampler(
-                format="s16", layout="mono", rate=TTS_RATE
-            )
-            frames: list = []
-            for frame in container.decode(audio=0):
-                for r in resampler.resample(frame):
-                    frames.append(np.frombuffer(bytes(r.planes[0]), dtype=np.int16))
-            for r in resampler.resample(None):
-                frames.append(np.frombuffer(bytes(r.planes[0]), dtype=np.int16))
-            container.close()
-
-            if not frames:
-                return None
-
-            pcm = np.concatenate(frames)
-            nz = np.where(np.abs(pcm) > 160)[0]
-            if len(nz):
-                pcm = pcm[nz[0]: nz[-1] + 1]
-
-            f = pcm.astype(np.float32) / 32768.0
-            f = _apply_fade(f, TTS_RATE)
-            return _pcm_to_int16(f)
-
-        except Exception as exc:
-            logger.error("MP3 decode error: %s", exc)
-            return None
+            return False
 
     # ------------------------------------------------------------------
     # gTTS  (fallback 2)
@@ -385,7 +819,7 @@ class VoiceTTSHandler:
         try:
             from gtts import gTTS
         except ImportError:
-            return await self._synthesize_silence(text)
+            return False
 
         try:
             loop = asyncio.get_running_loop()
@@ -401,17 +835,17 @@ class VoiceTTSHandler:
                 return not self._cancel_event.is_set()
 
             pcm_bytes = await loop.run_in_executor(
-                None, lambda: self._decode_mp3(audio_bytes)
+                None, lambda: _mp3_bytes_to_pcm(audio_bytes)
             )
             if pcm_bytes is None:
-                return await self._synthesize_silence(text)
+                return False
 
             return await self._stream_pcm(pcm_bytes)
 
         except Exception as exc:
             logger.error("gTTS error: %s", exc,
                          extra={"session_id": self.session_id})
-            return await self._synthesize_silence(text)
+            return False
 
     # ------------------------------------------------------------------
     # Silence  (last resort)
