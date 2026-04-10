@@ -31,11 +31,15 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "mms_tts_model": "facebook/mms-tts-prs",
         "mms_tts_sample_rate": 16_000,
 
-        # TTS — edge-tts compatibility values (not used in strict Dari runtime)
+        # TTS — ElevenLabs (primary, API-based)
+        "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_DARI_MALE",   ""),
+        "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_DARI_FEMALE", ""),
+
+        # TTS — edge-tts (fallback)
         "edge_tts_voice": os.getenv("TTS_VOICE_DARI", "fa-IR-DilaraNeural"),
         "edge_tts_voice_male": "fa-IR-FaridNeural",
 
-        # TTS — gTTS compatibility value (not used in strict Dari runtime)
+        # TTS — gTTS (last resort fallback)
         "gtts_language": "fa",
 
         # LLM sentence boundaries (Arabic punctuation added)

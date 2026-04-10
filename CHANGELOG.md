@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.5.0] - 2026-04-10
+
+### Added — ElevenLabs TTS for Dari (male & female)
+
+- **Added** ElevenLabs as primary TTS engine for Dari language (previously Dari used MMS-TTS strict mode only).
+- **Added** `ELEVENLABS_VOICE_ID_DARI_MALE` and `ELEVENLABS_VOICE_ID_DARI_FEMALE` env vars in `.env` and `config.py` — defaults to Adam / Bella multilingual; override with a cloned Afghan Dari voice for best accent quality.
+- **Changed** `backend/tts.py`: Dari TTS path is now `_synthesize_dari()` — ElevenLabs first, falls back to MMS Afghan Dari (`facebook/mms-tts-prs`) if ElevenLabs fails, then silence.
+- **Result**: Dari and Pashto now both use ElevenLabs for male/female voice selection with the same fallback safety net.
+
+---
+
 ## [2.4.0] - 2026-04-10
 
 ### Fixed — Afghan Dari TTS (not Iranian Persian)

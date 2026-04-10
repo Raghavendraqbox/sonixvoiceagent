@@ -454,14 +454,23 @@ class VoiceTTSHandler:
         if self._language == "pashto":
             return await self._synthesize_pashto(text)
 
-        # Dari strict mode: always use MMS Dari model, never edge/gTTS Persian.
-        result = await self._synthesize_mms(text)
-        if result:
+        # Dari: ElevenLabs primary → MMS Afghan Dari fallback → silence
+        return await self._synthesize_dari(text)
+
+    # ------------------------------------------------------------------
+    # Dari — ElevenLabs primary, MMS Afghan Dari fallback
+    # ------------------------------------------------------------------
+
+    async def _synthesize_dari(self, text: str) -> bool:
+        """Try ElevenLabs first, fall back to MMS Afghan Dari (facebook/mms-tts-prs)."""
+        if await self._synthesize_elevenlabs(text):
             return True
-        logger.error(
-            "Dari MMS-TTS failed; strict Dari mode prevents non-Dari fallback",
+        logger.info(
+            "Dari: ElevenLabs failed, falling back to MMS Afghan Dari",
             extra={"session_id": self.session_id},
         )
+        if await self._synthesize_mms(text):
+            return True
         return await self._synthesize_silence(text)
 
     # ------------------------------------------------------------------
