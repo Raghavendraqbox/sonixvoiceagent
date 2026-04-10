@@ -5,6 +5,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.2.0] - 2026-04-10
+
+### Fixed — ElevenLabs in-app noise diagnostics and decode integrity
+
+- **Fixed** MP3 decode path in `backend/tts.py`: replaced raw PyAV plane-byte extraction with `to_ndarray()` frame extraction to avoid padding/stride artefacts that can sound like hiss/static in app playback.
+- **Added** optional debug A/B audio dump capability for ElevenLabs:
+  - `DEBUG_TTS_DUMP_AUDIO` (default `false`)
+  - `DEBUG_TTS_DUMP_DIR` (default `./debug_audio`)
+- **Added** paired debug outputs per synthesis:
+  - source API audio (`.mp3`)
+  - decoded playback audio (`.decoded.wav`, 24kHz mono int16)
+- **Added** `ELEVENLABS_NOISE_DEBUG_TEST_PLAN.md` with a detailed validation workflow, result matrix, and cleanup guidance.
+
+### Changed — Strict Dari enforcement
+
+- **Enforced** Dari TTS as **Dari-only** runtime behavior:
+  - Dari now always uses `facebook/mms-tts-fas`
+  - Dari no longer falls back to edge-tts/gTTS Persian voices
+  - On MMS failure, strict fallback is silence (to prevent language drift)
+- **Updated** TTS startup/health descriptions in `backend/main.py` to reflect strict Dari + configurable Pashto behavior.
+
+### Docs / Config cleanup
+
+- **Updated** `.env.example` comments to clearly state strict Dari runtime behavior and mark `fa-IR` values as compatibility/testing-only.
+- **Updated** `backend/config.py` comments for `fa`/`fa-IR` fields to avoid implying non-Dari fallback behavior in strict mode.
+
+---
+
 ## [2.1.0] - 2026-04-09
 
 ### Fixed — ASR (Soniox v2 API migration)

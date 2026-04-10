@@ -22,18 +22,18 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name_native": "دری",
 
         # ASR
-        "soniox_language_code": "fa",    # Soniox: Persian covers Dari
-        "whisper_language": "fa",         # faster-whisper language code
+        "soniox_language_code": "fa",    # Shared Persian code path; Dari mode is app-level
+        "whisper_language": "fa",         # Whisper language code for Dari/Persian family
 
         # TTS — Meta MMS-TTS (primary, local GPU)
         "mms_tts_model": "facebook/mms-tts-fas",   # Afghan Persian / Dari (ISO 639-3: fas)
         "mms_tts_sample_rate": 16_000,
 
-        # TTS — edge-tts (fallback 1, Microsoft Azure)
+        # TTS — edge-tts compatibility values (not used in strict Dari runtime)
         "edge_tts_voice": os.getenv("TTS_VOICE_DARI", "fa-IR-DilaraNeural"),   # female
         "edge_tts_voice_male": "fa-IR-FaridNeural",
 
-        # TTS — gTTS (fallback 2, Google)
+        # TTS — gTTS compatibility value (not used in strict Dari runtime)
         "gtts_language": "fa",
 
         # LLM sentence boundaries (Arabic punctuation added)
@@ -289,6 +289,14 @@ class TTSConfig:
     narakeet_api_key:   str = field(default_factory=lambda: os.getenv("NARAKEET_API_KEY",   ""))
     micmonster_api_key: str = field(default_factory=lambda: os.getenv("MICMONSTER_API_KEY", ""))
     speakatoo_api_key:  str = field(default_factory=lambda: os.getenv("SPEAKATOO_API_KEY",  ""))
+
+    # ---------------------------------------------------------------------------
+    # Debug audio dumps (optional, disabled by default)
+    # ---------------------------------------------------------------------------
+    debug_dump_audio: bool = os.getenv("DEBUG_TTS_DUMP_AUDIO", "false").strip().lower() in (
+        "1", "true", "yes", "on"
+    )
+    debug_dump_dir: str = os.getenv("DEBUG_TTS_DUMP_DIR", "./debug_audio")
 
 
 # ---------------------------------------------------------------------------

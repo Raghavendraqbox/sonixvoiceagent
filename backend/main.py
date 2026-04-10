@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI):
     logger.info("Supported        : %s", ", ".join(SUPPORTED_LANGUAGES))
     logger.info("ASR  : Soniox (%s) → Whisper large-v3 fallback", config.soniox.model)
     logger.info("LLM  : Ollama %s @ %s", config.ollama.model, config.ollama.base_url)
-    logger.info("TTS  : MMS-TTS (local GPU) → edge-tts → gTTS")
+    logger.info("TTS  : Dari=MMS-TTS strict | Pashto=configurable engine chain")
     logger.info("Audio: input 16kHz | TTS output 24kHz")
     logger.info("=" * 60)
     session_manager.initialize_rag()
@@ -135,7 +135,7 @@ async def health():
             else "whisper-large-v3 (local GPU)"
         ),
         "llm": f"ollama/{config.ollama.model} @ {config.ollama.base_url}",
-        "tts": "mms-tts (local GPU) → edge-tts → gTTS (24kHz output)",
+        "tts": "dari: mms-tts strict | pashto: configurable chain (24kHz output)",
     }
 
 

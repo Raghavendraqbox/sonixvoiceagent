@@ -177,7 +177,7 @@ You should see:
   "status": "ok",
   "asr": "soniox/stt-rt-v4",
   "llm": "ollama/qwen2.5:7b @ http://localhost:11434",
-  "tts": "mms-tts (local GPU) → edge-tts → gTTS (24kHz output)"
+  "tts": "dari: mms-tts strict | pashto: configurable chain (24kHz output)"
 }
 ```
 

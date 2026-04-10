@@ -211,7 +211,7 @@ Expected response:
   "default_language": "dari",
   "asr": "whisper-large-v3 (local GPU)",
   "llm": "ollama/qwen2.5:7b @ http://localhost:11434",
-  "tts": "mms-tts (local GPU) → edge-tts → gTTS (24kHz output)"
+  "tts": "dari: mms-tts strict | pashto: configurable chain (24kHz output)"
 }
 ```
 

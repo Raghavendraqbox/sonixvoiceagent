@@ -2,11 +2,9 @@
 tts.py — Multi-language TTS handler for Dari and Pashto.
 
 Priority chain per language:
-  Dari (unchanged):
+  Dari (strict):
     1. facebook/mms-tts-fas  (local GPU)
-    2. edge-tts  fa-IR-DilaraNeural / fa-IR-FaridNeural
-    3. gTTS  fa
-    4. Silence
+    2. Silence
 
   Pashto (configurable via PASHTO_TTS_ENGINE_PRIORITY):
     Engines available:
@@ -30,9 +28,13 @@ Cancel semantics:
 """
 
 import asyncio
+import datetime
 import io
 import logging
+import os
 import threading
+import wave
+from pathlib import Path
 from typing import Callable, Awaitable
 
 import numpy as np
@@ -44,6 +46,53 @@ logger = logging.getLogger(__name__)
 TTS_RATE = config.tts.sample_rate      # 24 000 Hz — browser playback rate
 
 AudioSendCallback = Callable[[bytes], Awaitable[None]]
+
+
+def _debug_dump_audio_pair(
+    provider: str,
+    session_id: str,
+    source_audio: bytes,
+    source_ext: str,
+    decoded_pcm: bytes,
+) -> None:
+    """
+    Optionally dump source+decoded audio to disk for A/B debugging.
+    Disabled unless DEBUG_TTS_DUMP_AUDIO=true.
+    """
+    if not config.tts.debug_dump_audio:
+        return
+    try:
+        out_dir = Path(config.tts.debug_dump_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
+        sid = "".join(ch for ch in session_id if ch.isalnum() or ch in ("-", "_"))[:32] or "session"
+        stem = f"{provider}-{sid}-{timestamp}"
+
+        source_path = out_dir / f"{stem}.{source_ext.lstrip('.')}"
+        wav_path = out_dir / f"{stem}.decoded.wav"
+
+        source_path.write_bytes(source_audio)
+
+        # Save decoded PCM as a standard WAV for direct playback/comparison.
+        with wave.open(str(wav_path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)   # int16
+            wf.setframerate(TTS_RATE)
+            wf.writeframes(decoded_pcm)
+
+        logger.info(
+            "Debug audio dump saved: %s and %s",
+            source_path,
+            wav_path,
+            extra={"session_id": session_id},
+        )
+    except Exception as exc:
+        logger.warning(
+            "Debug audio dump failed: %s",
+            exc,
+            extra={"session_id": session_id},
+        )
 
 # ---------------------------------------------------------------------------
 # MMS-TTS per-language model cache — loaded once per model_id
@@ -240,12 +289,37 @@ def _mp3_bytes_to_pcm(audio_bytes: bytes, denoise: bool = False) -> "bytes | Non
         resampler = av.audio.resampler.AudioResampler(
             format="s16", layout="mono", rate=TTS_RATE
         )
-        frames: list = []
+        frames: list[np.ndarray] = []
         for frame in container.decode(audio=0):
             for r in resampler.resample(frame):
-                frames.append(np.frombuffer(bytes(r.planes[0]), dtype=np.int16))
+                # Use ndarray extraction instead of raw plane bytes.
+                # Raw plane buffers may include padding/stride bytes and can
+                # introduce audible static when interpreted as contiguous PCM.
+                arr = r.to_ndarray()
+                if arr is None:
+                    continue
+                if arr.ndim == 2:
+                    # Expected shape for mono is (1, samples).
+                    # If channel axis differs, flatten safely to 1-D PCM.
+                    if arr.shape[0] == 1:
+                        arr = arr[0]
+                    elif arr.shape[1] == 1:
+                        arr = arr[:, 0]
+                    else:
+                        arr = arr.reshape(-1)
+                frames.append(arr.astype(np.int16, copy=False))
         for r in resampler.resample(None):
-            frames.append(np.frombuffer(bytes(r.planes[0]), dtype=np.int16))
+            arr = r.to_ndarray()
+            if arr is None:
+                continue
+            if arr.ndim == 2:
+                if arr.shape[0] == 1:
+                    arr = arr[0]
+                elif arr.shape[1] == 1:
+                    arr = arr[:, 0]
+                else:
+                    arr = arr.reshape(-1)
+            frames.append(arr.astype(np.int16, copy=False))
         container.close()
 
         if not frames:
@@ -291,11 +365,9 @@ class VoiceTTSHandler:
     """
     Synthesizes Dari or Pashto text to PCM audio and streams it chunk-by-chunk.
 
-    Dari:
+    Dari (strict):
       Primary  : facebook/mms-tts-fas (local GPU)
-      Fallback1: edge-tts  fa-IR-DilaraNeural / fa-IR-FaridNeural
-      Fallback2: gTTS  fa
-      Fallback3: Silence
+      Fallback : Silence
 
     Pashto (order set by PASHTO_TTS_ENGINE_PRIORITY):
       mms        — facebook/mms-tts-pbt (local GPU)
@@ -329,10 +401,11 @@ class VoiceTTSHandler:
         self._language_display: str = lang_cfg["display_name"]
         self._lang_cfg              = lang_cfg
 
-        # Female voice → use edge-tts as primary (Dari behaviour unchanged)
+        # Dari must remain strict Dari-only (MMS model). Keep voice metadata for
+        # Pashto/cloud providers, but never switch Dari to non-Dari engines.
         if voice == "female":
             self._edge_tts_voice: str       = lang_cfg["edge_tts_voice"]
-            self._use_edge_primary: bool    = True
+            self._use_edge_primary: bool    = False
         else:
             self._edge_tts_voice: str       = lang_cfg.get("edge_tts_voice_male", lang_cfg["edge_tts_voice"])
             self._use_edge_primary: bool    = False
@@ -374,10 +447,15 @@ class VoiceTTSHandler:
         if self._language == "pashto":
             return await self._synthesize_pashto(text)
 
-        # Dari — original logic unchanged
-        if self._use_edge_primary:
-            return await self._synthesize_edge_tts(text)
-        return await self._synthesize_mms(text)
+        # Dari strict mode: always use MMS Dari model, never edge/gTTS Persian.
+        result = await self._synthesize_mms(text)
+        if result:
+            return True
+        logger.error(
+            "Dari MMS-TTS failed; strict Dari mode prevents non-Dari fallback",
+            extra={"session_id": self.session_id},
+        )
+        return await self._synthesize_silence(text)
 
     # ------------------------------------------------------------------
     # Pashto — walk the engine priority list
@@ -555,6 +633,14 @@ class VoiceTTSHandler:
             )
             if pcm_bytes is None:
                 return False
+
+            _debug_dump_audio_pair(
+                provider="elevenlabs",
+                session_id=self.session_id,
+                source_audio=audio_bytes,
+                source_ext="mp3",
+                decoded_pcm=pcm_bytes,
+            )
 
             logger.info(
                 "ElevenLabs TTS success (%d bytes audio)",
