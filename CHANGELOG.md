@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.8.0] - 2026-04-11
+
+### Changed — Two-column UI layout + conversation display fix
+
+#### Side-by-side layout
+- **Redesigned** page layout from single vertical column to a two-panel side-by-side design:
+  - **Left panel**: Conversation transcript (live during session, persists after stopping) + Download Transcript button
+  - **Right panel**: Language selector (Dari / Pashto), Voice selector (Male / Female), status orb, Start/Stop button, mic level meter, status bar
+- Conversation log now uses `max-height: calc(100vh - 260px)` — fills available screen height naturally without overflowing
+- Download Transcript button is full-width inside the left panel, only appears after stopping
+- Responsive: stacks to single column (controls above, conversation below) on screens narrower than 700px
+
+#### Conversation visibility fix
+- **Fixed** double-bubble bug: `tts_start` was always calling `startBotBubble()`, creating a second empty bot bubble even when `bot_text_fragment` had already opened one. Now guarded with `if (!currentBotMsgEl)` so only one bubble per turn is created.
+- **Added** `— Session ended —` divider at the bottom of the conversation log when a session stops, making it clear the chat history is complete
+- Conversation header dot indicator turns green while session is active
+
+---
+
 ## [2.7.0] - 2026-04-10
 
 ### Fixed — Dari LLM response quality (natural Afghan Dari, no Iranian Persian mixing)
