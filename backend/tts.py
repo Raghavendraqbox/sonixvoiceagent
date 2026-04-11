@@ -393,6 +393,7 @@ class VoiceTTSHandler:
         self._cancel_event = cancel_event
         self._language     = language.lower()
         self._voice        = voice.lower()
+        self.last_pcm_bytes_sent: int = 0  # tracks bytes sent in last synthesis
 
         lang_cfg = get_language_config(language)
         self._mms_model_id: str     = lang_cfg["mms_tts_model"]
@@ -1087,7 +1088,9 @@ class VoiceTTSHandler:
         for i in range(0, len(pcm_bytes), bpc):
             if self._cancel_event.is_set():
                 return False
-            await self._send_audio(pcm_bytes[i: i + bpc])
+            chunk = pcm_bytes[i: i + bpc]
+            await self._send_audio(chunk)
+            self.last_pcm_bytes_sent += len(chunk)
             await asyncio.sleep(0)
         return not self._cancel_event.is_set()
 

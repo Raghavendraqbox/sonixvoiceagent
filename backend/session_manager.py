@@ -243,7 +243,14 @@ class SessionManager:
         send_json_cb: JsonSendCallback,
         text: str,
     ) -> None:
-        """Synthesize and play a hardcoded string without the LLM."""
+        """Synthesize and play a hardcoded string without the LLM.
+
+        After all audio bytes are sent we wait for the client's playback
+        duration to finish before returning.  Without this wait the server
+        immediately starts the next synthesis while the client is still playing
+        the previous message, causing audible overlap / interruption.
+        """
+        session.tts_handler.last_pcm_bytes_sent = 0   # reset byte counter
         session.tts_orchestrator = TTSOrchestrator(
             session_id=session.session_id,
             tts_handler=session.tts_handler,
@@ -261,6 +268,14 @@ class SessionManager:
             orch_task.cancel()
         await send_json_cb({"type": "tts_end"})
         session.memory.add_bot_turn(text)
+
+        # Wait for the client to finish playing the audio it received.
+        # PCM is 24 000 Hz, 16-bit mono → 48 000 bytes per second.
+        bytes_sent = session.tts_handler.last_pcm_bytes_sent
+        if bytes_sent > 0:
+            playback_secs = bytes_sent / (24_000 * 2)
+            await asyncio.sleep(playback_secs + 0.4)   # +400 ms safety buffer
+
         # Drain any transcripts that arrived while the bot was speaking —
         # these are almost always microphone echo of the TTS output itself.
         self._drain_echo_transcripts(session)
@@ -326,17 +341,12 @@ class SessionManager:
             if not session.greeted:
                 session.greeted = True
 
-                # Step 1 — Language selection prompt
+                # Step 1 — Greeting / language confirmation
                 await self._play_hardcoded(
                     session, send_json_cb, lang_cfg["greeting"]
                 )
 
-                # Step 2 — Promotional announcement (auto-plays, no user input needed)
-                ivr_promo = lang_cfg.get("ivr_promo", "")
-                if ivr_promo:
-                    await self._play_hardcoded(session, send_json_cb, ivr_promo)
-
-                # Steps 3-4 — Welcome greeting + main menu (auto-plays)
+                # Step 2 — Welcome + main menu (plays after greeting finishes)
                 ivr_main_menu = lang_cfg.get("ivr_main_menu", "")
                 if ivr_main_menu:
                     await self._play_hardcoded(session, send_json_cb, ivr_main_menu)

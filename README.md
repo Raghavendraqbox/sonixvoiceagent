@@ -12,10 +12,9 @@ Soniox ASR  ──── Dari / Pashto Speech-to-Text ────────�
 Qwen2.5 via Ollama  ── Dari / Pashto LLM response ─────────┤
     │  (open-source, runs on your GPU)                      │
     ▼  Text (streamed sentence by sentence)                 │
-Meta MMS-TTS  ── Dari / Pashto Neural Speech ───────────────┘
-    │  facebook/mms-tts-prs (Dari)
-    │  facebook/mms-tts-pbt (Pashto)
-    │  (fallback: edge-tts → gTTS)
+ElevenLabs / Meta MMS-TTS  ── Neural Speech ───────────────┘
+    │  Dari  : facebook/mms-tts-prs (local GPU)
+    │  Pashto: ElevenLabs → edge-tts → gTTS (configurable priority)
     ▼  PCM 24kHz (WebSocket binary)
 Browser Speaker
 ```
@@ -164,11 +163,11 @@ python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
 You should see:
 ```
 Dari & Pashto Voice AI Agent starting…
-Default language : dari
+Default language : pashto
 Supported        : dari, pashto
 ASR  : Soniox (stt-rt-v4) → Whisper large-v3 fallback
-LLM  : Ollama qwen2.5:7b @ http://localhost:11434
-TTS  : MMS-TTS (local GPU) → edge-tts → gTTS
+LLM  : Ollama qwen2.5:32b @ http://localhost:11434
+TTS  : Dari=ElevenLabs→MMS(prs) fallback | Pashto=ElevenLabs→edge→gTTS
 Server ready.
 ```
 
@@ -208,12 +207,14 @@ Expected response:
 {
   "status": "ok",
   "supported_languages": ["dari", "pashto"],
-  "default_language": "dari",
-  "asr": "whisper-large-v3 (local GPU)",
-  "llm": "ollama/qwen2.5:7b @ http://localhost:11434",
+  "default_language": "pashto",
+  "asr": "soniox/stt-rt-v4",
+  "llm": "ollama/qwen2.5:32b @ http://localhost:11434",
   "tts": "dari: mms-tts strict | pashto: configurable chain (24kHz output)"
 }
 ```
+
+> The `asr` field shows `soniox/stt-rt-v4` when `SONIOX_API_KEY` is set, or `whisper-large-v3 (local GPU)` when it is not.
 
 List available languages:
 ```bash
@@ -229,20 +230,37 @@ All settings are controlled via environment variables. Copy `.env.example` to `.
 ```env
 # ── Language ──────────────────────────────────────────────────────────────
 # Server-side default language (also selectable per-session in the UI)
-LANGUAGE=dari                   # Options: dari | pashto
+LANGUAGE=pashto                 # Options: dari | pashto
 
 # ── ASR (Speech-to-Text) ──────────────────────────────────────────────────
 # Optional: Soniox API key for best accuracy
 # Leave empty to use Whisper large-v3 locally (no API key needed)
 # Get a free key at: https://soniox.com/dashboard
-SONIOX_API_KEY=
+SONIOX_API_KEY=your-soniox-key-here
 SONIOX_MODEL=stt-rt-v4          # Current recommended Soniox model
 
 # ── LLM (Language Model) ──────────────────────────────────────────────────
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:7b         # Change to match what you pulled in Step 7
+OLLAMA_MODEL=qwen2.5:32b        # Change to match what you pulled in Step 7
 OLLAMA_TEMPERATURE=0.7
 OLLAMA_MAX_TOKENS=150
+
+# ── TTS — ElevenLabs (primary for Pashto) ─────────────────────────────────
+# Get a key at: https://elevenlabs.io
+ELEVENLABS_API_KEY=your-elevenlabs-key-here
+
+# Pashto voice IDs (get from elevenlabs.io/voice-library)
+ELEVENLABS_VOICE_ID_PASHTO_MALE=pNInz6obpgDQGcFmaJgB
+ELEVENLABS_VOICE_ID_PASHTO_FEMALE=EXAVITQu4vr4xnSDxMaL
+
+# Dari voice IDs
+ELEVENLABS_VOICE_ID_DARI_MALE=pNInz6obpgDQGcFmaJgB
+ELEVENLABS_VOICE_ID_DARI_FEMALE=EXAVITQu4vr4xnSDxMaL
+
+# ── Pashto TTS engine priority ────────────────────────────────────────────
+# Comma-separated list tried in order until one succeeds.
+# Options: elevenlabs | mms | edge | gtts
+PASHTO_TTS_ENGINE_PRIORITY=elevenlabs,edge,gtts
 
 # ── TTS voices (edge-tts fallback — optional overrides) ───────────────────
 # Dari voices (fa-IR locale):
@@ -325,16 +343,34 @@ To enable Soniox:
 
 ## 9. TTS Voices
 
-### Primary: Meta MMS-TTS (local GPU — no internet required)
+### Dari — Primary: Meta MMS-TTS (local GPU, no internet required)
 
-| Language | Model | Type |
-|----------|-------|------|
-| Dari | `facebook/mms-tts-prs` | Afghan Persian VITS |
-| Pashto | `facebook/mms-tts-pbt` | Southern Pashto VITS |
+Dari uses `facebook/mms-tts-prs` (Afghan Persian VITS) strictly. The model downloads automatically from HuggingFace (~460 MB) on first use and requires `uroman` for romanisation (installed via `requirements.txt`).
 
-Models download automatically from HuggingFace (~460 MB each) on first use. Both models require `uroman` for romanisation — installed automatically via `requirements.txt`.
+### Pashto — Configurable priority chain
 
-### Fallback 1: edge-tts (Microsoft Azure — free, internet required)
+The Pashto TTS engine is selected via `PASHTO_TTS_ENGINE_PRIORITY` in `.env`. Engines are tried in order until one succeeds:
+
+| Engine | Key | Notes |
+|--------|-----|-------|
+| `elevenlabs` | `ELEVENLABS_API_KEY` | Primary — highest quality, requires internet |
+| `mms` | — | `facebook/mms-tts-pps`, local GPU, no internet |
+| `edge` | — | Microsoft Azure neural voices, free, internet required |
+| `gtts` | — | Google TTS (`fa` locale), last resort |
+
+Default priority: `elevenlabs,edge,gtts`
+
+### ElevenLabs voices (primary for Pashto)
+
+Set voice IDs in `.env` (get voice IDs from [elevenlabs.io/voice-library](https://elevenlabs.io/voice-library)):
+```env
+ELEVENLABS_VOICE_ID_PASHTO_MALE=pNInz6obpgDQGcFmaJgB
+ELEVENLABS_VOICE_ID_PASHTO_FEMALE=EXAVITQu4vr4xnSDxMaL
+ELEVENLABS_VOICE_ID_DARI_MALE=pNInz6obpgDQGcFmaJgB
+ELEVENLABS_VOICE_ID_DARI_FEMALE=EXAVITQu4vr4xnSDxMaL
+```
+
+### edge-tts fallback voices
 
 | Language | Female Voice | Male Voice |
 |----------|-------------|------------|
@@ -347,29 +383,32 @@ TTS_VOICE_DARI=fa-IR-FaridNeural      # Switch to male Dari voice
 TTS_VOICE_PASHTO=ps-AF-GulNawazNeural # Switch to male Pashto voice
 ```
 
-### Fallback 2: gTTS (Google TTS — free, internet required)
+### gTTS (last resort)
 Uses Persian (`fa`) for both languages as the closest available Google voice.
 
 ---
 
 ## 10. Adding Your Own Knowledge Base
 
-The agent uses RAG (Retrieval-Augmented Generation) to answer questions from a custom knowledge base. By default it contains Qobox company information in English, Dari, and Pashto.
+The agent uses RAG (Retrieval-Augmented Generation) to answer questions from a custom knowledge base. The `docs/` folder is empty by default — add your own `.txt` files to give the agent domain knowledge.
 
 To add your own content:
 
-1. Create a `.txt` file in English (the LLM will respond in the user's language):
+1. Create a `.txt` file (English works well; the LLM responds in the caller's language):
 
 ```
-# my_company.txt
-Our company is XYZ. We provide software testing services.
-Contact us at info@xyz.com or call +1-555-000-0000.
+# etisalat_packages.txt
+Etisalat Afghanistan offers the following internet packages:
+- Daily 1GB: 20 AFN
+- Weekly 5GB: 80 AFN
+- Monthly 20GB: 250 AFN
+Contact: dial 888
 ```
 
 2. Place the file in the `docs/` folder:
 
 ```bash
-cp my_company.txt docs/
+cp etisalat_packages.txt docs/
 ```
 
 3. Delete the cached FAISS index so it rebuilds:
@@ -464,6 +503,11 @@ The `uroman` package is required for Dari (`facebook/mms-tts-prs`) and Pashto (`
 ### Port already in use
 
 ```bash
+fuser -k 8000/tcp
+```
+
+Or if `lsof` is available:
+```bash
 lsof -i :8000
 kill -9 <PID>
 ```
@@ -471,6 +515,17 @@ kill -9 <PID>
 ---
 
 ## 12. Architecture Deep Dive
+
+### IVR intro sequence (first turn only)
+
+On the caller's first utterance, the agent plays a hardcoded IVR intro — no LLM involved:
+
+```
+1. Greeting     — language confirmation ("Welcome to Etisalat…")
+2. Main menu    — 9-option menu read aloud in full
+```
+
+Each message plays sequentially and waits for the client to finish playing before the next begins. After the menu, control passes to the LLM for all further turns.
 
 ### How a conversation turn works
 
@@ -485,8 +540,8 @@ kill -9 <PID>
 7. LLM (Qwen2.5)    → receives final transcript + history + RAG context
                        system prompt instructs: respond in Dari/Pashto script
                        streams tokens; each sentence dispatches to TTS
-8. TTS (MMS-TTS)    → facebook/mms-tts-prs (Dari) or mms-tts-pbt (Pashto)
-                       uroman romanises input text automatically
+8. TTS               → Pashto: ElevenLabs → edge-tts → gTTS (priority chain)
+                       Dari: facebook/mms-tts-prs (local GPU, strict)
                        streams 60ms PCM chunks (24 kHz) back over WebSocket
 9. Browser speaker  → Web Audio API schedules chunks back-to-back; gapless
 ```
@@ -530,19 +585,18 @@ sonixvoiceagent/
 │   ├── main.py             FastAPI app + WebSocket (?language=dari/pashto)
 │   ├── asr.py              ASRHandler: Soniox → Whisper large-v3 fallback
 │   ├── llm.py              VoiceLLMClient: Ollama streaming, language-aware prompts
-│   ├── tts.py              VoiceTTSHandler: MMS-TTS → edge-tts → gTTS
-│   ├── session_manager.py  Per-session state, language wiring, conversation loop
+│   ├── tts.py              VoiceTTSHandler: ElevenLabs / MMS-TTS / edge-tts / gTTS
+│   ├── session_manager.py  Per-session state, IVR flow, conversation loop
 │   ├── config.py           LANGUAGE_CONFIGS for Dari/Pashto + all settings
-│   ├── memory.py           Sliding-window conversation history (8 turns)
+│   ├── memory.py           Sliding-window conversation history (20 turns)
 │   ├── rag.py              FAISS RAG retriever + embeddings
 │   └── faiss_index/        Auto-generated FAISS index (do not commit)
 │
 ├── frontend/
 │   └── index.html          English UI: language selector + full-duplex voice
 │
-├── docs/
-│   ├── qobox_company_info.txt   Qobox KB in English + Dari + Pashto
-│   └── qobox_telugu.txt         Legacy Telugu KB (still indexed by RAG)
+├── docs/                   Place your .txt knowledge base files here
+│                           (empty by default — add your own domain content)
 │
 ├── .claude/
 │   └── settings.local.json      Claude Code project permissions
@@ -564,8 +618,9 @@ sonixvoiceagent/
 - **Streaming pipeline** — first audio response within ~200ms of speech ending
 - **Open-source LLM** — Qwen2.5 runs locally on GPU via Ollama; zero cloud AI cost
 - **RAG** — bilingual knowledge base (English + Dari + Pashto) embedded in FAISS
-- **Conversation memory** — remembers the last 8 turns per session
-- **Robust fallbacks** — MMS-TTS → edge-tts → gTTS | Soniox → Whisper | every component has a fallback
+- **Conversation memory** — remembers the last 20 turns per session
+- **IVR intro** — hardcoded greeting + 9-option menu plays on first turn; LLM handles all subsequent turns
+- **Robust fallbacks** — ElevenLabs → edge-tts → gTTS (Pashto) | MMS-TTS strict (Dari) | Soniox → Whisper | every component has a fallback
 
 ---
 
@@ -573,8 +628,9 @@ sonixvoiceagent/
 
 - **ASR**: [Soniox](https://soniox.com) — streaming Dari/Pashto speech recognition
 - **LLM**: [Ollama](https://ollama.com) + [Qwen2.5](https://qwenlm.github.io/) — open-source multilingual LLM
-- **TTS**: [Meta MMS-TTS](https://huggingface.co/facebook/mms-tts) — VITS models for Dari & Pashto
-- **TTS fallback**: [edge-tts](https://github.com/rany2/edge-tts) — Microsoft neural voices
+- **TTS (primary)**: [ElevenLabs](https://elevenlabs.io) — high-quality Pashto/Dari neural voices
+- **TTS (local)**: [Meta MMS-TTS](https://huggingface.co/facebook/mms-tts) — VITS models for Dari (facebook/mms-tts-prs)
+- **TTS (fallback)**: [edge-tts](https://github.com/rany2/edge-tts) — Microsoft neural voices
 - **RAG**: [FAISS](https://github.com/facebookresearch/faiss) + [sentence-transformers](https://www.sbert.net/)
 - **uroman**: [USC ISI uroman](https://github.com/isi-nlp/uroman) — script romanisation for MMS-TTS
 
