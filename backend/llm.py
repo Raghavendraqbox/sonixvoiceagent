@@ -113,10 +113,15 @@ class VoiceLLMClient:
             if rag_context:
                 parts.append(rag_context)
 
-        # Conversation history
+        # Full conversation history — every turn since the call started
         history = memory.format_history()
         if history:
-            parts.append(f"Conversation so far:\n{history}")
+            parts.append(
+                "FULL CONVERSATION HISTORY (complete record from the start of this call — "
+                "read this carefully, maintain full context, do not repeat information "
+                "already exchanged, and do not ask for anything the user has already provided):\n"
+                + history
+            )
 
         # Current turn — "Bot:" suffix primes the model to continue
         parts.append(f"User: {user_query}\nBot:")

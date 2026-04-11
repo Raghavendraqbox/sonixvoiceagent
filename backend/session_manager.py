@@ -319,12 +319,29 @@ class SessionManager:
             await send_json_cb({"type": "transcript_final", "text": user_text})
 
             # ----------------------------------------------------------
-            # Phase 0: language-specific greeting (plays exactly once)
+            # Phase 0: Full IVR intro — plays exactly once, code-driven.
+            # Steps 1-4 are hardcoded so the IVR flow is guaranteed
+            # regardless of LLM behavior.
             # ----------------------------------------------------------
             if not session.greeted:
                 session.greeted = True
-                greeting = lang_cfg["greeting"]
-                await self._play_hardcoded(session, send_json_cb, greeting)
+
+                # Step 1 — Language selection prompt
+                await self._play_hardcoded(
+                    session, send_json_cb, lang_cfg["greeting"]
+                )
+
+                # Step 2 — Promotional announcement (auto-plays, no user input needed)
+                ivr_promo = lang_cfg.get("ivr_promo", "")
+                if ivr_promo:
+                    await self._play_hardcoded(session, send_json_cb, ivr_promo)
+
+                # Steps 3-4 — Welcome greeting + main menu (auto-plays)
+                ivr_main_menu = lang_cfg.get("ivr_main_menu", "")
+                if ivr_main_menu:
+                    await self._play_hardcoded(session, send_json_cb, ivr_main_menu)
+
+                # Now wait for the caller's 1-9 menu selection
                 continue
 
             # ----------------------------------------------------------

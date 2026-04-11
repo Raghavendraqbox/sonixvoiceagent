@@ -39,76 +39,118 @@ def _load_faiss():
 # ---------------------------------------------------------------------------
 
 TELECOM_SEED_DOCS: List[str] = [
-    # Bundles
-    "The 400MB hourly data bundle costs $1 and is valid for 1 hour. "
-    "It is the cheapest available bundle for light browsing.",
+    # ---------------------------------------------------------------------------
+    # Etisalat Afghanistan — IVR System 888 — Identity & Assistant Rules
+    # ---------------------------------------------------------------------------
+    "This is the Etisalat Afghanistan IVR voice assistant. The assistant name is Etisalat. "
+    "The IVR system number is 888. The default language is Dari. "
+    "The assistant must never call itself by any other name.",
 
-    "The 1GB daily bundle costs $3 and is valid for 24 hours. "
-    "Good for moderate daily internet usage including social media.",
+    "Etisalat IVR rules: Always follow the IVR flow in order. Do not skip steps. "
+    "Do not invent menu options. Only use the provided menu items. "
+    "The assistant name must always be Etisalat. Default language is Dari unless the user specifies otherwise.",
 
-    "The 5GB weekly bundle costs $10 and is valid for 7 days. "
-    "Recommended for heavy users who stream videos or work remotely.",
+    # ---------------------------------------------------------------------------
+    # IVR Flow — Step by Step
+    # ---------------------------------------------------------------------------
+    "Etisalat IVR Step 1 — Preferred Language: The user selects their preferred language. "
+    "The default language is Dari. If the user does not specify, continue in Dari.",
 
-    "The 20GB monthly bundle costs $30 and is valid for 30 days. "
-    "Best value for month-long high-volume data users.",
+    "Etisalat IVR Step 2 — Promotional Announcement: Play current Etisalat promotions and announcements "
+    "to the user before reaching the main menu.",
 
-    "Unlimited daily bundle costs $5 and offers unlimited data for 24 hours "
-    "with fair-use policy of 10GB at full speed, then throttled to 1Mbps.",
+    "Etisalat IVR Step 3 — Greeting Script: Play the standard Etisalat greeting message. "
+    "In Dari: خوش آمدید به اتصالات. In Pashto: اتصالات ته ښه راغلاست.",
 
-    # Voice and SMS
-    "The standard local call rate is $0.10 per minute. "
-    "International calls vary by destination, starting from $0.20 per minute.",
+    "Etisalat IVR Step 4 — Main Menu: The user must choose one of 9 options. "
+    "Option 1: My Best Offers. "
+    "Option 2: Data Bundles. "
+    "Option 3: Voice Bundles. "
+    "Option 4: Mixed and Other Bundles. "
+    "Option 5: Services. "
+    "Option 6: Package and Migration. "
+    "Option 7: Balance Inquiry. "
+    "Option 8: Further Assistance. "
+    "Option 9: DRM Bundles Deactivation.",
 
-    "SMS bundles: 100 SMS for $1 valid 7 days, 500 SMS for $3 valid 30 days.",
+    # ---------------------------------------------------------------------------
+    # Dialogue Scripts — Dari (دری)
+    # ---------------------------------------------------------------------------
+    "Etisalat Dari greeting (Step 1): خوش آمدید به اتصالات. لطفاً زبان مورد نظر خود را انتخاب کنید. زبان پیش‌فرض دری است.",
 
-    "Roaming packages are available for 50 countries. "
-    "Activate before travel via the app or by calling customer service.",
+    "Etisalat Dari promotion (Step 2): اینجا آخرین پیشنهادات و تبلیغات اتصالات برای شما است.",
 
-    # Account management
-    "To check your balance, dial *123# or log in to the MyTelecom app. "
-    "Balance is updated in real time.",
+    "Etisalat Dari main menu (Step 4): لطفاً یکی از گزینه‌های زیر را انتخاب کنید: "
+    "یک برای بهترین آفرهای من، دو برای بسته‌های انترنت، سه برای بسته‌های مکالمه، "
+    "چهار برای بسته‌های مختلط، پنج برای خدمات، شش برای پکیج و مهاجرت، "
+    "هفت برای پرسش موجودی، هشت برای کمک بیشتر، نه برای غیرفعال کردن بسته‌های DRM.",
 
-    "Top-up options include credit card, debit card, bank transfer, and voucher codes. "
-    "Minimum top-up amount is $1.",
+    # Dari — menu option details
+    "Etisalat گزینه ۱ — بهترین آفرهای من (My Best Offers): بهترین پیشنهادات شخصی‌سازی‌شده برای مشترک بر اساس الگوی استفاده.",
+    "Etisalat گزینه ۲ — بسته‌های انترنت (Data Bundles): بسته‌های داده روزانه، هفتگی و ماهانه اتصالات.",
+    "Etisalat گزینه ۳ — بسته‌های مکالمه (Voice Bundles): بسته‌های مکالمه محلی و بین‌المللی.",
+    "Etisalat گزینه ۴ — بسته‌های مختلط (Mixed & Other Bundles): بسته‌هایی که شامل داده، مکالمه و پیامک هستند.",
+    "Etisalat گزینه ۵ — خدمات (Services): خدمات ارزش افزوده اتصالات شامل موسیقی، بازی و بیشتر.",
+    "Etisalat گزینه ۶ — پکیج و مهاجرت (Package & Migration): تغییر پکیج یا مهاجرت به پلن جدید.",
+    "Etisalat گزینه ۷ — پرسش موجودی (Balance Inquiry): بررسی موجودی حساب، تاریخ انقضا و استفاده.",
+    "Etisalat گزینه ۸ — کمک بیشتر (Further Assistance): اتصال به اپراتور زنده یا پشتیبانی بیشتر.",
+    "Etisalat گزینه ۹ — غیرفعال کردن بسته‌های DRM (DRM Bundles Deactivation): لغو اشتراک بسته‌های DRM فعال.",
 
-    "Auto-renew can be enabled for any recurring bundle. "
-    "You will be notified 24 hours before renewal if the balance is insufficient.",
+    # ---------------------------------------------------------------------------
+    # Dialogue Scripts — Pashto (پښتو)
+    # ---------------------------------------------------------------------------
+    "Etisalat Pashto greeting (Step 1): اتصالات ته ښه راغلاست. مهرباني وکړئ خپله ژبه وټاکئ. د ډیفالټ ژبه دري ده.",
 
-    "Bundle activation is immediate after purchase. "
-    "You will receive an SMS confirmation within 30 seconds.",
+    "Etisalat Pashto promotion (Step 2): دلته د اتصالات وروستي وړاندیزونه او اعلانونه دي.",
 
-    # Support
-    "Customer service is available 24/7 via phone (dial 100), live chat, "
-    "and email at support@telecom.example.",
+    "Etisalat Pashto main menu (Step 4): مهرباني وکړئ لاندې انتخابونو څخه یو غوره کړئ: "
+    "یو د زما غوره وړاندیزونو لپاره، دوه د انټرنیټ بنډلونو لپاره، درې د غږ بنډلونو لپاره، "
+    "څلور د مخلوط بنډلونو لپاره، پنځه د خدماتو لپاره، شپږ د پکیج او مهاجرت لپاره، "
+    "اوه د بیلانس پوښتنې لپاره، اته د نورې مرستې لپاره، نهه د DRM بنډلونو د غیر فعالولو لپاره.",
 
-    "Network outages are posted on the status page at status.telecom.example "
-    "and on the official Twitter account @TelecomStatus.",
+    # Pashto — menu option details
+    "Etisalat انتخاب ۱ — زما غوره وړاندیزونه (My Best Offers): د مشترک د کارونې نمونې پر بنسټ شخصي شوي غوره وړاندیزونه.",
+    "Etisalat انتخاب ۲ — د انټرنیټ بنډلونه (Data Bundles): د اتصالات ورځني، اونیزي او میاشتني ډیټا بنډلونه.",
+    "Etisalat انتخاب ۳ — د غږ بنډلونه (Voice Bundles): محلي او نړیوال د غږ بنډلونه.",
+    "Etisalat انتخاب ۴ — مخلوط بنډلونه (Mixed & Other Bundles): هغه بنډلونه چې ډیټا، غږ او SMS لري.",
+    "Etisalat انتخاب ۵ — خدمات (Services): د اتصالات ارزش اضافه خدمات لکه موسیقي، لوبې او نور.",
+    "Etisalat انتخاب ۶ — پکیج او مهاجرت (Package & Migration): د پکیج بدلول یا نوي پلان ته مهاجرت.",
+    "Etisalat انتخاب ۷ — د بیلانس پوښتنه (Balance Inquiry): د حساب بیلانس، د پای نیټه او د کارونې کتنه.",
+    "Etisalat انتخاب ۸ — نوره مرسته (Further Assistance): ژوندي اپریټر یا اضافي ملاتړ ته اتصال.",
+    "Etisalat انتخاب ۹ — د DRM بنډلونو غیر فعالول (DRM Bundles Deactivation): د فعالو DRM بنډلونو لغو.",
 
-    "SIM replacement for lost or damaged SIM cards requires visiting a store "
-    "with a valid government-issued ID. The fee is $2.",
+    # ---------------------------------------------------------------------------
+    # Etisalat — General Telecom Knowledge (Afghanistan)
+    # ---------------------------------------------------------------------------
+    "Etisalat Afghanistan customer service is available by calling 888. "
+    "The IVR system provides self-service options 24 hours a day, 7 days a week.",
 
-    "Port-in offers allow new customers to keep their existing number. "
-    "The porting process takes up to 24 hours after submission.",
+    "To check Etisalat balance in Dari: موجودی خود را با گرفتن *888# بررسی کنید. "
+    "To check balance in Pashto: خپل بیلانس د *888# ډایل کولو سره وګورئ.",
 
-    # Device & APN
-    "APN settings for Android: Name=TelecomNet, APN=internet.telecom, "
-    "Username and Password left blank.",
+    "Etisalat Afghanistan offers prepaid and postpaid plans. "
+    "Migration between plans is available through IVR option 6 — Package & Migration.",
 
-    "APN settings for iPhone: Go to Settings > Cellular > Cellular Data Network. "
-    "Set APN to internet.telecom.",
+    "Etisalat DRM (Digital Rights Management) bundles are premium content subscriptions. "
+    "To deactivate any active DRM bundle, select option 9 from the main menu.",
 
-    "Wi-Fi calling is supported on compatible devices. Enable in phone settings "
-    "under Wi-Fi Calling. Charges apply at standard rates.",
+    "Etisalat data bundles range from hourly to monthly. "
+    "Select option 2 from the main menu to view and activate data bundles.",
 
-    # Billing
-    "Paper bills are sent monthly. Switch to e-billing in account settings "
-    "to receive PDF invoices by email.",
+    "Etisalat voice bundles provide discounted local and international call minutes. "
+    "Select option 3 from the main menu to view and activate voice bundles.",
 
-    "Disputed charges can be reported within 60 days of the bill date. "
-    "Call 100 or submit a ticket at support.telecom.example.",
+    "Etisalat mixed bundles combine data, voice minutes, and SMS in a single package. "
+    "Select option 4 from the main menu to view mixed and other bundles.",
 
-    "Late payment fee is $2 applied after 15 days past the due date. "
-    "Service may be suspended after 30 days of non-payment.",
+    "Etisalat My Best Offers (option 1) shows personalized promotions tailored to the customer's usage history. "
+    "These change regularly and are unique to each subscriber.",
+
+    "Etisalat Services (option 5) includes value-added services such as music streaming, "
+    "games, news alerts, caller tunes, and other digital content.",
+
+    "Etisalat Further Assistance (option 8) connects the caller to a live customer service agent "
+    "or provides advanced troubleshooting support.",
 ]
 
 
