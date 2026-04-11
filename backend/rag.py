@@ -151,6 +151,71 @@ TELECOM_SEED_DOCS: List[str] = [
 
     "Etisalat Further Assistance (option 8) connects the caller to a live customer service agent "
     "or provides advanced troubleshooting support.",
+
+    # ---------------------------------------------------------------------------
+    # Etisalat — Sub-menu details per option (Dari + Pashto)
+    # ---------------------------------------------------------------------------
+
+    # Option 1 — My Best Offers
+    "Etisalat My Best Offers sub-options (Dari): "
+    "الف) بسته انترنت ۱ گیگ رایگان  ب) ۵۰ دقیقه مکالمه رایگان  ج) مشاهده همه آفرها. "
+    "Offers are personalised per subscriber and change monthly.",
+
+    # Option 2 — Data Bundles
+    "Etisalat Data Bundle sub-options (Dari): "
+    "یک برای بسته روزانه، دو برای بسته هفتگی، سه برای بسته ماهانه. "
+    "Daily bundle: 1GB for 24 hours. Weekly bundle: 5GB for 7 days. Monthly bundle: 20GB for 30 days.",
+
+    "Etisalat د انټرنیټ بنډل فرعي انتخابونه (Pashto): "
+    "یو ورځني بنډل، دوه اونیز بنډل، درې میاشتني بنډل. "
+    "ورځنی: ۱ ګیګ ۲۴ ساعته. اونیز: ۵ ګیګ ۷ ورځې. میاشتنی: ۲۰ ګیګ ۳۰ ورځې.",
+
+    # Option 3 — Voice Bundles
+    "Etisalat Voice Bundle sub-options (Dari): "
+    "یک برای مکالمه داخلی، دو برای مکالمه بین‌المللی. "
+    "Local voice bundle: 100 minutes for 7 days. International: rates vary by country.",
+
+    # Option 4 — Mixed Bundles
+    "Etisalat Mixed Bundle sub-options (Dari): "
+    "یک برای بسته کوچک (۵۰۰MB + ۳۰ دقیقه)، دو برای متوسط (۲GB + ۱۰۰ دقیقه)، "
+    "سه برای بزرگ (۵GB + ۳۰۰ دقیقه + ۵۰ پیامک).",
+
+    # Option 5 — Services
+    "Etisalat Services sub-options (Dari): "
+    "یک آهنگ پشت خط، دو اخبار روزانه، سه بازی آنلاین، چهار موسیقی. "
+    "All services are subscription-based and can be deactivated via option 9.",
+
+    # Option 6 — Package & Migration
+    "Etisalat Package and Migration sub-options (Dari): "
+    "یک برای تغییر پکیج فعلی، دو برای مهاجرت به پلن جدید، سه برای مشاهده پکیج فعلی. "
+    "Migration is free and takes effect immediately.",
+
+    # Option 7 — Balance Inquiry
+    "Etisalat Balance Inquiry sub-options (Dari): "
+    "یک برای مشاهده موجودی، دو برای تاریخ انقضا، سه برای تاریخچه مصرف. "
+    "Balance can also be checked by dialling *888#.",
+
+    # Option 8 — Further Assistance
+    "Etisalat Further Assistance sub-options (Dari): "
+    "یک برای اتصال به اپراتور زنده، دو برای پشتیبانی تخنیکی، سه برای ثبت شکایت. "
+    "Live agents are available 24/7.",
+
+    # Option 9 — DRM Deactivation
+    "Etisalat DRM Deactivation sub-options (Dari): "
+    "یک برای مشاهده بسته‌های DRM فعال، دو برای غیرفعال کردن همه بسته‌های DRM، "
+    "سه برای غیرفعال کردن یک بسته خاص. "
+    "DRM deactivation takes effect within 24 hours.",
+
+    # Frustration / emotional handling
+    "Etisalat emotional handling: If a caller expresses frustration, confusion, or asks why they must "
+    "follow the IVR, the assistant should respond empathetically first before re-presenting options. "
+    "In Dari: 'بخشش می‌خواهم، نگران نباشید. من اینجا هستم که کمکتان کنم.' "
+    "In Pashto: 'بخښنه وغواړئ، اندیښنه مه کوئ. زه دلته یم چې مرسته وکړم.'",
+
+    # Flow continuation rule
+    "Etisalat IVR flow rule: After the caller confirms a menu selection, the assistant must "
+    "present the sub-options for that selection. It must NOT return to the main menu unless "
+    "the caller explicitly requests it. The conversation continues within the chosen option.",
 ]
 
 
