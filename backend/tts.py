@@ -1,23 +1,23 @@
 """
-tts.py — Multi-language TTS handler for Dari and Pashto.
+tts.py — Multi-language TTS handler for Telugu and Kannada.
 
 Priority chain per language:
-  Dari (strict):
-    1. facebook/mms-tts-fas  (local GPU)
+  Telugu (strict):
+    1. facebook/mms-tts-tel  (local GPU)
     2. Silence
 
-  Pashto (configurable via PASHTO_TTS_ENGINE_PRIORITY):
+  Kannada (configurable via KANNADA_TTS_ENGINE_PRIORITY):
     Engines available:
-      mms        — facebook/mms-tts-pbt  (local GPU, default primary)
+      mms        — facebook/mms-tts-kan  (local GPU, default primary)
       elevenlabs — ElevenLabs REST API   (requires ELEVENLABS_API_KEY)
       narakeet   — Narakeet REST API     (requires NARAKEET_API_KEY)
       micmonster — MicMonster REST API   (requires MICMONSTER_API_KEY)
       speakatoo  — Speakatoo REST API    (requires SPEAKATOO_API_KEY)
-      edge       — Microsoft edge-tts    (free, ps-AF-LatifaNeural / GulNawazNeural)
-      gtts       — Google gTTS           (fallback, uses Persian fa)
+      edge       — Microsoft edge-tts    (free, kn-IN-SapnaNeural / GaganNeural)
+      gtts       — Google gTTS           (fallback, uses Kannada kn)
 
     Default priority: mms,edge,gtts
-    Override via env: PASHTO_TTS_ENGINE_PRIORITY=elevenlabs,edge,gtts
+    Override via env: KANNADA_TTS_ENGINE_PRIORITY=elevenlabs,edge,gtts
 
 Audio output contract:
   PCM 16-bit signed LE, 24 000 Hz, mono
@@ -138,7 +138,7 @@ def _get_mms(model_id: str):
     return _mms_models[model_id]
 
 
-def schedule_tts_warmup(language: str = "dari") -> None:
+def schedule_tts_warmup(language: str = "telugu") -> None:
     """
     Pre-load the MMS-TTS model for the given language in a daemon thread.
     Call once at startup to eliminate cold-start latency on the first request.
@@ -363,20 +363,20 @@ def _mp3_bytes_to_pcm(audio_bytes: bytes, denoise: bool = False) -> "bytes | Non
 
 class VoiceTTSHandler:
     """
-    Synthesizes Dari or Pashto text to PCM audio and streams it chunk-by-chunk.
+    Synthesizes Telugu or Kannada text to PCM audio and streams it chunk-by-chunk.
 
-    Dari (strict):
-      Primary  : facebook/mms-tts-fas (local GPU)
+    Telugu (strict):
+      Primary  : facebook/mms-tts-tel (local GPU)
       Fallback : Silence
 
-    Pashto (order set by PASHTO_TTS_ENGINE_PRIORITY):
-      mms        — facebook/mms-tts-pbt (local GPU)
+    Kannada (order set by KANNADA_TTS_ENGINE_PRIORITY):
+      mms        — facebook/mms-tts-kan (local GPU)
       elevenlabs — ElevenLabs REST API
       narakeet   — Narakeet REST API
       micmonster — MicMonster REST API
       speakatoo  — Speakatoo REST API
-      edge       — Microsoft edge-tts (ps-AF)
-      gtts       — Google gTTS (Persian fallback)
+      edge       — Microsoft edge-tts (kn-IN)
+      gtts       — Google gTTS (Kannada kn)
     """
 
     def __init__(
@@ -384,7 +384,7 @@ class VoiceTTSHandler:
         session_id: str,
         send_audio_cb: AudioSendCallback,
         cancel_event: asyncio.Event,
-        language: str = "dari",
+        language: str = "telugu",
         voice: str = "male",
         tts_engine: str = "auto",
     ) -> None:
@@ -402,8 +402,8 @@ class VoiceTTSHandler:
         self._language_display: str = lang_cfg["display_name"]
         self._lang_cfg              = lang_cfg
 
-        # Dari must remain strict Dari-only (MMS model). Keep voice metadata for
-        # Pashto/cloud providers, but never switch Dari to non-Dari engines.
+        # Telugu must remain strict Telugu-only (MMS model). Keep voice metadata for
+        # Kannada/cloud providers, but never switch Telugu to non-Telugu engines.
         if voice == "female":
             self._edge_tts_voice: str       = lang_cfg["edge_tts_voice"]
             self._use_edge_primary: bool    = False
@@ -411,10 +411,10 @@ class VoiceTTSHandler:
             self._edge_tts_voice: str       = lang_cfg.get("edge_tts_voice_male", lang_cfg["edge_tts_voice"])
             self._use_edge_primary: bool    = False
 
-        # Build Pashto engine priority list
+        # Build Kannada engine priority list
         # If a specific engine is requested from the UI, put it first with fallbacks.
-        # "auto" → use PASHTO_TTS_ENGINE_PRIORITY from .env
-        if self._language == "pashto":
+        # "auto" → use KANNADA_TTS_ENGINE_PRIORITY from .env
+        if self._language == "kannada":
             VALID_ENGINES = {"mms", "elevenlabs", "narakeet", "micmonster", "speakatoo", "edge", "gtts"}
             if tts_engine and tts_engine != "auto" and tts_engine in VALID_ENGINES:
                 # Place the chosen engine first with appropriate fallbacks.
@@ -426,17 +426,17 @@ class VoiceTTSHandler:
                     fallbacks = ["edge", "gtts"]
                 else:
                     fallbacks = [e for e in ["edge", "gtts"] if e != tts_engine]
-                self._pashto_engines: list[str] = [tts_engine] + fallbacks
+                self._kannada_engines: list[str] = [tts_engine] + fallbacks
             else:
-                raw = config.tts.pashto_engine_priority
-                self._pashto_engines = [e.strip() for e in raw.split(",") if e.strip()]
+                raw = config.tts.kannada_engine_priority
+                self._kannada_engines = [e.strip() for e in raw.split(",") if e.strip()]
             logger.info(
-                "Pashto TTS engine priority: %s (voice=%s, requested=%s)",
-                self._pashto_engines, voice, tts_engine,
+                "Kannada TTS engine priority: %s (voice=%s, requested=%s)",
+                self._kannada_engines, voice, tts_engine,
                 extra={"session_id": session_id},
             )
         else:
-            self._pashto_engines = []
+            self._kannada_engines = []
 
     # ------------------------------------------------------------------
     # Public API
@@ -452,22 +452,22 @@ class VoiceTTSHandler:
             extra={"session_id": self.session_id},
         )
 
-        if self._language == "pashto":
-            return await self._synthesize_pashto(text)
+        if self._language == "kannada":
+            return await self._synthesize_kannada(text)
 
-        # Dari: ElevenLabs primary → MMS Afghan Dari fallback → silence
-        return await self._synthesize_dari(text)
+        # Telugu: ElevenLabs primary → MMS Telugu fallback → silence
+        return await self._synthesize_telugu(text)
 
     # ------------------------------------------------------------------
-    # Dari — ElevenLabs primary, MMS Afghan Dari fallback
+    # Telugu — ElevenLabs primary, MMS Telugu fallback
     # ------------------------------------------------------------------
 
-    async def _synthesize_dari(self, text: str) -> bool:
-        """Try ElevenLabs first, fall back to MMS Afghan Dari (facebook/mms-tts-prs)."""
+    async def _synthesize_telugu(self, text: str) -> bool:
+        """Try ElevenLabs first, fall back to MMS Telugu (facebook/mms-tts-tel)."""
         if await self._synthesize_elevenlabs(text):
             return True
         logger.info(
-            "Dari: ElevenLabs failed, falling back to MMS Afghan Dari",
+            "Telugu: ElevenLabs failed, falling back to MMS Telugu",
             extra={"session_id": self.session_id},
         )
         if await self._synthesize_mms(text):
@@ -475,17 +475,17 @@ class VoiceTTSHandler:
         return await self._synthesize_silence(text)
 
     # ------------------------------------------------------------------
-    # Pashto — walk the engine priority list
+    # Kannada — walk the engine priority list
     # ------------------------------------------------------------------
 
-    async def _synthesize_pashto(self, text: str) -> bool:
-        """Try each configured Pashto TTS engine in order."""
-        for engine in self._pashto_engines:
+    async def _synthesize_kannada(self, text: str) -> bool:
+        """Try each configured Kannada TTS engine in order."""
+        for engine in self._kannada_engines:
             if self._cancel_event.is_set():
                 return False
 
             logger.info(
-                "Pashto TTS trying engine: %s", engine,
+                "Kannada TTS trying engine: %s", engine,
                 extra={"session_id": self.session_id},
             )
 
@@ -515,7 +515,7 @@ class VoiceTTSHandler:
             # engine failed → try next
 
         logger.error(
-            "All Pashto TTS engines exhausted — falling back to silence",
+            "All Kannada TTS engines exhausted — falling back to silence",
             extra={"session_id": self.session_id},
         )
         return await self._synthesize_silence(text)
@@ -578,9 +578,9 @@ class VoiceTTSHandler:
     async def _synthesize_elevenlabs(self, text: str) -> bool:
         """
         ElevenLabs REST API — requires ELEVENLABS_API_KEY.
-        Voice IDs for Pashto set via:
-          ELEVENLABS_VOICE_ID_PASHTO_MALE   (or any multilingual voice)
-          ELEVENLABS_VOICE_ID_PASHTO_FEMALE
+        Voice IDs set via:
+          ELEVENLABS_VOICE_ID_TELUGU_MALE / ELEVENLABS_VOICE_ID_TELUGU_FEMALE
+          ELEVENLABS_VOICE_ID_KANNADA_MALE / ELEVENLABS_VOICE_ID_KANNADA_FEMALE
         """
         if self._cancel_event.is_set():
             return False
@@ -595,7 +595,8 @@ class VoiceTTSHandler:
 
         # Default ElevenLabs multilingual voice IDs used when no custom voice is
         # configured.  These are stock library voices — they work on paid plans.
-        # Override by setting ELEVENLABS_VOICE_ID_PASHTO_MALE / _FEMALE in .env.
+        # Override by setting ELEVENLABS_VOICE_ID_TELUGU_MALE / _FEMALE or
+        # ELEVENLABS_VOICE_ID_KANNADA_MALE / _FEMALE in .env.
         _DEFAULT_MALE_VOICE   = "pNInz6obpgDQGcFmaJgB"   # Adam — multilingual
         _DEFAULT_FEMALE_VOICE = "EXAVITQu4vr4xnSDxMaL"   # Bella — multilingual
 
@@ -608,7 +609,7 @@ class VoiceTTSHandler:
             voice_id = _DEFAULT_FEMALE_VOICE if self._voice == "female" else _DEFAULT_MALE_VOICE
             logger.info(
                 "ElevenLabs: no custom voice ID set — using default %s voice (%s). "
-                "Set ELEVENLABS_VOICE_ID_PASHTO_MALE / _FEMALE in .env to override.",
+                "Set ELEVENLABS_VOICE_ID_TELUGU_MALE/_FEMALE or ELEVENLABS_VOICE_ID_KANNADA_MALE/_FEMALE in .env to override.",
                 self._voice,
                 voice_id,
                 extra={"session_id": self.session_id},
@@ -655,7 +656,7 @@ class VoiceTTSHandler:
                         "ElevenLabs: payment required (402) — account is on free plan "
                         "which cannot use library voices via API. "
                         "Either upgrade your plan or clone a custom voice at elevenlabs.io "
-                        "and set ELEVENLABS_VOICE_ID_PASHTO_MALE in .env",
+                        "and set ELEVENLABS_VOICE_ID_TELUGU_MALE or ELEVENLABS_VOICE_ID_KANNADA_MALE in .env",
                         extra={"session_id": self.session_id},
                     )
                     return False
@@ -704,14 +705,13 @@ class VoiceTTSHandler:
             return False
 
     # ------------------------------------------------------------------
-    # Narakeet  (REST API — Afghan Pashto voices)
+    # Narakeet  (REST API — Kannada voices)
     # ------------------------------------------------------------------
 
     async def _synthesize_narakeet(self, text: str) -> bool:
         """
         Narakeet REST API — requires NARAKEET_API_KEY.
-        Voice set via NARAKEET_VOICE_PASHTO (default: hamid).
-        Afghan Pashto voices: hamid, zeba, etc.
+        Voice set via NARAKEET_VOICE_KANNADA.
         Docs: https://www.narakeet.com/docs/text-to-audio-api.html
         """
         if self._cancel_event.is_set():

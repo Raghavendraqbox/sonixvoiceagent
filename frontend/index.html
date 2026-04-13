@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dari &amp; Pashto Voice Assistant</title>
+  <title>Telugu &amp; Kannada Voice Assistant</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Telugu:wght@400;600&family=Noto+Sans+Kannada:wght@400;600&display=swap');
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -365,9 +365,9 @@
 <body>
 
   <header>
-    <h1>Voice Assistant — مرستیار مجازی</h1>
-    <p>Dari &amp; Pashto AI Voice Agent</p>
-    <span class="badge">Dari · Pashto · Full Duplex</span>
+    <h1>Voice Assistant — వాయిస్ సహాయకుడు</h1>
+    <p>Telugu &amp; Kannada AI Voice Agent</p>
+    <span class="badge">Telugu · Kannada · Full Duplex</span>
   </header>
 
   <div class="main-layout">
@@ -390,10 +390,10 @@
       <!-- Language selector — locked once session starts -->
       <div class="selector-card">
         <label for="lang-select">Language</label>
-        <span class="lang-native" id="lang-native">دری</span>
+        <span class="lang-native" id="lang-native">తెలుగు</span>
         <select id="lang-select" onchange="onLanguageChange(this.value)">
-          <option value="dari" selected>Dari — دری</option>
-          <option value="pashto">Pashto — پښتو</option>
+          <option value="telugu" selected>Telugu — తెలుగు</option>
+          <option value="kannada">Kannada — ಕನ್ನಡ</option>
         </select>
       </div>
 
@@ -442,16 +442,16 @@ const PREBUFFER_MS      = 250;
 
 // Language display data
 const LANG_INFO = {
-  dari:   { native: "دری",   name: "Dari" },
-  pashto: { native: "پښتو",  name: "Pashto" },
+  telugu:  { native: "తెలుగు",  name: "Telugu" },
+  kannada: { native: "ಕನ್ನಡ",  name: "Kannada" },
 };
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-let selectedLanguage  = "dari";
+let selectedLanguage  = "telugu";
 let selectedVoice     = "male";
-let sessionLanguage   = "dari";   // locked at session start — used for all WS reconnects
+let sessionLanguage   = "telugu";   // locked at session start — used for all WS reconnects
 // Conversation history: [{role:"user"|"bot", text:"...", ts: Date}]
 let conversationHistory = [];
 let currentBotMsgEl    = null;   // the streaming bot bubble currently being built
@@ -502,7 +502,7 @@ function onLanguageChange(lang) {
   if (sessionActive) return;   // cannot change language mid-session
   selectedLanguage = lang;
   voiceSelector.style.display = "flex";
-  const info = LANG_INFO[lang] || LANG_INFO.dari;
+  const info = LANG_INFO[lang] || LANG_INFO.telugu;
   langNative.textContent = info.native;
 }
 
@@ -580,7 +580,7 @@ async function startSession() {
   btnStart.classList.add("active");
   btnStart.disabled = false;
 
-  const info = LANG_INFO[selectedLanguage] || LANG_INFO.dari;
+  const info = LANG_INFO[selectedLanguage] || LANG_INFO.telugu;
   setOrb("idle", "Listening");
   setStatus(`Connected — speak in ${info.name} (${info.native})`);
 }
@@ -853,13 +853,13 @@ function escHtml(str) {
 // ---------------------------------------------------------------------------
 function downloadTranscript() {
   if (!conversationHistory.length) return;
-  const langInfo  = LANG_INFO[sessionLanguage] || LANG_INFO.dari;
+  const langInfo  = LANG_INFO[sessionLanguage] || LANG_INFO.telugu;
   const now       = new Date();
   const dateStr   = now.toISOString().slice(0,19).replace("T"," ");
   const divider   = "─".repeat(52);
 
   let lines = [
-    "Dari & Pashto Voice Agent — Conversation Transcript",
+    "Telugu & Kannada Voice Agent — Conversation Transcript",
     divider,
     `Language : ${langInfo.name} (${langInfo.native})`,
     `Date     : ${dateStr}`,
@@ -883,7 +883,7 @@ function downloadTranscript() {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
   a.href     = url;
-  a.download = `dari-pashto-transcript-${dateStr.replace(/[ :]/g,"-")}.txt`;
+  a.download = `telugu-kannada-transcript-${dateStr.replace(/[ :]/g,"-")}.txt`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -895,7 +895,7 @@ function onJSONReceived(raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch { return; }
 
-  const info = LANG_INFO[selectedLanguage] || LANG_INFO.dari;
+  const info = LANG_INFO[selectedLanguage] || LANG_INFO.telugu;
 
   switch (msg.type) {
     case "session_ready":

@@ -1,14 +1,14 @@
 """
-llm.py — Open-source LLM client for the Dari & Pashto Voice AI Agent.
+llm.py — Open-source LLM client for the Telugu & Kannada Voice AI Agent.
 
 Runs entirely locally via Ollama — no external API keys required.
 
-Recommended models for Dari/Pashto (pull before starting):
-  ollama pull qwen2.5:7b         ← good Dari, reasonable Pashto, ~6GB VRAM
+Recommended models for Telugu/Kannada (pull before starting):
+  ollama pull qwen2.5:7b         ← good multilingual quality, ~6GB VRAM
   ollama pull qwen2.5:14b        ← better quality, ~10GB VRAM
-  ollama pull qwen2.5:32b        ← best Dari quality, ~20GB VRAM
+  ollama pull qwen2.5:32b        ← best quality, ~20GB VRAM
   ollama pull qwen2.5:72b        ← best overall (80GB GPU)
-  ollama pull aya-expanse         ← Cohere multilingual, Persian listed
+  ollama pull aya-expanse         ← Cohere multilingual, Indian languages supported
 
 Set OLLAMA_MODEL in .env to choose, default is qwen2.5:7b.
 
@@ -41,13 +41,13 @@ class VoiceLLMClient:
     Each call to `stream_response` yields sentence fragments as soon as they
     are complete, so the TTS pipeline can start speaking immediately.
 
-    Supports Dari and Pashto via language-specific system prompts.
+    Supports Telugu and Kannada via language-specific system prompts.
     """
 
     def __init__(
         self,
         retriever: Optional[RAGRetriever] = None,
-        language: str = "dari",
+        language: str = "telugu",
     ) -> None:
         self._retriever = retriever
         self._language  = language

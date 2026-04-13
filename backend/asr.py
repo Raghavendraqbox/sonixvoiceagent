@@ -1,5 +1,5 @@
 """
-asr.py — Soniox streaming ASR handler for Dari and Pashto.
+asr.py — Soniox streaming ASR handler for Telugu and Kannada.
 
 Reads raw PCM audio from an asyncio.Queue, streams it to the Soniox API,
 and puts TranscriptResult objects onto an output queue.
@@ -12,11 +12,11 @@ Audio format contract (must match frontend):
 
 Priority chain:
   1. Soniox cloud ASR (SONIOX_API_KEY set)
-       Dari   → language_code="fa" (Persian covers Afghan Dari)
-       Pashto → language_code="ps"
+       Telugu  → language_code="te"
+       Kannada → language_code="kn"
   2. faster-whisper large-v3 on GPU
-       Dari   → language="fa"
-       Pashto → language="ps"
+       Telugu  → language="te"
+       Kannada → language="kn"
   3. Null stub                         ← placeholder only
 """
 
@@ -72,10 +72,10 @@ class TranscriptResult:
 
 class ASRHandler:
     """
-    Wraps the Soniox streaming ASR service for Dari and Pashto.
+    Wraps the Soniox streaming ASR service for Telugu and Kannada.
 
     Lifecycle:
-        1. Construct once per session with desired language ("dari" or "pashto").
+        1. Construct once per session with desired language ("telugu" or "kannada").
         2. Call `run()` as an asyncio task.
         3. Push raw PCM bytes into `audio_queue`.
         4. Consume TranscriptResult objects from `transcript_queue`.
@@ -89,7 +89,7 @@ class ASRHandler:
         audio_queue: asyncio.Queue,
         transcript_queue: asyncio.Queue,
         interrupt_event: asyncio.Event,
-        language: str = "dari",
+        language: str = "telugu",
     ) -> None:
         self.session_id = session_id
         self.audio_queue = audio_queue

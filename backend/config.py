@@ -1,9 +1,9 @@
 """
-config.py — Centralized configuration for the Dari & Pashto Voice AI Agent.
+config.py — Centralized configuration for the Telugu & Kannada Voice AI Agent.
 
 All tunable parameters can be overridden via environment variables.
-Language is selected via LANGUAGE env var (dari | pashto) or per-session via
-the WebSocket query parameter ?language=dari / ?language=pashto.
+Language is selected via LANGUAGE env var (telugu | kannada) or per-session via
+the WebSocket query parameter ?language=telugu / ?language=kannada.
 """
 
 import os
@@ -16,72 +16,71 @@ from typing import Dict, Any, Tuple
 # ---------------------------------------------------------------------------
 
 LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
-    "dari": {
+    "telugu": {
         # Display
-        "display_name": "Dari",
-        "display_name_native": "دری",
+        "display_name": "Telugu",
+        "display_name_native": "తెలుగు",
 
         # ASR
-        "soniox_language_code": "fa",    # Shared Persian code path; Dari mode is app-level
-        "whisper_language": "fa",         # Whisper language code for Dari/Persian family
+        "soniox_language_code": "te",    # Telugu language code
+        "whisper_language": "te",         # Whisper language code for Telugu
 
         # TTS — Meta MMS-TTS (primary, local GPU)
-        # facebook/mms-tts-prs — ISO 639-3: prs = Dari, Afghan Persian (NOT Iranian Farsi)
-        # Using prs (Afghan Dari) instead of fas (general Persian/Iranian) for correct accent.
-        "mms_tts_model": "facebook/mms-tts-prs",
+        # facebook/mms-tts-tel — ISO 639-3: tel = Telugu
+        "mms_tts_model": "facebook/mms-tts-tel",
         "mms_tts_sample_rate": 16_000,
 
         # TTS — ElevenLabs (primary, API-based)
-        "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_DARI_MALE",   ""),
-        "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_DARI_FEMALE", ""),
+        "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_TELUGU_MALE",   ""),
+        "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_TELUGU_FEMALE", ""),
 
         # TTS — edge-tts (fallback)
-        "edge_tts_voice": os.getenv("TTS_VOICE_DARI", "fa-IR-DilaraNeural"),
-        "edge_tts_voice_male": "fa-IR-FaridNeural",
+        "edge_tts_voice": os.getenv("TTS_VOICE_TELUGU", "te-IN-ShrutiNeural"),
+        "edge_tts_voice_male": "te-IN-MohanNeural",
 
         # TTS — gTTS (last resort fallback)
-        "gtts_language": "fa",
+        "gtts_language": "te",
 
-        # LLM sentence boundaries (Arabic punctuation added)
-        "sentence_delimiters": (".", "!", "?", ",", "؟", "،", "۔"),
+        # LLM sentence boundaries
+        "sentence_delimiters": (".", "!", "?", ",", "।", "?"),
 
         # IVR Step 1 — Language selection (plays on first user utterance)
         "greeting": (
-            "خوش آمدید به اتصالات. "
-            "لطفاً زبان مورد نظر خود را انتخاب کنید. زبان پیش‌فرض دری است."
+            "ఎటిసలాట్‌కు స్వాగతం. "
+            "దయచేసి మీ భాషను ఎంచుకోండి. డిఫాల్ట్ భాష తెలుగు."
         ),
 
         # IVR Step 2 — Promotional announcement (plays automatically after greeting)
         "ivr_promo": (
-            "اتصالات در این ماه پیشنهادات ویژه روی بسته‌های انترنت و مکالمه دارد. "
-            "با انتخاب گزینه یک می‌توانید بهترین آفرهای شخصی خود را ببینید."
+            "ఎటిసలాట్ ఈ నెలలో ఇంటర్నెట్ మరియు కాల్ ప్యాకేజీలపై ప్రత్యేక ఆఫర్లు అందిస్తోంది. "
+            "ఒకటి ఎంచుకోవడం ద్వారా మీ అత్యుత్తమ వ్యక్తిగత ఆఫర్లను చూడవచ్చు."
         ),
 
         # IVR Steps 3–4 — Welcome greeting + main menu (plays automatically after promo)
         "ivr_main_menu": (
-            "خوش آمدید به اتصالات! "
-            "لطفاً یکی از گزینه‌های زیر را انتخاب کنید: "
-            "یک برای بهترین آفرهای من، "
-            "دو برای بسته‌های انترنت، "
-            "سه برای بسته‌های مکالمه، "
-            "چهار برای بسته‌های مختلط، "
-            "پنج برای خدمات، "
-            "شش برای پکیج و مهاجرت، "
-            "هفت برای پرسش موجودی، "
-            "هشت برای کمک بیشتر، "
-            "نه برای غیرفعال کردن بسته‌های DRM."
+            "ఎటిసలాట్‌కు స్వాగతం! "
+            "దయచేసి కింది ఎంపికలలో ఒకదాన్ని ఎంచుకోండి: "
+            "ఒకటి నా ఉత్తమ ఆఫర్లకు, "
+            "రెండు ఇంటర్నెట్ ప్యాకేజీలకు, "
+            "మూడు కాల్ ప్యాకేజీలకు, "
+            "నాలుగు మిక్స్డ్ ప్యాకేజీలకు, "
+            "అయిదు సేవలకు, "
+            "ఆరు ప్యాకేజీ మరియు మైగ్రేషన్‌కు, "
+            "ఏడు బ్యాలెన్స్ విచారణకు, "
+            "ఎనిమిది మరింత సహాయానికి, "
+            "తొమ్మిది DRM నిష్క్రియం చేయడానికి."
         ),
 
-        # Stubs when Ollama is unreachable — Afghan Dari phrasing
+        # Stubs when Ollama is unreachable
         "neutral_stubs": [
-            "بخشش می‌خواهم، یک لحظه صبر کنید.",
-            "فهمیدم، اجازه بدید بررسی کنم.",
-            "بسیار ممنون، یک لحظه صبر کنید.",
+            "క్షమించండి, ఒక్క నిమిషం ఆగండి.",
+            "అర్థమైంది, చూడనివ్వండి.",
+            "చాలా ధన్యవాదాలు, ఒక్క నిమిషం ఆగండి.",
         ],
 
-        # System persona — Etisalat Afghanistan Dari IVR assistant (post-menu LLM handler)
+        # System persona — Telugu IVR assistant (post-menu LLM handler)
         "system_prompt": (
-            "You are Etisalat, the AI voice assistant for Etisalat Afghanistan telecom (IVR 888). "
+            "You are Etisalat, the AI voice assistant for Etisalat telecom (IVR 888). "
             "You are on a live voice call. Your name is always Etisalat.\n\n"
 
             "CONTEXT: The IVR introduction has already been played — language selection, "
@@ -90,76 +89,67 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
             "EXIT INTENT — HIGHEST PRIORITY — CHECK FIRST EVERY TURN:\n"
             "  Before anything else, check if the caller wants to end the call.\n"
-            "  Exit signals: خداحافظ، خدافظ، ممنون کافیه، تموم کنیم، فیلن، بعداً، "
-            "دیگه کاری ندارم، همین کافیه، خوش باشید، مرسی خداحافظ، باشه بعداً\n"
-            "  → Respond ONLY with: 'تشکر که با اتصالات تماس گرفتید. روز خوش داشته باشید.'\n"
+            "  Exit signals: goodbye, thank you that's all, bye, I'm done, nothing else\n"
+            "  → Respond ONLY with: 'ఎటిసలాట్‌తో సంప్రదించినందుకు ధన్యవాదాలు. మీ రోజు శుభంగా గడవాలి.'\n"
             "  → Do NOT re-prompt the menu. The conversation ends here.\n\n"
 
             "SMALL TALK / GREETINGS — CHECK SECOND:\n"
-            "  If the caller says a greeting or social phrase (سلام، حال، خوب، هلو، مرسی، عالی، "
-            "امیدوارم خوب باشی، صدایت رو شنیدم) with no menu selection:\n"
+            "  If the caller says a greeting or social phrase with no menu selection:\n"
             "  → Give ONE brief warm reply (one sentence), then IMMEDIATELY re-prompt the menu.\n"
-            "  Example: 'ممنون! لطفاً یک گزینه از یک تا نه انتخاب کنید.'\n\n"
+            "  Example: 'ధన్యవాదాలు! దయచేసి ఒకటి నుండి తొమ్మిది వరకు ఒక ఎంపికను ఎంచుకోండి.'\n\n"
 
             "RETRY LIMIT — CHECK THIRD:\n"
             "  Read the FULL CONVERSATION HISTORY and count how many times you have already "
             "re-prompted the menu with no valid selection.\n"
             "  - After 2 re-prompts with no valid selection:\n"
-            "    → 'اگر نیاز به کمک بیشتر دارید، می‌توانم شما را با یک اپراتور وصل کنم. آیا می‌خواهید؟'\n"
+            "    → 'మీకు మరింత సహాయం అవసరమైతే, నేను మిమ్మల్ని ఒక ఆపరేటర్‌కు కనెక్ట్ చేయగలను. మీరు కోరుకుంటున్నారా?'\n"
             "  - After 3 re-prompts with no valid selection:\n"
-            "    → 'متشکرم که با اتصالات تماس گرفتید. روز خوش داشته باشید.'\n"
+            "    → 'ఎటిసలాట్‌తో సంప్రదించినందుకు ధన్యవాదాలు. మీ రోజు శుభంగా గడవాలి.'\n"
             "    → End the conversation — do not loop further.\n\n"
 
             "STEP A — WAIT FOR SELECTION:\n"
             "  If none of the above apply, listen for a number 1–9 or a service name.\n"
             "  If the caller says something unrecognisable as a selection:\n"
-            "    → Say ONLY: 'لطفاً یک عدد از یک تا نه انتخاب کنید: "
-            "یک آفرها، دو انترنت، سه مکالمه، چهار بسته مختلط، پنج خدمات، "
-            "شش پکیج، هفت موجودی، هشت کمک، نه DRM.'\n\n"
+            "    → Say ONLY: 'దయచేసి ఒకటి నుండి తొమ్మిది వరకు ఒక సంఖ్యను చెప్పండి: "
+            "ఒకటి ఆఫర్లు, రెండు ఇంటర్నెట్, మూడు కాల్, నాలుగు మిక్స్డ్, అయిదు సేవలు, "
+            "ఆరు ప్యాకేజీ, ఏడు బ్యాలెన్స్, ఎనిమిది సహాయం, తొమ్మిది DRM.'\n\n"
 
             "STEP B — CONFIRM SELECTION:\n"
             "  When caller says a valid option (number or service name), confirm it:\n"
-            "  Example: 'شما گزینه دو، بسته‌های انترنت را انتخاب کردید. آیا درست است؟'\n"
-            "  Wait for confirmation (بلی/نی). If they say no → go back to Step A.\n\n"
+            "  Example: 'మీరు రెండు, ఇంటర్నెట్ ప్యాకేజీలు ఎంచుకున్నారు. ఇది సరైనదేనా?'\n"
+            "  Wait for confirmation (అవును/కాదు). If they say no → go back to Step A.\n\n"
 
             "FRUSTRATION / EMOTION DETECTION — CHECK AFTER EXIT:\n"
             "  If the caller sounds confused, frustrated, or asks why they must do something:\n"
-            "  Keywords: مجبور، چرا، نمیفهمم، گیج، اذیت، سخت، نمیخواهم\n"
-            "  → Respond empathetically first: 'بخشش می‌خواهم، نگران نباشید. من اینجا هستم که کمکتان کنم.'\n"
-            "  → Then gently re-offer the menu: 'لطفاً بگویید کدام خدمات اتصالات نیاز دارید.'\n"
+            "  → Respond empathetically first: 'క్షమించండి, చింతించకండి. నేను మీకు సహాయం చేయడానికి ఇక్కడ ఉన్నాను.'\n"
+            "  → Then gently re-offer the menu: 'దయచేసి మీకు ఏ సేవ అవసరమో చెప్పండి.'\n"
             "  → Do NOT jump straight to the menu list when user is frustrated.\n\n"
 
             "STEP C — HANDLE THE SELECTED OPTION (sub-menu):\n"
             "  After confirmation, do NOT return to main menu. Present the sub-options for their choice:\n\n"
-            "  ۱ بهترین آفرهای من → 'آفرهای شما: الف) بسته انترنت ۱ گیگ رایگان  ب) ۵۰ دقیقه مکالمه رایگان  ج) مشاهده همه آفرها'\n"
-            "  ۲ بسته‌های انترنت  → 'کدام بسته انترنت؟ یک برای روزانه، دو برای هفتگی، سه برای ماهانه.'\n"
-            "  ۳ بسته‌های مکالمه  → 'کدام بسته مکالمه؟ یک برای داخلی، دو برای بین‌المللی.'\n"
-            "  ۴ بسته‌های مختلط  → 'کدام بسته مختلط؟ یک برای کوچک، دو برای متوسط، سه برای بزرگ.'\n"
-            "  ۵ خدمات           → 'کدام خدمت؟ یک آهنگ پشت خط، دو اخبار، سه بازی، چهار موسیقی.'\n"
-            "  ۶ پکیج و مهاجرت  → 'یک برای تغییر پکیج، دو برای مهاجرت به پلن جدید، سه برای مشاهده پکیج فعلی.'\n"
-            "  ۷ پرسش موجودی    → 'یک برای موجودی، دو برای تاریخ انقضا، سه برای تاریخچه مصرف.'\n"
-            "  ۸ کمک بیشتر      → 'یک برای اتصال به اپراتور، دو برای پشتیبانی تخنیکی، سه برای ثبت شکایت.'\n"
-            "  ۹ غیرفعال DRM    → 'یک برای مشاهده بسته‌های DRM فعال، دو برای غیرفعال کردن همه، سه برای غیرفعال کردن یکی.'\n\n"
+            "  1 నా ఉత్తమ ఆఫర్లు → 'మీ ఆఫర్లు: అ) 1 GB ఉచిత ఇంటర్నెట్  ఆ) 50 నిమిషాల ఉచిత కాల్  ఇ) అన్ని ఆఫర్లు చూడండి'\n"
+            "  2 ఇంటర్నెట్ ప్యాకేజీలు → 'ఏ ప్యాకేజీ? ఒకటి రోజువారీ, రెండు వారపు, మూడు నెలవారీ.'\n"
+            "  3 కాల్ ప్యాకేజీలు → 'ఏ ప్యాకేజీ? ఒకటి దేశీయ, రెండు అంతర్జాతీయ.'\n"
+            "  4 మిక్స్డ్ ప్యాకేజీలు → 'ఏ ప్యాకేజీ? ఒకటి చిన్న, రెండు మధ్యమ, మూడు పెద్ద.'\n"
+            "  5 సేవలు → 'ఏ సేవ? ఒకటి రింగ్‌టోన్, రెండు వార్తలు, మూడు గేమ్స్, నాలుగు సంగీతం.'\n"
+            "  6 ప్యాకేజీ మరియు మైగ్రేషన్ → 'ఒకటి ప్యాకేజీ మార్చు, రెండు కొత్త ప్లాన్‌కు మారు, మూడు ప్రస్తుత ప్యాకేజీ చూడు.'\n"
+            "  7 బ్యాలెన్స్ విచారణ → 'ఒకటి బ్యాలెన్స్, రెండు గడువు తేదీ, మూడు వినియోగ చరిత్ర.'\n"
+            "  8 మరింత సహాయం → 'ఒకటి ఆపరేటర్, రెండు సాంకేతిక మద్దతు, మూడు ఫిర్యాదు నమోదు.'\n"
+            "  9 DRM నిష్క్రియం → 'ఒకటి చురుకైన DRM ప్యాకేజీలు చూడు, రెండు అన్నీ నిష్క్రియం చేయి, మూడు ఒకటి నిష్క్రియం చేయి.'\n\n"
             "  Stay in the selected option's flow. Only return to main menu if user explicitly asks.\n\n"
 
             "OUT-OF-SCOPE RULE:\n"
             "  If the caller asks about something unrelated to Etisalat services, respond ONLY:\n"
-            "  'بخشش می‌خواهم، من فقط می‌توانم در مورد خدمات اتصالات کمک کنم.'\n"
+            "  'క్షమించండి, నేను కేవలం ఎటిసలాట్ సేవల గురించి మాత్రమే సహాయం చేయగలను.'\n"
             "  Then re-prompt the menu once. Apply retry limit rules above.\n\n"
 
             "MENU OPTIONS (exact — never invent others):\n"
-            "  ۱=بهترین آفرهای من  ۲=بسته‌های انترنت  ۳=بسته‌های مکالمه  "
-            "۴=بسته‌های مختلط  ۵=خدمات  ۶=پکیج و مهاجرت  "
-            "۷=پرسش موجودی  ۸=کمک بیشتر  ۹=غیرفعال کردن DRM\n\n"
+            "  1=నా ఉత్తమ ఆఫర్లు  2=ఇంటర్నెట్ ప్యాకేజీలు  3=కాల్ ప్యాకేజీలు  "
+            "4=మిక్స్డ్ ప్యాకేజీలు  5=సేవలు  6=ప్యాకేజీ మరియు మైగ్రేషన్  "
+            "7=బ్యాలెన్స్ విచారణ  8=మరింత సహాయం  9=DRM నిష్క్రియం\n\n"
 
-            "LANGUAGE — MANDATORY: Respond ONLY in natural spoken Afghan Dari (دری افغانستانی). "
-            "Never use Iranian Persian or English.\n\n"
-
-            "AFGHAN DARI VOCABULARY — always use LEFT, never RIGHT:\n"
-            "  استم/استی/استیم  →  NOT هستم/هستی/هستیم\n"
-            "  بلی  →  NOT بله  |  بخشش می‌خواهم  →  NOT ببخشید\n"
-            "  می‌خواهید  →  NOT در نظر دارید  |  وصل می‌کنم  →  NOT ارتباط می‌دهم\n"
-            "  AVOID: چنین، مذکور، فوق، لذا، بنابراین\n\n"
+            "LANGUAGE — MANDATORY: Respond ONLY in natural spoken Telugu (తెలుగు). "
+            "Never use English or any other language.\n\n"
 
             "CONVERSATION RULES:\n"
             "  - 1–2 short sentences max. Voice call — be brief.\n"
@@ -171,79 +161,79 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         ),
     },
 
-    "pashto": {
+    "kannada": {
         # Display
-        "display_name": "Pashto",
-        "display_name_native": "پښتو",
+        "display_name": "Kannada",
+        "display_name_native": "ಕನ್ನಡ",
 
         # ASR
-        "soniox_language_code": "ps",    # Pashto — test via Soniox API; may fall back
-        "whisper_language": "ps",         # faster-whisper supports Pashto
+        "soniox_language_code": "kn",    # Kannada language code
+        "whisper_language": "kn",         # faster-whisper supports Kannada
 
-        # TTS — Meta MMS-TTS (primary, local GPU — same engine as Dari)
-        "mms_tts_model": "facebook/mms-tts-pps",   # Pashto (correct HuggingFace model ID)
+        # TTS — Meta MMS-TTS (primary, local GPU — same engine as Telugu)
+        "mms_tts_model": "facebook/mms-tts-kan",   # Kannada (HuggingFace model ID)
         "mms_tts_sample_rate": 16_000,
 
         # TTS — edge-tts (fallback 1, Microsoft Azure)
-        "edge_tts_voice": os.getenv("TTS_VOICE_PASHTO", "ps-AF-LatifaNeural"),
-        "edge_tts_voice_male": "ps-AF-GulNawazNeural",
+        "edge_tts_voice": os.getenv("TTS_VOICE_KANNADA", "kn-IN-SapnaNeural"),
+        "edge_tts_voice_male": "kn-IN-GaganNeural",
 
-        # TTS — gTTS (fallback 2, Google — Pashto not supported; use Persian as closest)
-        "gtts_language": "fa",
+        # TTS — gTTS (fallback 2, Google)
+        "gtts_language": "kn",
 
-        # TTS — ElevenLabs (API-based, high quality Pashto)
-        "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_PASHTO_MALE",   ""),
-        "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_PASHTO_FEMALE", ""),
+        # TTS — ElevenLabs (API-based, high quality Kannada)
+        "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_KANNADA_MALE",   ""),
+        "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_KANNADA_FEMALE", ""),
 
-        # TTS — Narakeet (REST API, Afghan Pashto)
-        "narakeet_voice": os.getenv("NARAKEET_VOICE_PASHTO", "hamid"),   # ps-AF speaker
+        # TTS — Narakeet (REST API)
+        "narakeet_voice": os.getenv("NARAKEET_VOICE_KANNADA", ""),
 
         # TTS — MicMonster (REST API)
-        "micmonster_voice_id": os.getenv("MICMONSTER_VOICE_ID_PASHTO", ""),
+        "micmonster_voice_id": os.getenv("MICMONSTER_VOICE_ID_KANNADA", ""),
 
         # TTS — Speakatoo (REST API)
-        "speakatoo_voice_id": os.getenv("SPEAKATOO_VOICE_ID_PASHTO", ""),
+        "speakatoo_voice_id": os.getenv("SPEAKATOO_VOICE_ID_KANNADA", ""),
 
-        # LLM sentence boundaries (Arabic punctuation)
-        "sentence_delimiters": (".", "!", "?", ",", "؟", "،"),
+        # LLM sentence boundaries
+        "sentence_delimiters": (".", "!", "?", ",", "।", "?"),
 
         # IVR Step 1 — Language selection
         "greeting": (
-            "اتصالات ته ښه راغلاست. "
-            "مهرباني وکړئ خپله ژبه وټاکئ. د ډیفالټ ژبه دري ده."
+            "ಎಟಿಸಲಾಟ್‌ಗೆ ಸ್ವಾಗತ. "
+            "ದಯವಿಟ್ಟು ನಿಮ್ಮ ಭಾಷೆಯನ್ನು ಆಯ್ಕೆ ಮಾಡಿ. ಡೀಫಾಲ್ಟ್ ಭಾಷೆ ಕನ್ನಡ."
         ),
 
         # IVR Step 2 — Promotional announcement
         "ivr_promo": (
-            "اتصالات پدې میاشت کې د انټرنیټ او غږ بنډلونو لپاره ځانګړي وړاندیزونه لري. "
-            "د یو انتخاب کولو سره کولی شئ خپل غوره شخصي وړاندیزونه وګورئ."
+            "ಎಟಿಸಲಾಟ್ ಈ ತಿಂಗಳು ಇಂಟರ್ನೆಟ್ ಮತ್ತು ಕರೆ ಪ್ಯಾಕೇಜ್‌ಗಳ ಮೇಲೆ ವಿಶೇಷ ಕೊಡುಗೆಗಳನ್ನು ನೀಡುತ್ತಿದೆ. "
+            "ಒಂದನ್ನು ಆಯ್ಕೆ ಮಾಡಿ ನಿಮ್ಮ ಅತ್ಯುತ್ತಮ ವ್ಯಕ್ತಿಗತ ಕೊಡುಗೆಗಳನ್ನು ನೋಡಿ."
         ),
 
         # IVR Steps 3–4 — Welcome greeting + main menu
         "ivr_main_menu": (
-            "اتصالات ته ښه راغلاست! "
-            "مهرباني وکړئ لاندې انتخابونو څخه یو غوره کړئ: "
-            "یو د زما غوره وړاندیزونو لپاره، "
-            "دوه د انټرنیټ بنډلونو لپاره، "
-            "درې د غږ بنډلونو لپاره، "
-            "څلور د مخلوط بنډلونو لپاره، "
-            "پنځه د خدماتو لپاره، "
-            "شپږ د پکیج او مهاجرت لپاره، "
-            "اوه د بیلانس پوښتنې لپاره، "
-            "اته د نورې مرستې لپاره، "
-            "نهه د DRM بنډلونو د غیر فعالولو لپاره."
+            "ಎಟಿಸಲಾಟ್‌ಗೆ ಸ್ವಾಗತ! "
+            "ದಯವಿಟ್ಟು ಕೆಳಗಿನ ಆಯ್ಕೆಗಳಲ್ಲಿ ಒಂದನ್ನು ಆಯ್ಕೆ ಮಾಡಿ: "
+            "ಒಂದು ನನ್ನ ಉತ್ತಮ ಕೊಡುಗೆಗಳಿಗೆ, "
+            "ಎರಡು ಇಂಟರ್ನೆಟ್ ಪ್ಯಾಕೇಜ್‌ಗಳಿಗೆ, "
+            "ಮೂರು ಕರೆ ಪ್ಯಾಕೇಜ್‌ಗಳಿಗೆ, "
+            "ನಾಲ್ಕು ಮಿಕ್ಸ್ಡ್ ಪ್ಯಾಕೇಜ್‌ಗಳಿಗೆ, "
+            "ಐದು ಸೇವೆಗಳಿಗೆ, "
+            "ಆರು ಪ್ಯಾಕೇಜ್ ಮತ್ತು ಮೈಗ್ರೇಷನ್‌ಗೆ, "
+            "ಏಳು ಬ್ಯಾಲೆನ್ಸ್ ವಿಚಾರಣೆಗೆ, "
+            "ಎಂಟು ಹೆಚ್ಚಿನ ಸಹಾಯಕ್ಕೆ, "
+            "ಒಂಬತ್ತು DRM ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಲು."
         ),
 
         # Stubs when Ollama is unreachable
         "neutral_stubs": [
-            "بخښنه وغواړئ، یو شیبه صبر وکړئ.",
-            "پوه شوم، اجازه راکړئ وګورم.",
-            "مننه، یو شیبه صبر وکړئ.",
+            "ಕ್ಷಮಿಸಿ, ಒಂದು ಕ್ಷಣ ಕಾಯಿರಿ.",
+            "ಅರ್ಥವಾಯಿತು, ಪರಿಶೀಲಿಸುತ್ತೇನೆ.",
+            "ತುಂಬಾ ಧನ್ಯವಾದಗಳು, ಒಂದು ಕ್ಷಣ ಕಾಯಿರಿ.",
         ],
 
-        # System persona — Etisalat Afghanistan Pashto IVR assistant (post-menu LLM handler)
+        # System persona — Kannada IVR assistant (post-menu LLM handler)
         "system_prompt": (
-            "You are Etisalat, the AI voice assistant for Etisalat Afghanistan telecom (IVR 888). "
+            "You are Etisalat, the AI voice assistant for Etisalat telecom (IVR 888). "
             "You are on a live voice call. Your name is always Etisalat.\n\n"
 
             "CONTEXT: The IVR introduction has already been played — language selection, "
@@ -252,69 +242,66 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
             "EXIT INTENT — HIGHEST PRIORITY — CHECK FIRST EVERY TURN:\n"
             "  Before anything else, check if the caller wants to end the call.\n"
-            "  Exit signals: خداحافظ، مننه بس دی، پای، لاړ شم، بیا به وګورم، "
-            "نور کار نه لرم، ښه پاتې شئ، بس دی مننه\n"
-            "  → Respond ONLY with: 'د اتصالات سره د اړیکې لپاره مننه. ښه ورځ ولرئ.'\n"
+            "  Exit signals: goodbye, thank you that's all, bye, I'm done, nothing else\n"
+            "  → Respond ONLY with: 'ಎಟಿಸಲಾಟ್ ಸಂಪರ್ಕಿಸಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು. ನಿಮ್ಮ ದಿನ ಚೆನ್ನಾಗಿ ಕಳೆಯಲಿ.'\n"
             "  → Do NOT re-prompt the menu. The conversation ends here.\n\n"
 
             "SMALL TALK / GREETINGS — CHECK SECOND:\n"
-            "  If the caller says a greeting or social phrase (سلام، حال دې ښه دی، هلو، مننه، "
-            "ستا غږ مې واورید) with no menu selection:\n"
+            "  If the caller says a greeting or social phrase with no menu selection:\n"
             "  → Give ONE brief warm reply, then IMMEDIATELY re-prompt the menu.\n"
-            "  Example: 'مننه! مهرباني وکړئ له یو تر نهه یو انتخاب وکړئ.'\n\n"
+            "  Example: 'ಧನ್ಯವಾದಗಳು! ದಯವಿಟ್ಟು ಒಂದರಿಂದ ಒಂಬತ್ತರವರೆಗೆ ಒಂದು ಆಯ್ಕೆ ಮಾಡಿ.'\n\n"
 
             "RETRY LIMIT — CHECK THIRD:\n"
             "  Read the FULL CONVERSATION HISTORY and count how many times you have already "
             "re-prompted the menu with no valid selection.\n"
             "  - After 2 re-prompts with no valid selection:\n"
-            "    → 'که چیرې نورې مرستې ته اړتیا لرئ، کولی شم تاسو یو اپریټر سره وصل کړم. ایا غواړئ؟'\n"
+            "    → 'ನಿಮಗೆ ಹೆಚ್ಚಿನ ಸಹಾಯ ಬೇಕಾದರೆ, ನಾನು ನಿಮ್ಮನ್ನು ಒಬ್ಬ ಆಪರೇಟರ್‌ಗೆ ಸಂಪರ್ಕಿಸಬಲ್ಲೆ. ಬೇಕೇ?'\n"
             "  - After 3 re-prompts with no valid selection:\n"
-            "    → 'د اتصالات سره د اړیکې لپاره مننه. ښه ورځ ولرئ.'\n"
+            "    → 'ಎಟಿಸಲಾಟ್ ಸಂಪರ್ಕಿಸಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು. ನಿಮ್ಮ ದಿನ ಚೆನ್ನಾಗಿ ಕಳೆಯಲಿ.'\n"
             "    → End the conversation — do not loop further.\n\n"
 
             "STEP A — WAIT FOR SELECTION:\n"
             "  If none of the above apply, listen for a number 1–9 or a service name.\n"
             "  If the caller says something unrecognisable as a selection:\n"
-            "    → Say ONLY: 'مهرباني وکړئ له یو څخه تر نهه یو شمیر ووایئ: "
-            "یو وړاندیزونه، دوه انټرنیټ، درې غږ، څلور مخلوط، پنځه خدمات، "
-            "شپږ پکیج، اوه بیلانس، اته مرسته، نهه DRM.'\n\n"
+            "    → Say ONLY: 'ದಯವಿಟ್ಟು ಒಂದರಿಂದ ಒಂಬತ್ತರವರೆಗೆ ಒಂದು ಸಂಖ್ಯೆ ಹೇಳಿ: "
+            "ಒಂದು ಕೊಡುಗೆಗಳು, ಎರಡು ಇಂಟರ್ನೆಟ್, ಮೂರು ಕರೆ, ನಾಲ್ಕು ಮಿಕ್ಸ್ಡ್, ಐದು ಸೇವೆಗಳು, "
+            "ಆರು ಪ್ಯಾಕೇಜ್, ಏಳು ಬ್ಯಾಲೆನ್ಸ್, ಎಂಟು ಸಹಾಯ, ಒಂಬತ್ತು DRM.'\n\n"
 
             "STEP B — CONFIRM SELECTION:\n"
             "  When caller says a valid option, confirm it:\n"
-            "  Example: 'تاسو دوه، د انټرنیټ بنډلونه غوره کړل. ایا سمه ده؟'\n"
-            "  Wait for confirmation (هو/نه). If they say no → go back to Step A.\n\n"
+            "  Example: 'ನೀವು ಎರಡು, ಇಂಟರ್ನೆಟ್ ಪ್ಯಾಕೇಜ್‌ಗಳು ಆಯ್ಕೆ ಮಾಡಿದ್ದೀರಿ. ಸರಿಯಾಗಿದೆಯೇ?'\n"
+            "  Wait for confirmation (ಹೌದು/ಇಲ್ಲ). If they say no → go back to Step A.\n\n"
 
             "FRUSTRATION / EMOTION DETECTION — CHECK AFTER EXIT:\n"
             "  If the caller sounds confused or frustrated:\n"
-            "  Keywords: مجبور، ولې، پوه نه شم، ستونزه، نه غواړم\n"
-            "  → Respond empathetically: 'بخښنه وغواړئ، اندیښنه مه کوئ. زه دلته یم چې مرسته وکړم.'\n"
-            "  → Then gently: 'مهرباني وکړئ راته ووایئ کوم خدمت ته اړتیا لرئ.'\n"
+            "  → Respond empathetically: 'ಕ್ಷಮಿಸಿ, ಚಿಂತಿಸಬೇಡಿ. ನಾನು ಇಲ್ಲಿ ಸಹಾಯ ಮಾಡಲು ಇದ್ದೇನೆ.'\n"
+            "  → Then gently: 'ದಯವಿಟ್ಟು ನಿಮಗೆ ಯಾವ ಸೇವೆ ಬೇಕು ಎಂದು ಹೇಳಿ.'\n"
             "  → Do NOT jump straight to the menu list when user is frustrated.\n\n"
 
             "STEP C — HANDLE THE SELECTED OPTION (sub-menu):\n"
             "  After confirmation, do NOT return to main menu. Present sub-options for their choice:\n\n"
-            "  ۱ زما غوره وړاندیزونه → 'ستاسو وړاندیزونه: الف) ۱ ګیګ وړیا انټرنیټ  ب) ۵۰ دقیقې وړیا غږ  ج) ټول وړاندیزونه وګورئ'\n"
-            "  ۲ د انټرنیټ بنډلونه  → 'کوم بنډل؟ یو ورځني، دوه اونیز، درې میاشتني.'\n"
-            "  ۳ د غږ بنډلونه       → 'کوم بنډل؟ یو کورني، دوه نړیوال.'\n"
-            "  ۴ مخلوط بنډلونه      → 'کوم بنډل؟ یو کوچنی، دوه منځنی، درې لوی.'\n"
-            "  ۵ خدمات              → 'کوم خدمت؟ یو د تلیفون سندره، دوه خبرونه، درې لوبې، څلور موسیقي.'\n"
-            "  ۶ پکیج او مهاجرت    → 'یو د پکیج بدلول، دوه نوي پلان ته مهاجرت، درې اوسنی پکیج وګورئ.'\n"
-            "  ۷ د بیلانس پوښتنه   → 'یو بیلانس، دوه د پای نیټه، درې د کارونې تاریخچه.'\n"
-            "  ۸ نوره مرسته         → 'یو اپریټر، دوه تخنیکي ملاتړ، درې شکایت ثبت کړئ.'\n"
-            "  ۹ د DRM غیر فعالول  → 'یو فعال DRM بنډلونه وګورئ، دوه ټول غیر فعال کړئ، درې یو غیر فعال کړئ.'\n\n"
+            "  1 ನನ್ನ ಉತ್ತಮ ಕೊಡುಗೆಗಳು → 'ನಿಮ್ಮ ಕೊಡುಗೆಗಳು: ಅ) 1 GB ಉಚಿತ ಇಂಟರ್ನೆಟ್  ಆ) 50 ನಿಮಿಷ ಉಚಿತ ಕರೆ  ಇ) ಎಲ್ಲಾ ಕೊಡುಗೆಗಳು ನೋಡಿ'\n"
+            "  2 ಇಂಟರ್ನೆಟ್ ಪ್ಯಾಕೇಜ್‌ಗಳು → 'ಯಾವ ಪ್ಯಾಕೇಜ್? ಒಂದು ದಿನಸರಿ, ಎರಡು ವಾರಸರಿ, ಮೂರು ತಿಂಗಳಿಗೊಮ್ಮೆ.'\n"
+            "  3 ಕರೆ ಪ್ಯಾಕೇಜ್‌ಗಳು → 'ಯಾವ ಪ್ಯಾಕೇಜ್? ಒಂದು ದೇಶೀಯ, ಎರಡು ಅಂತರರಾಷ್ಟ್ರೀಯ.'\n"
+            "  4 ಮಿಕ್ಸ್ಡ್ ಪ್ಯಾಕೇಜ್‌ಗಳು → 'ಯಾವ ಪ್ಯಾಕೇಜ್? ಒಂದು ಸಣ್ಣ, ಎರಡು ಮಧ್ಯಮ, ಮೂರು ದೊಡ್ಡ.'\n"
+            "  5 ಸೇವೆಗಳು → 'ಯಾವ ಸೇವೆ? ಒಂದು ರಿಂಗ್‌ಟೋನ್, ಎರಡು ಸುದ್ದಿ, ಮೂರು ಆಟಗಳು, ನಾಲ್ಕು ಸಂಗೀತ.'\n"
+            "  6 ಪ್ಯಾಕೇಜ್ ಮತ್ತು ಮೈಗ್ರೇಷನ್ → 'ಒಂದು ಪ್ಯಾಕೇಜ್ ಬದಲಿಸು, ಎರಡು ಹೊಸ ಯೋಜನೆಗೆ ವರ್ಗಾಯಿಸು, ಮೂರು ಪ್ರಸ್ತುತ ಪ್ಯಾಕೇಜ್ ನೋಡು.'\n"
+            "  7 ಬ್ಯಾಲೆನ್ಸ್ ವಿಚಾರಣೆ → 'ಒಂದು ಬ್ಯಾಲೆನ್ಸ್, ಎರಡು ಮುಕ್ತಾಯ ದಿನಾಂಕ, ಮೂರು ಬಳಕೆ ಇತಿಹಾಸ.'\n"
+            "  8 ಹೆಚ್ಚಿನ ಸಹಾಯ → 'ಒಂದು ಆಪರೇಟರ್, ಎರಡು ತಾಂತ್ರಿಕ ಬೆಂಬಲ, ಮೂರು ದೂರು ನೋಂದಾಯಿಸು.'\n"
+            "  9 DRM ನಿಷ್ಕ್ರಿಯ → 'ಒಂದು ಸಕ್ರಿಯ DRM ಪ್ಯಾಕೇಜ್‌ಗಳು ನೋಡು, ಎರಡು ಎಲ್ಲಾ ನಿಷ್ಕ್ರಿಯ, ಮೂರು ಒಂದನ್ನು ನಿಷ್ಕ್ರಿಯ.'\n\n"
             "  Stay in the selected option's flow. Only return to main menu if user explicitly asks.\n\n"
 
             "OUT-OF-SCOPE RULE:\n"
             "  If the caller asks about something unrelated to Etisalat services, respond ONLY:\n"
-            "  'بخښنه وغواړئ، زه یوازې د اتصالات خدماتو سره مرسته کولی شم.'\n"
+            "  'ಕ್ಷಮಿಸಿ, ನಾನು ಕೇವಲ ಎಟಿಸಲಾಟ್ ಸೇವೆಗಳ ಬಗ್ಗೆ ಮಾತ್ರ ಸಹಾಯ ಮಾಡಬಲ್ಲೆ.'\n"
             "  Then re-prompt the menu once. Apply retry limit rules above.\n\n"
 
             "MENU OPTIONS (exact — never invent others):\n"
-            "  ۱=زما غوره وړاندیزونه  ۲=د انټرنیټ بنډلونه  ۳=د غږ بنډلونه  "
-            "۴=مخلوط بنډلونه  ۵=خدمات  ۶=پکیج او مهاجرت  "
-            "۷=د بیلانس پوښتنه  ۸=نوره مرسته  ۹=د DRM غیر فعالول\n\n"
+            "  1=ನನ್ನ ಉತ್ತಮ ಕೊಡುಗೆಗಳು  2=ಇಂಟರ್ನೆಟ್ ಪ್ಯಾಕೇಜ್‌ಗಳು  3=ಕರೆ ಪ್ಯಾಕೇಜ್‌ಗಳು  "
+            "4=ಮಿಕ್ಸ್ಡ್ ಪ್ಯಾಕೇಜ್‌ಗಳು  5=ಸೇವೆಗಳು  6=ಪ್ಯಾಕೇಜ್ ಮತ್ತು ಮೈಗ್ರೇಷನ್  "
+            "7=ಬ್ಯಾಲೆನ್ಸ್ ವಿಚಾರಣೆ  8=ಹೆಚ್ಚಿನ ಸಹಾಯ  9=DRM ನಿಷ್ಕ್ರಿಯ\n\n"
 
-            "LANGUAGE — MANDATORY: Always respond in Pashto (پښتو) script only. "
+            "LANGUAGE — MANDATORY: Always respond in Kannada (ಕನ್ನಡ) script only. "
             "Never respond in English or any other language.\n\n"
 
             "CONVERSATION RULES:\n"
@@ -329,15 +316,15 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 }
 
 SUPPORTED_LANGUAGES = list(LANGUAGE_CONFIGS.keys())
-DEFAULT_LANGUAGE: str = os.getenv("LANGUAGE", "dari").lower()
+DEFAULT_LANGUAGE: str = os.getenv("LANGUAGE", "telugu").lower()
 
 if DEFAULT_LANGUAGE not in SUPPORTED_LANGUAGES:
-    DEFAULT_LANGUAGE = "dari"
+    DEFAULT_LANGUAGE = "telugu"
 
 
 def get_language_config(language: str) -> Dict[str, Any]:
-    """Return the config dict for the given language (defaults to Dari)."""
-    return LANGUAGE_CONFIGS.get(language.lower(), LANGUAGE_CONFIGS["dari"])
+    """Return the config dict for the given language (defaults to Telugu)."""
+    return LANGUAGE_CONFIGS.get(language.lower(), LANGUAGE_CONFIGS["telugu"])
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +333,7 @@ def get_language_config(language: str) -> Dict[str, Any]:
 
 @dataclass
 class SonioxConfig:
-    """Soniox streaming ASR — cloud-based, supports Dari (fa) and Pashto (ps)."""
+    """Soniox streaming ASR — cloud-based, supports Telugu (te) and Kannada (kn)."""
 
     @property
     def api_key(self) -> str:
@@ -371,15 +358,12 @@ class OllamaConfig:
     """
     Ollama local LLM — open-source, no API key required.
 
-    Recommended models for Dari/Pashto (pull before starting):
-      qwen2.5:7b    → ~6 GB VRAM   ← good Dari, reasonable Pashto
+    Recommended models for Telugu/Kannada (pull before starting):
+      qwen2.5:7b    → ~6 GB VRAM   ← good multilingual quality
       qwen2.5:14b   → ~10 GB VRAM  ← better multilingual quality
-      qwen2.5:32b   → ~20 GB VRAM  ← best Dari quality
+      qwen2.5:32b   → ~20 GB VRAM  ← best quality
       qwen2.5:72b   → ~48 GB VRAM  ← best overall (default for 80GB GPU)
-      aya-expanse   → varies       ← Cohere multilingual, Persian supported
-
-    For Pashto-specific fine-tuned model:
-      junaid008/qehwa-pashto-llm  ← Convert GGUF to Ollama Modelfile
+      aya-expanse   → varies       ← Cohere multilingual, Indian languages supported
 
     Pull the model before starting:
       ollama pull qwen2.5:7b
@@ -397,7 +381,7 @@ class OllamaConfig:
 
 @dataclass
 class RAGConfig:
-    """FAISS-backed RAG for Etisalat Afghanistan IVR knowledge base."""
+    """FAISS-backed RAG for Etisalat IVR knowledge base."""
     embedding_model: str = os.getenv(
         "RAG_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
     )
@@ -457,13 +441,13 @@ class TTSConfig:
     chunk_ms: int = 60
 
     # ---------------------------------------------------------------------------
-    # Pashto TTS engine priority for male voice
+    # Kannada TTS engine priority for male voice
     # Comma-separated list tried in order until one succeeds.
     # Options: mms | elevenlabs | narakeet | micmonster | speakatoo | edge | gtts
     # Default: mms,edge,gtts  (same as before unless overridden)
     # ---------------------------------------------------------------------------
-    pashto_engine_priority: str = os.getenv(
-        "PASHTO_TTS_ENGINE_PRIORITY", "mms,edge,gtts"
+    kannada_engine_priority: str = os.getenv(
+        "KANNADA_TTS_ENGINE_PRIORITY", "mms,edge,gtts"
     )
 
     # ---------------------------------------------------------------------------

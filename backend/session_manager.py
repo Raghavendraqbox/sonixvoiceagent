@@ -1,9 +1,9 @@
 """
 session_manager.py — Per-session state, interrupt logic, and task lifecycle.
 
-Supports Dari and Pashto language sessions.
+Supports Telugu and Kannada language sessions.
 Language is determined per-session via the WebSocket ?language= query param
-(defaults to LANGUAGE env var, which defaults to "dari").
+(defaults to LANGUAGE env var, which defaults to "telugu").
 """
 
 import asyncio
@@ -127,7 +127,7 @@ class SessionManager:
         self,
         send_audio_cb: AudioSendCallback,
         send_json_cb: JsonSendCallback,
-        language: str = "dari",
+        language: str = "telugu",
         voice: str = "male",
         tts_engine: str = "auto",
     ) -> Session:
@@ -139,9 +139,9 @@ class SessionManager:
         from config import SUPPORTED_LANGUAGES
         if language.lower() not in SUPPORTED_LANGUAGES:
             logger.warning(
-                "Unsupported language '%s', defaulting to 'dari'", language
+                "Unsupported language '%s', defaulting to 'telugu'", language
             )
-            language = "dari"
+            language = "telugu"
         language = language.lower()
 
         lang_cfg = get_language_config(language)

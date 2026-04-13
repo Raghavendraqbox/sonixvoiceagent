@@ -1,9 +1,9 @@
 """
-main.py — FastAPI application with WebSocket endpoint for the Dari/Pashto Voice AI agent.
+main.py — FastAPI application with WebSocket endpoint for the Telugu/Kannada Voice AI agent.
 
 Language selection:
-  Pass ?language=dari or ?language=pashto in the WebSocket URL.
-  Defaults to the LANGUAGE environment variable (default: "dari").
+  Pass ?language=telugu or ?language=kannada in the WebSocket URL.
+  Defaults to the LANGUAGE environment variable (default: "telugu").
 
 WebSocket message protocol:
   CLIENT → SERVER (binary):
@@ -68,12 +68,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=" * 60)
-    logger.info("Dari & Pashto Voice AI Agent starting…")
+    logger.info("Telugu & Kannada Voice AI Agent starting…")
     logger.info("Default language : %s", config.default_language)
     logger.info("Supported        : %s", ", ".join(SUPPORTED_LANGUAGES))
     logger.info("ASR  : Soniox (%s) → Whisper large-v3 fallback", config.soniox.model)
     logger.info("LLM  : Ollama %s @ %s", config.ollama.model, config.ollama.base_url)
-    logger.info("TTS  : Dari=ElevenLabs→MMS(prs) fallback | Pashto=ElevenLabs→edge→gTTS")
+    logger.info("TTS  : Telugu=ElevenLabs→MMS(tel) fallback | Kannada=ElevenLabs→edge→gTTS")
     logger.info("Audio: input 16kHz | TTS output 24kHz")
     logger.info("=" * 60)
     session_manager.initialize_rag()
@@ -87,9 +87,9 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="Dari & Pashto Voice AI Agent",
+    title="Telugu & Kannada Voice AI Agent",
     description=(
-        "Real-time full-duplex Dari and Pashto conversational voice agent. "
+        "Real-time full-duplex Telugu and Kannada conversational voice agent. "
         "Powered by Soniox ASR + Ollama LLM + Meta MMS-TTS."
     ),
     version="3.0.0",
@@ -135,7 +135,7 @@ async def health():
             else "whisper-large-v3 (local GPU)"
         ),
         "llm": f"ollama/{config.ollama.model} @ {config.ollama.base_url}",
-        "tts": "dari: mms-tts strict | pashto: configurable chain (24kHz output)",
+        "tts": "telugu: mms-tts strict | kannada: configurable chain (24kHz output)",
     }
 
 
@@ -159,7 +159,7 @@ async def languages():
 @app.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
-    language: str = "dari",
+    language: str = "telugu",
     voice: str = "male",
     tts_engine: str = "auto",
 ):
@@ -167,11 +167,11 @@ async def websocket_endpoint(
     Main WebSocket handler.
 
     Query parameters:
-      language   — "dari" or "pashto" (defaults to LANGUAGE env var → "dari")
+      language   — "telugu" or "kannada" (defaults to LANGUAGE env var → "telugu")
       voice      — "male" (default) or "female"
-      tts_engine — Pashto TTS engine override: auto | elevenlabs | mms | edge |
+      tts_engine — Kannada TTS engine override: auto | elevenlabs | mms | edge |
                    narakeet | micmonster | speakatoo | gtts
-                   "auto" uses PASHTO_TTS_ENGINE_PRIORITY from .env
+                   "auto" uses KANNADA_TTS_ENGINE_PRIORITY from .env
     """
     # Normalize and validate
     language = language.lower()

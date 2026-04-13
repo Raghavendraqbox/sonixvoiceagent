@@ -40,27 +40,27 @@ def _load_faiss():
 
 TELECOM_SEED_DOCS: List[str] = [
     # ---------------------------------------------------------------------------
-    # Etisalat Afghanistan — IVR System 888 — Identity & Assistant Rules
+    # Etisalat — IVR System 888 — Identity & Assistant Rules
     # ---------------------------------------------------------------------------
-    "This is the Etisalat Afghanistan IVR voice assistant. The assistant name is Etisalat. "
-    "The IVR system number is 888. The default language is Dari. "
+    "This is the Etisalat IVR voice assistant. The assistant name is Etisalat. "
+    "The IVR system number is 888. The default language is Telugu. "
     "The assistant must never call itself by any other name.",
 
     "Etisalat IVR rules: Always follow the IVR flow in order. Do not skip steps. "
     "Do not invent menu options. Only use the provided menu items. "
-    "The assistant name must always be Etisalat. Default language is Dari unless the user specifies otherwise.",
+    "The assistant name must always be Etisalat. Default language is Telugu unless the user specifies otherwise.",
 
     # ---------------------------------------------------------------------------
     # IVR Flow — Step by Step
     # ---------------------------------------------------------------------------
     "Etisalat IVR Step 1 — Preferred Language: The user selects their preferred language. "
-    "The default language is Dari. If the user does not specify, continue in Dari.",
+    "The default language is Telugu. If the user does not specify, continue in Telugu.",
 
     "Etisalat IVR Step 2 — Promotional Announcement: Play current Etisalat promotions and announcements "
     "to the user before reaching the main menu.",
 
     "Etisalat IVR Step 3 — Greeting Script: Play the standard Etisalat greeting message. "
-    "In Dari: خوش آمدید به اتصالات. In Pashto: اتصالات ته ښه راغلاست.",
+    "In Telugu: \u0c0e\u0c1f\u0c3f\u0c38\u0c32\u0c3e\u0c1f\u0c4d\u200c\u0c15\u0c41 \u0c38\u0c4d\u0c35\u0c3e\u0c17\u0c24\u0c02. In Kannada: \u0c8e\u0c9f\u0cbf\u0cb8\u0cb2\u0cbe\u0c9f\u0ccd\u200c\u0c97\u0cc6 \u0cb8\u0ccd\u0cb5\u0cbe\u0c97\u0ca4.",
 
     "Etisalat IVR Step 4 — Main Menu: The user must choose one of 9 options. "
     "Option 1: My Best Offers. "
@@ -74,61 +74,55 @@ TELECOM_SEED_DOCS: List[str] = [
     "Option 9: DRM Bundles Deactivation.",
 
     # ---------------------------------------------------------------------------
-    # Dialogue Scripts — Dari (دری)
+    # Dialogue Scripts — Telugu (తెలుగు)
     # ---------------------------------------------------------------------------
-    "Etisalat Dari greeting (Step 1): خوش آمدید به اتصالات. لطفاً زبان مورد نظر خود را انتخاب کنید. زبان پیش‌فرض دری است.",
+    "Etisalat Telugu greeting (Step 1): ఎటిసలాట్‌కు స్వాగతం. దయచేసి మీ భాషను ఎంచుకోండి. డిఫాల్ట్ భాష తెలుగు.",
+    "Etisalat Telugu promotion (Step 2): ఎటిసలాట్ ఈ నెలలో మీకు ప్రత్యేక ఆఫర్లు అందిస్తోంది.",
+    "Etisalat Telugu main menu (Step 4): దయచేసి కింది ఎంపికలలో ఒకదాన్ని ఎంచుకోండి: "
+    "ఒకటి నా ఉత్తమ ఆఫర్లకు, రెండు ఇంటర్నెట్ ప్యాకేజీలకు, మూడు కాల్ ప్యాకేజీలకు, "
+    "నాలుగు మిక్స్డ్ ప్యాకేజీలకు, అయిదు సేవలకు, ఆరు ప్యాకేజీ మరియు మైగ్రేషన్‌కు, "
+    "ఏడు బ్యాలెన్స్ విచారణకు, ఎనిమిది మరింత సహాయానికి, తొమ్మిది DRM నిష్క్రియం చేయడానికి.",
 
-    "Etisalat Dari promotion (Step 2): اینجا آخرین پیشنهادات و تبلیغات اتصالات برای شما است.",
-
-    "Etisalat Dari main menu (Step 4): لطفاً یکی از گزینه‌های زیر را انتخاب کنید: "
-    "یک برای بهترین آفرهای من، دو برای بسته‌های انترنت، سه برای بسته‌های مکالمه، "
-    "چهار برای بسته‌های مختلط، پنج برای خدمات، شش برای پکیج و مهاجرت، "
-    "هفت برای پرسش موجودی، هشت برای کمک بیشتر، نه برای غیرفعال کردن بسته‌های DRM.",
-
-    # Dari — menu option details
-    "Etisalat گزینه ۱ — بهترین آفرهای من (My Best Offers): بهترین پیشنهادات شخصی‌سازی‌شده برای مشترک بر اساس الگوی استفاده.",
-    "Etisalat گزینه ۲ — بسته‌های انترنت (Data Bundles): بسته‌های داده روزانه، هفتگی و ماهانه اتصالات.",
-    "Etisalat گزینه ۳ — بسته‌های مکالمه (Voice Bundles): بسته‌های مکالمه محلی و بین‌المللی.",
-    "Etisalat گزینه ۴ — بسته‌های مختلط (Mixed & Other Bundles): بسته‌هایی که شامل داده، مکالمه و پیامک هستند.",
-    "Etisalat گزینه ۵ — خدمات (Services): خدمات ارزش افزوده اتصالات شامل موسیقی، بازی و بیشتر.",
-    "Etisalat گزینه ۶ — پکیج و مهاجرت (Package & Migration): تغییر پکیج یا مهاجرت به پلن جدید.",
-    "Etisalat گزینه ۷ — پرسش موجودی (Balance Inquiry): بررسی موجودی حساب، تاریخ انقضا و استفاده.",
-    "Etisalat گزینه ۸ — کمک بیشتر (Further Assistance): اتصال به اپراتور زنده یا پشتیبانی بیشتر.",
-    "Etisalat گزینه ۹ — غیرفعال کردن بسته‌های DRM (DRM Bundles Deactivation): لغو اشتراک بسته‌های DRM فعال.",
+    "Etisalat Telugu option 1 — నా ఉత్తమ ఆఫర్లు (My Best Offers): వినియోగదారు వాడుక ఆధారంగా వ్యక్తిగతీకరించిన ఉత్తమ ఆఫర్లు.",
+    "Etisalat Telugu option 2 — ఇంటర్నెట్ ప్యాకేజీలు (Data Bundles): రోజువారీ, వారపు మరియు నెలవారీ డేటా ప్యాకేజీలు.",
+    "Etisalat Telugu option 3 — కాల్ ప్యాకేజీలు (Voice Bundles): దేశీయ మరియు అంతర్జాతీయ కాల్ ప్యాకేజీలు.",
+    "Etisalat Telugu option 4 — మిక్స్డ్ ప్యాకేజీలు (Mixed Bundles): డేటా, కాల్ మరియు SMS కలిపిన ప్యాకేజీలు.",
+    "Etisalat Telugu option 5 — సేవలు (Services): రింగ్‌టోన్, వార్తలు, గేమ్స్, సంగీతం వంటి సేవలు.",
+    "Etisalat Telugu option 6 — ప్యాకేజీ మరియు మైగ్రేషన్ (Package & Migration): ప్యాకేజీ మార్పు లేదా కొత్త ప్లాన్‌కు మారడం.",
+    "Etisalat Telugu option 7 — బ్యాలెన్స్ విచారణ (Balance Inquiry): ఖాతా బ్యాలెన్స్, గడువు తేదీ మరియు వినియోగ చరిత్ర.",
+    "Etisalat Telugu option 8 — మరింత సహాయం (Further Assistance): లైవ్ ఆపరేటర్ లేదా అదనపు మద్దతు.",
+    "Etisalat Telugu option 9 — DRM నిష్క్రియం (DRM Deactivation): చురుకైన DRM బండిల్స్ రద్దు.",
 
     # ---------------------------------------------------------------------------
-    # Dialogue Scripts — Pashto (پښتو)
+    # Dialogue Scripts — Kannada (ಕನ್ನಡ)
     # ---------------------------------------------------------------------------
-    "Etisalat Pashto greeting (Step 1): اتصالات ته ښه راغلاست. مهرباني وکړئ خپله ژبه وټاکئ. د ډیفالټ ژبه دري ده.",
+    "Etisalat Kannada greeting (Step 1): ಎಟಿಸಲಾಟ್‌ಗೆ ಸ್ವಾಗತ. ದಯವಿಟ್ಟು ನಿಮ್ಮ ಭಾಷೆಯನ್ನು ಆಯ್ಕೆ ಮಾಡಿ. ಡೀಫಾಲ್ಟ್ ಭಾಷೆ ಕನ್ನಡ.",
+    "Etisalat Kannada promotion (Step 2): ಎಟಿಸಲಾಟ್ ಈ ತಿಂಗಳು ನಿಮಗೆ ವಿಶೇಷ ಕೊಡುಗೆಗಳನ್ನು ನೀಡುತ್ತಿದೆ.",
+    "Etisalat Kannada main menu (Step 4): ದಯವಿಟ್ಟು ಕೆಳಗಿನ ಆಯ್ಕೆಗಳಲ್ಲಿ ಒಂದನ್ನು ಆಯ್ಕೆ ಮಾಡಿ: "
+    "ಒಂದು ನನ್ನ ಉತ್ತಮ ಕೊಡುಗೆಗಳಿಗೆ, ಎರಡು ಇಂಟರ್ನೆಟ್ ಪ್ಯಾಕೇಜ್‌ಗಳಿಗೆ, ಮೂರು ಕರೆ ಪ್ಯಾಕೇಜ್‌ಗಳಿಗೆ, "
+    "ನಾಲ್ಕು ಮಿಕ್ಸ್ಡ್ ಪ್ಯಾಕೇಜ್‌ಗಳಿಗೆ, ಐದು ಸೇವೆಗಳಿಗೆ, ಆರು ಪ್ಯಾಕೇಜ್ ಮತ್ತು ಮೈಗ್ರೇಷನ್‌ಗೆ, "
+    "ಏಳು ಬ್ಯಾಲೆನ್ಸ್ ವಿಚಾರಣೆಗೆ, ಎಂಟು ಹೆಚ್ಚಿನ ಸಹಾಯಕ್ಕೆ, ಒಂಬತ್ತು DRM ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಲು.",
 
-    "Etisalat Pashto promotion (Step 2): دلته د اتصالات وروستي وړاندیزونه او اعلانونه دي.",
-
-    "Etisalat Pashto main menu (Step 4): مهرباني وکړئ لاندې انتخابونو څخه یو غوره کړئ: "
-    "یو د زما غوره وړاندیزونو لپاره، دوه د انټرنیټ بنډلونو لپاره، درې د غږ بنډلونو لپاره، "
-    "څلور د مخلوط بنډلونو لپاره، پنځه د خدماتو لپاره، شپږ د پکیج او مهاجرت لپاره، "
-    "اوه د بیلانس پوښتنې لپاره، اته د نورې مرستې لپاره، نهه د DRM بنډلونو د غیر فعالولو لپاره.",
-
-    # Pashto — menu option details
-    "Etisalat انتخاب ۱ — زما غوره وړاندیزونه (My Best Offers): د مشترک د کارونې نمونې پر بنسټ شخصي شوي غوره وړاندیزونه.",
-    "Etisalat انتخاب ۲ — د انټرنیټ بنډلونه (Data Bundles): د اتصالات ورځني، اونیزي او میاشتني ډیټا بنډلونه.",
-    "Etisalat انتخاب ۳ — د غږ بنډلونه (Voice Bundles): محلي او نړیوال د غږ بنډلونه.",
-    "Etisalat انتخاب ۴ — مخلوط بنډلونه (Mixed & Other Bundles): هغه بنډلونه چې ډیټا، غږ او SMS لري.",
-    "Etisalat انتخاب ۵ — خدمات (Services): د اتصالات ارزش اضافه خدمات لکه موسیقي، لوبې او نور.",
-    "Etisalat انتخاب ۶ — پکیج او مهاجرت (Package & Migration): د پکیج بدلول یا نوي پلان ته مهاجرت.",
-    "Etisalat انتخاب ۷ — د بیلانس پوښتنه (Balance Inquiry): د حساب بیلانس، د پای نیټه او د کارونې کتنه.",
-    "Etisalat انتخاب ۸ — نوره مرسته (Further Assistance): ژوندي اپریټر یا اضافي ملاتړ ته اتصال.",
-    "Etisalat انتخاب ۹ — د DRM بنډلونو غیر فعالول (DRM Bundles Deactivation): د فعالو DRM بنډلونو لغو.",
+    "Etisalat Kannada option 1 — ನನ್ನ ಉತ್ತಮ ಕೊಡುಗೆಗಳು (My Best Offers): ಬಳಕೆದಾರರ ಬಳಕೆ ಮಾದರಿ ಆಧಾರದ ಮೇಲೆ ವ್ಯಕ್ತಿಗತ ಕೊಡುಗೆಗಳು.",
+    "Etisalat Kannada option 2 — ಇಂಟರ್ನೆಟ್ ಪ್ಯಾಕೇಜ್‌ಗಳು (Data Bundles): ದಿನಸರಿ, ವಾರಸರಿ ಮತ್ತು ತಿಂಗಳ ಡೇಟಾ ಪ್ಯಾಕೇಜ್‌ಗಳು.",
+    "Etisalat Kannada option 3 — ಕರೆ ಪ್ಯಾಕೇಜ್‌ಗಳು (Voice Bundles): ದೇಶೀಯ ಮತ್ತು ಅಂತರರಾಷ್ಟ್ರೀಯ ಕರೆ ಪ್ಯಾಕೇಜ್‌ಗಳು.",
+    "Etisalat Kannada option 4 — ಮಿಕ್ಸ್ಡ್ ಪ್ಯಾಕೇಜ್‌ಗಳು (Mixed Bundles): ಡೇಟಾ, ಕರೆ ಮತ್ತು SMS ಸೇರಿದ ಪ್ಯಾಕೇಜ್‌ಗಳು.",
+    "Etisalat Kannada option 5 — ಸೇವೆಗಳು (Services): ರಿಂಗ್‌ಟೋನ್, ಸುದ್ದಿ, ಆಟಗಳು, ಸಂಗೀತ ಸೇರಿದ ಸೇವೆಗಳು.",
+    "Etisalat Kannada option 6 — ಪ್ಯಾಕೇಜ್ ಮತ್ತು ಮೈಗ್ರೇಷನ್ (Package & Migration): ಪ್ಯಾಕೇಜ್ ಬದಲಿಸುವುದು ಅಥವಾ ಹೊಸ ಯೋಜನೆಗೆ ಬದಲಾಯಿಸುವುದು.",
+    "Etisalat Kannada option 7 — ಬ್ಯಾಲೆನ್ಸ್ ವಿಚಾರಣೆ (Balance Inquiry): ಖಾತೆ ಬ್ಯಾಲೆನ್ಸ್, ಮುಕ್ತಾಯ ದಿನಾಂಕ ಮತ್ತು ಬಳಕೆ ಇತಿಹಾಸ.",
+    "Etisalat Kannada option 8 — ಹೆಚ್ಚಿನ ಸಹಾಯ (Further Assistance): ನೇರ ಆಪರೇಟರ್ ಅಥವಾ ಹೆಚ್ಚುವರಿ ಬೆಂಬಲ.",
+    "Etisalat Kannada option 9 — DRM ನಿಷ್ಕ್ರಿಯ (DRM Deactivation): ಸಕ್ರಿಯ DRM ಬಂಡಲ್‌ಗಳ ರದ್ದು.",
 
     # ---------------------------------------------------------------------------
-    # Etisalat — General Telecom Knowledge (Afghanistan)
+    # Etisalat — General Telecom Knowledge
     # ---------------------------------------------------------------------------
-    "Etisalat Afghanistan customer service is available by calling 888. "
+    "Etisalat customer service is available by calling 888. "
     "The IVR system provides self-service options 24 hours a day, 7 days a week.",
 
-    "To check Etisalat balance in Dari: موجودی خود را با گرفتن *888# بررسی کنید. "
-    "To check balance in Pashto: خپل بیلانس د *888# ډایل کولو سره وګورئ.",
+    "To check Etisalat balance in Telugu: మీ బ్యాలెన్స్‌ను *888# డయల్ చేసి తెలుసుకోండి. "
+    "To check balance in Kannada: ನಿಮ್ಮ ಬ್ಯಾಲೆನ್ಸ್ *888# ಡಯಲ್ ಮಾಡಿ ತಿಳಿಯಿರಿ.",
 
-    "Etisalat Afghanistan offers prepaid and postpaid plans. "
+    "Etisalat offers prepaid and postpaid plans. "
     "Migration between plans is available through IVR option 6 — Package & Migration.",
 
     "Etisalat DRM (Digital Rights Management) bundles are premium content subscriptions. "
@@ -152,65 +146,11 @@ TELECOM_SEED_DOCS: List[str] = [
     "Etisalat Further Assistance (option 8) connects the caller to a live customer service agent "
     "or provides advanced troubleshooting support.",
 
-    # ---------------------------------------------------------------------------
-    # Etisalat — Sub-menu details per option (Dari + Pashto)
-    # ---------------------------------------------------------------------------
-
-    # Option 1 — My Best Offers
-    "Etisalat My Best Offers sub-options (Dari): "
-    "الف) بسته انترنت ۱ گیگ رایگان  ب) ۵۰ دقیقه مکالمه رایگان  ج) مشاهده همه آفرها. "
-    "Offers are personalised per subscriber and change monthly.",
-
-    # Option 2 — Data Bundles
-    "Etisalat Data Bundle sub-options (Dari): "
-    "یک برای بسته روزانه، دو برای بسته هفتگی، سه برای بسته ماهانه. "
-    "Daily bundle: 1GB for 24 hours. Weekly bundle: 5GB for 7 days. Monthly bundle: 20GB for 30 days.",
-
-    "Etisalat د انټرنیټ بنډل فرعي انتخابونه (Pashto): "
-    "یو ورځني بنډل، دوه اونیز بنډل، درې میاشتني بنډل. "
-    "ورځنی: ۱ ګیګ ۲۴ ساعته. اونیز: ۵ ګیګ ۷ ورځې. میاشتنی: ۲۰ ګیګ ۳۰ ورځې.",
-
-    # Option 3 — Voice Bundles
-    "Etisalat Voice Bundle sub-options (Dari): "
-    "یک برای مکالمه داخلی، دو برای مکالمه بین‌المللی. "
-    "Local voice bundle: 100 minutes for 7 days. International: rates vary by country.",
-
-    # Option 4 — Mixed Bundles
-    "Etisalat Mixed Bundle sub-options (Dari): "
-    "یک برای بسته کوچک (۵۰۰MB + ۳۰ دقیقه)، دو برای متوسط (۲GB + ۱۰۰ دقیقه)، "
-    "سه برای بزرگ (۵GB + ۳۰۰ دقیقه + ۵۰ پیامک).",
-
-    # Option 5 — Services
-    "Etisalat Services sub-options (Dari): "
-    "یک آهنگ پشت خط، دو اخبار روزانه، سه بازی آنلاین، چهار موسیقی. "
-    "All services are subscription-based and can be deactivated via option 9.",
-
-    # Option 6 — Package & Migration
-    "Etisalat Package and Migration sub-options (Dari): "
-    "یک برای تغییر پکیج فعلی، دو برای مهاجرت به پلن جدید، سه برای مشاهده پکیج فعلی. "
-    "Migration is free and takes effect immediately.",
-
-    # Option 7 — Balance Inquiry
-    "Etisalat Balance Inquiry sub-options (Dari): "
-    "یک برای مشاهده موجودی، دو برای تاریخ انقضا، سه برای تاریخچه مصرف. "
-    "Balance can also be checked by dialling *888#.",
-
-    # Option 8 — Further Assistance
-    "Etisalat Further Assistance sub-options (Dari): "
-    "یک برای اتصال به اپراتور زنده، دو برای پشتیبانی تخنیکی، سه برای ثبت شکایت. "
-    "Live agents are available 24/7.",
-
-    # Option 9 — DRM Deactivation
-    "Etisalat DRM Deactivation sub-options (Dari): "
-    "یک برای مشاهده بسته‌های DRM فعال، دو برای غیرفعال کردن همه بسته‌های DRM، "
-    "سه برای غیرفعال کردن یک بسته خاص. "
-    "DRM deactivation takes effect within 24 hours.",
-
     # Frustration / emotional handling
     "Etisalat emotional handling: If a caller expresses frustration, confusion, or asks why they must "
     "follow the IVR, the assistant should respond empathetically first before re-presenting options. "
-    "In Dari: 'بخشش می‌خواهم، نگران نباشید. من اینجا هستم که کمکتان کنم.' "
-    "In Pashto: 'بخښنه وغواړئ، اندیښنه مه کوئ. زه دلته یم چې مرسته وکړم.'",
+    "In Telugu: 'క్షమించండి, చింతించకండి. నేను మీకు సహాయం చేయడానికి ఇక్కడ ఉన్నాను.' "
+    "In Kannada: 'ಕ್ಷಮಿಸಿ, ಚಿಂತಿಸಬೇಡಿ. ನಾನು ಇಲ್ಲಿ ಸಹಾಯ ಮಾಡಲು ಇದ್ದೇನೆ.'",
 
     # Flow continuation rule
     "Etisalat IVR flow rule: After the caller confirms a menu selection, the assistant must "
