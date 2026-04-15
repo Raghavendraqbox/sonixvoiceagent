@@ -459,18 +459,18 @@ class VoiceTTSHandler:
         return await self._synthesize_telugu(text)
 
     # ------------------------------------------------------------------
-    # Telugu — ElevenLabs primary, MMS Telugu fallback
+    # Telugu — ElevenLabs primary, edge-tts neural fallback
     # ------------------------------------------------------------------
 
     async def _synthesize_telugu(self, text: str) -> bool:
-        """Try ElevenLabs first, fall back to MMS Telugu (facebook/mms-tts-tel)."""
+        """Try ElevenLabs first, fall back to edge-tts neural voice (te-IN)."""
         if await self._synthesize_elevenlabs(text):
             return True
         logger.info(
-            "Telugu: ElevenLabs failed, falling back to MMS Telugu",
+            "Telugu: ElevenLabs unavailable, falling back to edge-tts neural voice",
             extra={"session_id": self.session_id},
         )
-        if await self._synthesize_mms(text):
+        if await self._synthesize_edge_tts(text):
             return True
         return await self._synthesize_silence(text)
 

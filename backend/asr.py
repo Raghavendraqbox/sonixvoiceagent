@@ -150,6 +150,13 @@ class ASRHandler:
 
         Uses two daemon threads (send + recv) bridged to the async loop via
         thread-safe queues, matching the v2 RealtimeSTTSession API.
+
+        Root-cause fix: The Soniox SDK uses synchronous WebSocket I/O.
+        Calling SonioxClient.__enter__() and connect() directly on the event-loop
+        thread blocks it for the full TCP+TLS+WebSocket handshake (~200–800 ms).
+        During that window the main WebSocket handler cannot read incoming audio
+        frames from the browser, so the user's first words are silently dropped.
+        Fix: run the blocking open/close calls in a thread-pool executor.
         """
         loop = asyncio.get_running_loop()
         sync_audio_q: _queue.Queue = _queue.Queue()
@@ -165,73 +172,91 @@ class ASRHandler:
             enable_language_identification=False,  # prevent auto-switching to English
         )
 
-        with SonioxClient(api_key=config.soniox.api_key) as client:
-            session = client.realtime.stt.connect(config=soniox_cfg)
+        # Open the Soniox WebSocket in a thread so the event loop stays free
+        # to receive audio from the browser during the connection handshake.
+        def _open_connection():
+            client_obj = SonioxClient(api_key=config.soniox.api_key)
+            client_obj.__enter__()
+            sess = client_obj.realtime.stt.connect(config=soniox_cfg)
+            sess.__enter__()
+            return client_obj, sess
 
-            with session:
-                def recv_thread_fn():
-                    try:
-                        session.handle_events(lambda e: response_q.put(e))
-                    except Exception as exc:
-                        response_q.put(exc)
-                    finally:
-                        response_q.put(None)  # sentinel
+        client, session = await loop.run_in_executor(None, _open_connection)
 
-                def send_thread_fn():
-                    while not self._stopped:
-                        try:
-                            chunk = sync_audio_q.get(timeout=0.5)
-                            if chunk is None:
-                                break
-                            session.send_byte_chunk(chunk)
-                        except _queue.Empty:
-                            continue
-                        except Exception:
-                            break
+        def recv_thread_fn():
+            try:
+                session.handle_events(lambda e: response_q.put(e))
+            except Exception as exc:
+                response_q.put(exc)
+            finally:
+                response_q.put(None)  # sentinel
 
-                recv_t = threading.Thread(target=recv_thread_fn, daemon=True, name="soniox-recv")
-                send_t = threading.Thread(target=send_thread_fn, daemon=True, name="soniox-send")
-                recv_t.start()
-                send_t.start()
-
-                logger.info(
-                    "Soniox ASR v2 started (language=%s [%s], model=%s)",
-                    self._soniox_language_code,
-                    self._language_display,
-                    config.soniox.model,
-                    extra={"session_id": self.session_id},
-                )
-
-                async def pump_audio():
-                    """Pump async audio queue → sync queue for the send thread."""
-                    while not self._stopped:
-                        try:
-                            chunk = await asyncio.wait_for(self.audio_queue.get(), timeout=1.0)
-                            sync_audio_q.put(chunk)
-                        except asyncio.TimeoutError:
-                            continue
-                        except asyncio.CancelledError:
-                            break
-                    sync_audio_q.put(None)  # sentinel to unblock send thread
-
-                pump_task = asyncio.create_task(pump_audio())
-
+        def send_thread_fn():
+            while not self._stopped:
                 try:
-                    while True:
-                        item = await loop.run_in_executor(None, response_q.get)
-                        if item is None:
-                            break
-                        if isinstance(item, Exception):
-                            raise item
-                        await self._process_soniox_event(item)
-                finally:
-                    pump_task.cancel()
-                    try:
-                        await pump_task
-                    except asyncio.CancelledError:
-                        pass
-                    send_t.join(timeout=2.0)
-                    recv_t.join(timeout=2.0)
+                    chunk = sync_audio_q.get(timeout=0.5)
+                    if chunk is None:
+                        break
+                    session.send_byte_chunk(chunk)
+                except _queue.Empty:
+                    continue
+                except Exception:
+                    break
+
+        recv_t = threading.Thread(target=recv_thread_fn, daemon=True, name="soniox-recv")
+        send_t = threading.Thread(target=send_thread_fn, daemon=True, name="soniox-send")
+        recv_t.start()
+        send_t.start()
+
+        logger.info(
+            "Soniox ASR v2 started (language=%s [%s], model=%s)",
+            self._soniox_language_code,
+            self._language_display,
+            config.soniox.model,
+            extra={"session_id": self.session_id},
+        )
+
+        async def pump_audio():
+            """Pump async audio queue → sync queue for the send thread."""
+            while not self._stopped:
+                try:
+                    chunk = await asyncio.wait_for(self.audio_queue.get(), timeout=1.0)
+                    sync_audio_q.put(chunk)
+                except asyncio.TimeoutError:
+                    continue
+                except asyncio.CancelledError:
+                    break
+            sync_audio_q.put(None)  # sentinel to unblock send thread
+
+        pump_task = asyncio.create_task(pump_audio())
+
+        try:
+            while True:
+                item = await loop.run_in_executor(None, response_q.get)
+                if item is None:
+                    break
+                if isinstance(item, Exception):
+                    raise item
+                await self._process_soniox_event(item)
+        finally:
+            pump_task.cancel()
+            try:
+                await pump_task
+            except asyncio.CancelledError:
+                pass
+            send_t.join(timeout=2.0)
+            recv_t.join(timeout=2.0)
+            # Close Soniox context managers in a thread (they make network calls)
+            def _close_connection():
+                try:
+                    session.__exit__(None, None, None)
+                except Exception:
+                    pass
+                try:
+                    client.__exit__(None, None, None)
+                except Exception:
+                    pass
+            await loop.run_in_executor(None, _close_connection)
 
     async def _process_soniox_event(self, event) -> None:
         """
