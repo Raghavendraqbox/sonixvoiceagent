@@ -11,21 +11,29 @@ Audio format contract (must match frontend):
   - Chunk size:  ~3200 bytes (100 ms at 16kHz)
 
 Priority chain:
-  1. Soniox cloud ASR (SONIOX_API_KEY set)
+  1. Sarvam AI STT (SARVAM_API_KEY set)  ← primary, best for Indian languages
+       Telugu  → language_code="te-IN"
+       Kannada → language_code="kn-IN"
+       Model: saarika:v2.5
+  2. Soniox cloud ASR (SONIOX_API_KEY set)
        Telugu  → language_code="te"
        Kannada → language_code="kn"
-  2. faster-whisper large-v3 on GPU
+  3. faster-whisper large-v3 on GPU
        Telugu  → language="te"
        Kannada → language="kn"
-  3. Null stub                         ← placeholder only
+  4. Null stub                         ← placeholder only
 """
 
 import asyncio
+import io
 import logging
 import queue as _queue
 import threading
+import wave
 from dataclasses import dataclass
 from typing import Optional
+
+import httpx
 
 from config import config, get_language_config
 
@@ -101,21 +109,37 @@ class ASRHandler:
         lang_cfg = get_language_config(language)
         self._soniox_language_code: str = lang_cfg["soniox_language_code"]
         self._whisper_language: str = lang_cfg["whisper_language"]
+        self._sarvam_stt_language_code: str = lang_cfg.get("sarvam_stt_language_code", "te-IN")
         self._language_display: str = lang_cfg["display_name"]
 
     async def run(self) -> None:
-        """Main ASR loop with exponential back-off reconnection."""
+        """Main ASR loop with exponential back-off reconnection.
+
+        Priority:
+          1. Sarvam AI STT (saarika:v2.5) — cloud API, best for Telugu/Kannada
+          2. Soniox streaming ASR            — cloud, real-time
+          3. faster-whisper large-v3 (GPU)   — local fallback
+        """
         backoff = 1.0
         while not self._stopped:
             try:
-                _key = config.soniox.api_key
+                _sarvam_key = config.sarvam_stt.api_key
+                _soniox_key = config.soniox.api_key
+
+                use_sarvam = (
+                    bool(_sarvam_key)
+                    and not _sarvam_key.startswith("your-")
+                )
                 use_soniox = (
                     _SONIOX_AVAILABLE
-                    and bool(_key)
-                    and not _key.startswith("your-")
+                    and bool(_soniox_key)
+                    and not _soniox_key.startswith("your-")
                     and not self._soniox_failed
                 )
-                if use_soniox:
+
+                if use_sarvam:
+                    await self._run_sarvam_stt_session()
+                elif use_soniox:
                     await self._run_soniox_streaming()
                 else:
                     await self._run_whisper_session()
@@ -145,6 +169,166 @@ class ASRHandler:
     def stop(self) -> None:
         """Signal the run loop to exit."""
         self._stopped = True
+
+    # ------------------------------------------------------------------
+    # Sarvam AI STT session (primary ASR)
+    # ------------------------------------------------------------------
+
+    async def _run_sarvam_stt_session(self) -> None:
+        """
+        VAD-based ASR using the Sarvam AI speech-to-text REST API.
+
+        Same energy-based VAD loop as the Whisper fallback, but instead of
+        running local model inference we POST the buffered utterance as WAV
+        to https://api.sarvam.ai/speech-to-text (saarika:v2.5).
+
+        This avoids loading Whisper large-v3 (~3 GB) into GPU VRAM, which
+        would compete with qwen2.5:72b, and delivers higher accuracy for
+        Telugu and Kannada than general-purpose ASR models.
+
+        Audio format: PCM 16-bit signed LE, 16 kHz mono (same as Whisper).
+        """
+        try:
+            import numpy as np
+        except ImportError:
+            logger.warning(
+                "numpy not installed — cannot use Sarvam STT, falling back to Whisper",
+                extra={"session_id": self.session_id},
+            )
+            await self._run_whisper_session()
+            return
+
+        logger.info(
+            "Sarvam STT started (language=%s, model=%s)",
+            self._sarvam_stt_language_code,
+            config.sarvam_stt.model,
+            extra={"session_id": self.session_id},
+        )
+
+        # VAD parameters — same as Whisper fallback
+        SILENCE_RMS_THRESHOLD  = 0.008
+        SILENCE_FRAMES_TO_COMMIT = 3   # 0.3s silence ends utterance
+        MIN_SPEECH_FRAMES       = 1
+        MAX_SILENCE_FRAMES      = 20   # 2s hard reset
+
+        audio_buf: list = []
+        silence_frames   = 0
+        speech_started   = False
+        speech_frame_count = 0
+
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+            while not self._stopped:
+                try:
+                    chunk: bytes = await asyncio.wait_for(
+                        self.audio_queue.get(), timeout=0.5
+                    )
+                except asyncio.TimeoutError:
+                    # Flush on timeout if we have a committed utterance
+                    if (
+                        speech_started
+                        and silence_frames >= SILENCE_FRAMES_TO_COMMIT
+                        and speech_frame_count >= MIN_SPEECH_FRAMES
+                    ):
+                        await self._sarvam_transcribe(client, audio_buf, np)
+                        audio_buf = []
+                        speech_started = False
+                        silence_frames = 0
+                        speech_frame_count = 0
+                    continue
+
+                samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
+                rms = float(np.sqrt(np.mean(samples ** 2)))
+
+                if rms > SILENCE_RMS_THRESHOLD:
+                    speech_started = True
+                    silence_frames = 0
+                    speech_frame_count += 1
+                    audio_buf.append(samples)
+                else:
+                    if speech_started:
+                        audio_buf.append(samples)
+                        silence_frames += 1
+                        if silence_frames >= SILENCE_FRAMES_TO_COMMIT:
+                            if speech_frame_count >= MIN_SPEECH_FRAMES:
+                                await self._sarvam_transcribe(client, audio_buf, np)
+                            audio_buf = []
+                            speech_started = False
+                            silence_frames = 0
+                            speech_frame_count = 0
+                        elif silence_frames >= MAX_SILENCE_FRAMES:
+                            audio_buf = []
+                            speech_started = False
+                            silence_frames = 0
+                            speech_frame_count = 0
+
+    async def _sarvam_transcribe(
+        self, client: "httpx.AsyncClient", audio_buf: list, np
+    ) -> None:
+        """
+        Build a WAV from the buffered PCM frames and POST to Sarvam STT.
+
+        The Sarvam API accepts multipart/form-data with:
+          file          — WAV audio bytes
+          language_code — te-IN / kn-IN
+          model         — saarika:v2.5
+        """
+        audio_array = np.concatenate(audio_buf).astype(np.float32)
+        # Convert float32 [-1,1] back to int16 for WAV encoding
+        pcm_int16 = (audio_array * 32767).clip(-32768, 32767).astype(np.int16)
+
+        # Build WAV in memory (stdlib wave module)
+        wav_buf = io.BytesIO()
+        with wave.open(wav_buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)           # 16-bit = 2 bytes
+            wf.setframerate(16000)
+            wf.writeframes(pcm_int16.tobytes())
+        wav_bytes = wav_buf.getvalue()
+
+        try:
+            response = await client.post(
+                config.sarvam_stt.endpoint,
+                headers={"api-subscription-key": config.sarvam_stt.api_key},
+                files={"file": ("audio.wav", wav_bytes, "audio/wav")},
+                data={
+                    "language_code": self._sarvam_stt_language_code,
+                    "model": config.sarvam_stt.model,
+                },
+            )
+            response.raise_for_status()
+            result = response.json()
+        except httpx.HTTPStatusError as exc:
+            logger.error(
+                "Sarvam STT HTTP error %d: %s",
+                exc.response.status_code,
+                exc.response.text[:200],
+                extra={"session_id": self.session_id},
+            )
+            return
+        except Exception as exc:
+            logger.error(
+                "Sarvam STT request failed: %s", exc,
+                extra={"session_id": self.session_id},
+            )
+            return
+
+        # Response schema: {"transcript": "...", ...}
+        text = (result.get("transcript") or "").strip()
+        if not text:
+            return
+
+        logger.info(
+            "Sarvam STT [%s]: %s",
+            self._language_display,
+            text[:80],
+            extra={"session_id": self.session_id},
+        )
+
+        if not self.interrupt_event.is_set():
+            self.interrupt_event.set()
+        await self.transcript_queue.put(
+            TranscriptResult(text=text, is_final=True, confidence=1.0)
+        )
 
     # ------------------------------------------------------------------
     # Soniox streaming session

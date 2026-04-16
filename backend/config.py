@@ -24,6 +24,7 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # ASR
         "soniox_language_code": "te",    # Telugu language code
         "whisper_language": "te",         # Whisper language code for Telugu
+        "sarvam_stt_language_code": "te-IN",  # Sarvam STT language code
 
         # TTS — Meta MMS-TTS (local GPU)
         # facebook/mms-tts-tel — ISO 639-3: tel = Telugu
@@ -105,6 +106,7 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # ASR
         "soniox_language_code": "kn",    # Kannada language code
         "whisper_language": "kn",         # faster-whisper supports Kannada
+        "sarvam_stt_language_code": "kn-IN",  # Sarvam STT language code
 
         # TTS — Meta MMS-TTS (primary, local GPU — same engine as Telugu)
         "mms_tts_model": "facebook/mms-tts-kan",   # Kannada (HuggingFace model ID)
@@ -169,6 +171,29 @@ if DEFAULT_LANGUAGE not in SUPPORTED_LANGUAGES:
 def get_language_config(language: str) -> Dict[str, Any]:
     """Return the config dict for the given language (defaults to Telugu)."""
     return LANGUAGE_CONFIGS.get(language.lower(), LANGUAGE_CONFIGS["telugu"])
+
+
+# ---------------------------------------------------------------------------
+# Sarvam STT config
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SarvamSTTConfig:
+    """
+    Sarvam AI speech-to-text — cloud API, best for Indian languages.
+
+    Endpoint: POST https://api.sarvam.ai/speech-to-text
+    Auth:     api-subscription-key header (same key as Sarvam TTS)
+    Model:    saarika:v2.5  (v1/v2 are deprecated)
+    Accepts:  multipart/form-data — file (WAV), language_code, model
+    """
+    # Reuse the same SARVAM_API_KEY used by TTS
+    @property
+    def api_key(self) -> str:
+        return os.getenv("SARVAM_API_KEY", "")
+
+    model: str = os.getenv("SARVAM_STT_MODEL", "saarika:v2.5")
+    endpoint: str = "https://api.sarvam.ai/speech-to-text"
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +381,7 @@ class ServerConfig:
 @dataclass
 class AppConfig:
     """Root application config — single source of truth."""
+    sarvam_stt: SarvamSTTConfig = field(default_factory=SarvamSTTConfig)
     soniox: SonioxConfig = field(default_factory=SonioxConfig)
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
     rag: RAGConfig = field(default_factory=RAGConfig)
