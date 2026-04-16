@@ -77,6 +77,7 @@ async def lifespan(app: FastAPI):
     logger.info("Audio: input 16kHz | TTS output 24kHz")
     logger.info("=" * 60)
     session_manager.initialize_rag()
+    await session_manager.warmup_llm()
     logger.info("Server ready.")
     yield
     logger.info("Shutting down…")

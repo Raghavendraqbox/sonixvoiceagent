@@ -123,6 +123,47 @@ class SessionManager:
         # Pre-load default language TTS model to eliminate cold-start latency
         schedule_tts_warmup(config.default_language)
 
+    async def warmup_llm(self) -> None:
+        """
+        Send a tiny dummy request to Ollama so the 72B model is fully loaded
+        into GPU VRAM before the first real user query arrives.
+
+        Without this, the first inference triggers a ~100s cold-start load
+        while the user is waiting — the model layers page in from disk and the
+        session appears completely unresponsive.  With the warmup the model is
+        already resident in VRAM and first-token latency drops to <1 s.
+        """
+        import httpx
+        logger.info(
+            "LLM warm-up starting — loading %s into VRAM (this takes ~60-120s on first boot)…",
+            config.ollama.model,
+        )
+        try:
+            async with httpx.AsyncClient(
+                base_url=config.ollama.base_url,
+                timeout=httpx.Timeout(300.0, connect=15.0),
+            ) as client:
+                t0 = asyncio.get_event_loop().time()
+                resp = await client.post(
+                    "/api/generate",
+                    json={
+                        "model": config.ollama.model,
+                        "prompt": "hi",
+                        "stream": False,
+                        "options": {"num_predict": 1},
+                    },
+                )
+                resp.raise_for_status()
+                elapsed = asyncio.get_event_loop().time() - t0
+                logger.info(
+                    "LLM warm-up complete — %s ready (%.1fs, first-token latency will now be <1s)",
+                    config.ollama.model, elapsed,
+                )
+        except Exception as exc:
+            logger.warning(
+                "LLM warm-up failed (Ollama may not be running yet): %s", exc
+            )
+
     def create_session(
         self,
         send_audio_cb: AudioSendCallback,
@@ -371,6 +412,7 @@ class SessionManager:
             session.tts_orch_task = orch_task
 
             full_bot_response = ""
+            llm_was_interrupted = False
             try:
                 async for fragment in session.llm_client.stream_response(
                     user_query=user_text,
@@ -378,6 +420,7 @@ class SessionManager:
                     session_id=session.session_id,
                 ):
                     if session.tts_cancel_event.is_set():
+                        llm_was_interrupted = True
                         break
                     full_bot_response += fragment + " "
                     await send_json_cb({"type": "bot_text_fragment", "text": fragment})
@@ -391,6 +434,25 @@ class SessionManager:
                     extra={"session_id": session.session_id},
                 )
                 await send_json_cb({"type": "error", "message": "LLM processing failed"})
+
+            # If the user barged in while the LLM was still generating, drain
+            # all but the most recent queued transcript.  Without this, every
+            # "hello? can you hear me?" utterance the user spoke during a slow
+            # cold-start gets processed sequentially, flooding the conversation.
+            if llm_was_interrupted:
+                latest: Optional[TranscriptResult] = None
+                while not session.transcript_queue.empty():
+                    try:
+                        latest = session.transcript_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                if latest is not None:
+                    await session.transcript_queue.put(latest)
+                    logger.debug(
+                        "LLM barge-in drain: kept latest transcript '%s', discarded queued utterances",
+                        latest.text[:60],
+                        extra={"session_id": session.session_id},
+                    )
 
             await session.tts_orchestrator.fragment_queue.put(None)
 

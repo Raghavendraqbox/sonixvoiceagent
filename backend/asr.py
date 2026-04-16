@@ -108,7 +108,13 @@ class ASRHandler:
         backoff = 1.0
         while not self._stopped:
             try:
-                use_soniox = _SONIOX_AVAILABLE and bool(config.soniox.api_key) and not self._soniox_failed
+                _key = config.soniox.api_key
+                use_soniox = (
+                    _SONIOX_AVAILABLE
+                    and bool(_key)
+                    and not _key.startswith("your-")
+                    and not self._soniox_failed
+                )
                 if use_soniox:
                     await self._run_soniox_streaming()
                 else:
