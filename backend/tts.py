@@ -2,9 +2,18 @@
 tts.py — Multi-language TTS handler for Telugu and Kannada.
 
 Priority chain per language:
-  Telugu (strict):
-    1. facebook/mms-tts-tel  (local GPU)
-    2. Silence
+  Telugu (configurable via TELUGU_TTS_ENGINE_PRIORITY):
+    Engines available:
+      sarvam     — Sarvam AI REST API    (requires SARVAM_API_KEY, best Telugu quality)
+      google_tts — Google Cloud TTS      (requires GOOGLE_TTS_API_KEY)
+      gnani      — Gnani.ai REST API     (requires GNANI_API_KEY + GNANI_CLIENT_ID)
+      ttsmaker   — TTSMaker REST API     (requires TTSMAKER_TOKEN + TTSMAKER_VOICE_ID_TELUGU)
+      elevenlabs — ElevenLabs REST API   (requires ELEVENLABS_API_KEY)
+      edge       — Microsoft edge-tts    (free, te-IN-ShrutiNeural / MohanNeural)
+      gtts       — Google gTTS           (fallback, uses Telugu te)
+
+    Default priority: sarvam,google_tts,gnani,ttsmaker,edge,gtts
+    Override via env: TELUGU_TTS_ENGINE_PRIORITY=sarvam,edge,gtts
 
   Kannada (configurable via KANNADA_TTS_ENGINE_PRIORITY):
     Engines available:
@@ -16,7 +25,7 @@ Priority chain per language:
       edge       — Microsoft edge-tts    (free, kn-IN-SapnaNeural / GaganNeural)
       gtts       — Google gTTS           (fallback, uses Kannada kn)
 
-    Default priority: mms,edge,gtts
+    Default priority: elevenlabs,edge,gtts
     Override via env: KANNADA_TTS_ENGINE_PRIORITY=elevenlabs,edge,gtts
 
 Audio output contract:
@@ -411,6 +420,24 @@ class VoiceTTSHandler:
             self._edge_tts_voice: str       = lang_cfg.get("edge_tts_voice_male", lang_cfg["edge_tts_voice"])
             self._use_edge_primary: bool    = False
 
+        # Build Telugu engine priority list
+        # "auto" → use TELUGU_TTS_ENGINE_PRIORITY from .env
+        if self._language == "telugu":
+            TELUGU_VALID = {"sarvam", "google_tts", "gnani", "ttsmaker", "elevenlabs", "edge", "gtts"}
+            if tts_engine and tts_engine != "auto" and tts_engine in TELUGU_VALID:
+                fallbacks = [e for e in ["edge", "gtts"] if e != tts_engine]
+                self._telugu_engines: list[str] = [tts_engine] + fallbacks
+            else:
+                raw = config.tts.telugu_engine_priority
+                self._telugu_engines = [e.strip() for e in raw.split(",") if e.strip()]
+            logger.info(
+                "Telugu TTS engine priority: %s (voice=%s, requested=%s)",
+                self._telugu_engines, voice, tts_engine,
+                extra={"session_id": session_id},
+            )
+        else:
+            self._telugu_engines = []
+
         # Build Kannada engine priority list
         # If a specific engine is requested from the UI, put it first with fallbacks.
         # "auto" → use KANNADA_TTS_ENGINE_PRIORITY from .env
@@ -459,19 +486,49 @@ class VoiceTTSHandler:
         return await self._synthesize_telugu(text)
 
     # ------------------------------------------------------------------
-    # Telugu — ElevenLabs primary, edge-tts neural fallback
+    # Telugu — walk the configurable engine priority list
     # ------------------------------------------------------------------
 
     async def _synthesize_telugu(self, text: str) -> bool:
-        """Try ElevenLabs first, fall back to edge-tts neural voice (te-IN)."""
-        if await self._synthesize_elevenlabs(text):
-            return True
-        logger.info(
-            "Telugu: ElevenLabs unavailable, falling back to edge-tts neural voice",
+        """Try each configured Telugu TTS engine in order."""
+        for engine in self._telugu_engines:
+            if self._cancel_event.is_set():
+                return False
+
+            logger.info(
+                "Telugu TTS trying engine: %s", engine,
+                extra={"session_id": self.session_id},
+            )
+
+            if engine == "sarvam":
+                result = await self._synthesize_sarvam(text)
+            elif engine == "google_tts":
+                result = await self._synthesize_google_tts(text)
+            elif engine == "gnani":
+                result = await self._synthesize_gnani(text)
+            elif engine == "ttsmaker":
+                result = await self._synthesize_ttsmaker(text)
+            elif engine == "elevenlabs":
+                result = await self._synthesize_elevenlabs(text)
+            elif engine == "edge":
+                result = await self._synthesize_edge_tts(text)
+            elif engine == "gtts":
+                result = await self._synthesize_gtts(text)
+            else:
+                logger.warning(
+                    "Unknown Telugu TTS engine '%s', skipping", engine,
+                    extra={"session_id": self.session_id},
+                )
+                continue
+
+            if result:
+                return True
+            # engine failed → try next
+
+        logger.error(
+            "All Telugu TTS engines exhausted — falling back to silence",
             extra={"session_id": self.session_id},
         )
-        if await self._synthesize_edge_tts(text):
-            return True
         return await self._synthesize_silence(text)
 
     # ------------------------------------------------------------------
@@ -570,6 +627,438 @@ class VoiceTTSHandler:
         audio_f32 = _apply_fade(audio_f32, TTS_RATE)
         pcm_bytes  = _pcm_to_int16(audio_f32)
         return await self._stream_pcm(pcm_bytes)
+
+    # ------------------------------------------------------------------
+    # Sarvam AI  (best quality for Indian languages including Telugu)
+    # Docs: https://docs.sarvam.ai/api-reference-docs/text-to-speech
+    # ------------------------------------------------------------------
+
+    async def _synthesize_sarvam(self, text: str) -> bool:
+        """
+        Sarvam AI TTS — best quality for Telugu.
+        Requires SARVAM_API_KEY.
+        Speaker overrides: SARVAM_SPEAKER_TELUGU / SARVAM_SPEAKER_TELUGU_MALE
+        Model override: SARVAM_MODEL (default: bulbul:v2)
+        """
+        if self._cancel_event.is_set():
+            return False
+
+        api_key = config.tts.sarvam_api_key
+        if not api_key:
+            logger.warning(
+                "Sarvam AI: SARVAM_API_KEY not set, skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        speaker = (
+            self._lang_cfg.get("sarvam_speaker", "ananya")
+            if self._voice == "female"
+            else self._lang_cfg.get("sarvam_speaker_male", "arvind")
+        )
+        language_code = self._lang_cfg.get("sarvam_language_code", "te-IN")
+        model         = self._lang_cfg.get("sarvam_model", "bulbul:v2")
+
+        try:
+            import httpx
+        except ImportError:
+            logger.error("Sarvam AI: httpx not installed — pip install httpx",
+                         extra={"session_id": self.session_id})
+            return False
+
+        url = "https://api.sarvam.ai/text-to-speech"
+        headers = {
+            "API-Subscription-Key": api_key,
+            "Content-Type": "application/json",
+        }
+        # Sarvam accepts up to 500 chars per request; split if needed
+        payload = {
+            "inputs":               [text],
+            "target_language_code": language_code,
+            "speaker":              speaker,
+            "pitch":                0,
+            "pace":                 config.tts.sarvam_pace,
+            "loudness":             1.5,
+            "speech_sample_rate":   22050,
+            "enable_preprocessing": True,
+            "model":                model,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code == 401:
+                    logger.error("Sarvam AI: invalid API key (401)",
+                                 extra={"session_id": self.session_id})
+                    return False
+                if resp.status_code != 200:
+                    logger.error(
+                        "Sarvam AI API error %d: %s",
+                        resp.status_code, resp.text[:200],
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+                data = resp.json()
+
+            audios = data.get("audios") or []
+            if not audios:
+                logger.error("Sarvam AI: empty 'audios' in response",
+                             extra={"session_id": self.session_id})
+                return False
+
+            import base64
+            wav_bytes = base64.b64decode(audios[0])
+            if not wav_bytes:
+                return False
+
+            # WAV is decoded via PyAV (same as MP3 — av.open auto-detects format)
+            loop = asyncio.get_running_loop()
+            pcm_bytes = await loop.run_in_executor(
+                None, lambda: _mp3_bytes_to_pcm(wav_bytes, denoise=False)
+            )
+            if pcm_bytes is None:
+                return False
+
+            _debug_dump_audio_pair(
+                provider="sarvam",
+                session_id=self.session_id,
+                source_audio=wav_bytes,
+                source_ext="wav",
+                decoded_pcm=pcm_bytes,
+            )
+            logger.info(
+                "Sarvam AI TTS success: speaker=%s language=%s model=%s (%d bytes)",
+                speaker, language_code, model, len(wav_bytes),
+                extra={"session_id": self.session_id},
+            )
+            return await self._stream_pcm(pcm_bytes)
+
+        except Exception as exc:
+            logger.error("Sarvam AI TTS error: %s", exc,
+                         extra={"session_id": self.session_id})
+            return False
+
+    # ------------------------------------------------------------------
+    # Google Cloud TTS  (https://cloud.google.com/text-to-speech)
+    # ------------------------------------------------------------------
+
+    async def _synthesize_google_tts(self, text: str) -> bool:
+        """
+        Google Cloud TTS — requires GOOGLE_TTS_API_KEY.
+        Voice overrides: GOOGLE_TTS_VOICE_TELUGU / GOOGLE_TTS_VOICE_TELUGU_MALE
+        Telugu voices: te-IN-Standard-A (female), te-IN-Standard-B (male)
+                       te-IN-Wavenet-A  (female), te-IN-Wavenet-B  (male)
+        """
+        if self._cancel_event.is_set():
+            return False
+
+        api_key = config.tts.google_tts_api_key
+        if not api_key:
+            logger.warning(
+                "Google TTS: GOOGLE_TTS_API_KEY not set, skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        voice_name = (
+            self._lang_cfg.get("google_tts_voice", "te-IN-Standard-A")
+            if self._voice == "female"
+            else self._lang_cfg.get("google_tts_voice_male", "te-IN-Standard-B")
+        )
+        language_code = self._lang_cfg.get("google_tts_language", "te-IN")
+
+        try:
+            import httpx
+        except ImportError:
+            logger.error("Google TTS: httpx not installed — pip install httpx",
+                         extra={"session_id": self.session_id})
+            return False
+
+        url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}"
+        payload = {
+            "input": {"text": text},
+            "voice": {
+                "languageCode": language_code,
+                "name":         voice_name,
+            },
+            "audioConfig": {
+                "audioEncoding": "MP3",
+                "sampleRateHertz": TTS_RATE,
+            },
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 400:
+                    logger.error(
+                        "Google TTS: bad request (400): %s", resp.text[:300],
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+                if resp.status_code == 403:
+                    logger.error(
+                        "Google TTS: permission denied (403) — check GOOGLE_TTS_API_KEY and "
+                        "ensure the Cloud Text-to-Speech API is enabled in your GCP project",
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+                if resp.status_code != 200:
+                    logger.error(
+                        "Google TTS API error %d: %s",
+                        resp.status_code, resp.text[:200],
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+                data = resp.json()
+
+            import base64
+            audio_content = data.get("audioContent", "")
+            if not audio_content:
+                logger.error("Google TTS: empty audioContent in response",
+                             extra={"session_id": self.session_id})
+                return False
+
+            mp3_bytes = base64.b64decode(audio_content)
+            if not mp3_bytes:
+                return False
+
+            loop = asyncio.get_running_loop()
+            pcm_bytes = await loop.run_in_executor(
+                None, lambda: _mp3_bytes_to_pcm(mp3_bytes, denoise=False)
+            )
+            if pcm_bytes is None:
+                return False
+
+            _debug_dump_audio_pair(
+                provider="google_tts",
+                session_id=self.session_id,
+                source_audio=mp3_bytes,
+                source_ext="mp3",
+                decoded_pcm=pcm_bytes,
+            )
+            logger.info(
+                "Google TTS success: voice=%s (%d bytes)",
+                voice_name, len(mp3_bytes),
+                extra={"session_id": self.session_id},
+            )
+            return await self._stream_pcm(pcm_bytes)
+
+        except Exception as exc:
+            logger.error("Google TTS error: %s", exc,
+                         extra={"session_id": self.session_id})
+            return False
+
+    # ------------------------------------------------------------------
+    # Gnani.ai  (https://gnani.ai — Indian language specialist)
+    # ------------------------------------------------------------------
+
+    async def _synthesize_gnani(self, text: str) -> bool:
+        """
+        Gnani.ai TTS — requires GNANI_API_KEY (and optionally GNANI_CLIENT_ID).
+        Voice override: GNANI_VOICE_TELUGU (default: 'female')
+        Contact Gnani.ai for your API key and voice IDs.
+        """
+        if self._cancel_event.is_set():
+            return False
+
+        api_key   = config.tts.gnani_api_key
+        client_id = config.tts.gnani_client_id
+        if not api_key:
+            logger.warning(
+                "Gnani.ai: GNANI_API_KEY not set, skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        language_code = self._lang_cfg.get("gnani_language_code", "te")
+        voice         = self._lang_cfg.get("gnani_voice", "female")
+
+        try:
+            import httpx
+        except ImportError:
+            logger.error("Gnani.ai: httpx not installed — pip install httpx",
+                         extra={"session_id": self.session_id})
+            return False
+
+        # Gnani.ai REST TTS endpoint
+        url = "https://dev.gnani.ai/api/v1/synthesize"
+        headers: dict = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type":  "application/json",
+        }
+        if client_id:
+            headers["X-Client-Id"] = client_id
+
+        payload = {
+            "text":     text,
+            "language": language_code,
+            "voice":    voice,
+            "format":   "mp3",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code in (401, 403):
+                    logger.error(
+                        "Gnani.ai: auth error (%d) — check GNANI_API_KEY / GNANI_CLIENT_ID",
+                        resp.status_code,
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+                if resp.status_code != 200:
+                    logger.error(
+                        "Gnani.ai API error %d: %s",
+                        resp.status_code, resp.text[:200],
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+
+                # Gnani returns raw MP3 bytes (content-type: audio/mpeg)
+                audio_bytes = resp.content
+
+            if not audio_bytes:
+                return False
+
+            loop = asyncio.get_running_loop()
+            pcm_bytes = await loop.run_in_executor(
+                None, lambda: _mp3_bytes_to_pcm(audio_bytes, denoise=False)
+            )
+            if pcm_bytes is None:
+                return False
+
+            _debug_dump_audio_pair(
+                provider="gnani",
+                session_id=self.session_id,
+                source_audio=audio_bytes,
+                source_ext="mp3",
+                decoded_pcm=pcm_bytes,
+            )
+            logger.info(
+                "Gnani.ai TTS success: language=%s voice=%s (%d bytes)",
+                language_code, voice, len(audio_bytes),
+                extra={"session_id": self.session_id},
+            )
+            return await self._stream_pcm(pcm_bytes)
+
+        except Exception as exc:
+            logger.error("Gnani.ai TTS error: %s", exc,
+                         extra={"session_id": self.session_id})
+            return False
+
+    # ------------------------------------------------------------------
+    # TTSMaker  (https://ttsmaker.com — free tier available)
+    # Docs: https://ttsmaker.com/api-doc
+    # ------------------------------------------------------------------
+
+    async def _synthesize_ttsmaker(self, text: str) -> bool:
+        """
+        TTSMaker TTS — requires TTSMAKER_TOKEN and TTSMAKER_VOICE_ID_TELUGU.
+        Get your token and browse Telugu voice IDs at: https://ttsmaker.com
+        API docs: https://api.ttsmaker.com/v1/get-voice-list  (voice_id lookup)
+        """
+        if self._cancel_event.is_set():
+            return False
+
+        token    = config.tts.ttsmaker_token
+        voice_id = self._lang_cfg.get("ttsmaker_voice_id", 0)
+        if not token:
+            logger.warning(
+                "TTSMaker: TTSMAKER_TOKEN not set, skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+        if not voice_id:
+            logger.warning(
+                "TTSMaker: TTSMAKER_VOICE_ID_TELUGU not set (must be a non-zero int), skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        try:
+            import httpx
+        except ImportError:
+            logger.error("TTSMaker: httpx not installed — pip install httpx",
+                         extra={"session_id": self.session_id})
+            return False
+
+        order_url = "https://api.ttsmaker.com/v1/create-tts-order"
+        payload = {
+            "token":                    token,
+            "text":                     text,
+            "voice_id":                 voice_id,
+            "audio_format":             "mp3",
+            "audio_speed":              1.0,
+            "audio_volume":             0,
+            "text_paragraph_pause_time": 0,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                # Step 1: create the TTS order
+                resp = await client.post(order_url, json=payload)
+                if resp.status_code != 200:
+                    logger.error(
+                        "TTSMaker order error %d: %s",
+                        resp.status_code, resp.text[:200],
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+                data = resp.json()
+
+                if data.get("status") != 200:
+                    logger.error(
+                        "TTSMaker: order failed — %s", data,
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+
+                audio_url = data.get("audio_file_url", "")
+                if not audio_url:
+                    logger.error("TTSMaker: no audio_file_url in response",
+                                 extra={"session_id": self.session_id})
+                    return False
+
+                # Step 2: download the generated MP3
+                dl_resp = await client.get(audio_url, timeout=30.0)
+                if dl_resp.status_code != 200:
+                    logger.error(
+                        "TTSMaker: download error %d for %s",
+                        dl_resp.status_code, audio_url,
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+                mp3_bytes = dl_resp.content
+
+            if not mp3_bytes:
+                return False
+
+            loop = asyncio.get_running_loop()
+            pcm_bytes = await loop.run_in_executor(
+                None, lambda: _mp3_bytes_to_pcm(mp3_bytes, denoise=False)
+            )
+            if pcm_bytes is None:
+                return False
+
+            _debug_dump_audio_pair(
+                provider="ttsmaker",
+                session_id=self.session_id,
+                source_audio=mp3_bytes,
+                source_ext="mp3",
+                decoded_pcm=pcm_bytes,
+            )
+            logger.info(
+                "TTSMaker TTS success: voice_id=%s (%d bytes)",
+                voice_id, len(mp3_bytes),
+                extra={"session_id": self.session_id},
+            )
+            return await self._stream_pcm(pcm_bytes)
+
+        except Exception as exc:
+            logger.error("TTSMaker TTS error: %s", exc,
+                         extra={"session_id": self.session_id})
+            return False
 
     # ------------------------------------------------------------------
     # ElevenLabs  (API-based — high quality, multilingual)

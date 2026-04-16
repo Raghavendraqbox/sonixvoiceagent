@@ -25,18 +25,44 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "soniox_language_code": "te",    # Telugu language code
         "whisper_language": "te",         # Whisper language code for Telugu
 
-        # TTS — Meta MMS-TTS (primary, local GPU)
+        # TTS — Meta MMS-TTS (local GPU)
         # facebook/mms-tts-tel — ISO 639-3: tel = Telugu
         "mms_tts_model": "facebook/mms-tts-tel",
         "mms_tts_sample_rate": 16_000,
 
-        # TTS — ElevenLabs (primary, API-based)
+        # TTS — Sarvam AI (https://sarvam.ai)
+        # Female speakers: anushka, manisha, vidya, arya, ritu, priya, neha, pooja, simra, kavya,
+        #                  ishita, shreya, roopa, tanya, sunny, suhani, kavitha, rupal
+        # Male speakers:   abhilash, karun, hitesh, aditya, rahul, rohan, amit, dev, ratan, varun,
+        #                  manan, sumit, kabir, aayan, shubh, ashutosh, advait, anand, tarun, mani,
+        #                  gokul, vijay, mohit, rehan, soham
+        "sarvam_speaker":        os.getenv("SARVAM_SPEAKER_TELUGU",        "anushka"),
+        "sarvam_speaker_male":   os.getenv("SARVAM_SPEAKER_TELUGU_MALE",   "abhilash"),
+        "sarvam_language_code":  "te-IN",
+        "sarvam_model":          os.getenv("SARVAM_MODEL", "bulbul:v2"),
+
+        # TTS — Google Cloud TTS (https://cloud.google.com/text-to-speech)
+        # Telugu voices: te-IN-Standard-A (female), te-IN-Standard-B (male)
+        #                te-IN-Wavenet-A  (female), te-IN-Wavenet-B  (male)
+        "google_tts_voice":        os.getenv("GOOGLE_TTS_VOICE_TELUGU",      "te-IN-Standard-A"),
+        "google_tts_voice_male":   os.getenv("GOOGLE_TTS_VOICE_TELUGU_MALE", "te-IN-Standard-B"),
+        "google_tts_language":     "te-IN",
+
+        # TTS — Gnani.ai (https://gnani.ai)
+        "gnani_language_code":   "te",
+        "gnani_voice":           os.getenv("GNANI_VOICE_TELUGU", "female"),
+
+        # TTS — TTSMaker (https://ttsmaker.com)
+        # Find Telugu voice IDs at: https://api.ttsmaker.com/v1/get-voice-list
+        "ttsmaker_voice_id":     int(os.getenv("TTSMAKER_VOICE_ID_TELUGU", "0")),
+
+        # TTS — ElevenLabs (legacy fallback)
         # iP95p4xoKVk53GoZ742B = Chris (male, multilingual v2 compatible)
         # onwK4e9ZLuTAKqWW03F9 = River (female, multilingual v2, best quality)
         "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_TELUGU_MALE",   "iP95p4xoKVk53GoZ742B"),
         "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_TELUGU_FEMALE", "onwK4e9ZLuTAKqWW03F9"),
 
-        # TTS — edge-tts (fallback)
+        # TTS — edge-tts (free Microsoft neural voices)
         "edge_tts_voice": os.getenv("TTS_VOICE_TELUGU", "te-IN-ShrutiNeural"),
         "edge_tts_voice_male": "te-IN-MohanNeural",
 
@@ -287,10 +313,19 @@ class TTSConfig:
     chunk_ms: int = 60
 
     # ---------------------------------------------------------------------------
-    # Kannada TTS engine priority for male voice
+    # Telugu TTS engine priority
+    # Comma-separated list tried in order until one succeeds.
+    # Options: sarvam | google_tts | gnani | ttsmaker | elevenlabs | edge | gtts
+    # Default: sarvam,google_tts,gnani,ttsmaker,edge,gtts
+    # ---------------------------------------------------------------------------
+    telugu_engine_priority: str = os.getenv(
+        "TELUGU_TTS_ENGINE_PRIORITY", "sarvam,google_tts,gnani,ttsmaker,edge,gtts"
+    )
+
+    # ---------------------------------------------------------------------------
+    # Kannada TTS engine priority
     # Comma-separated list tried in order until one succeeds.
     # Options: mms | elevenlabs | narakeet | micmonster | speakatoo | edge | gtts
-    # Default: mms,edge,gtts  (same as before unless overridden)
     # ---------------------------------------------------------------------------
     kannada_engine_priority: str = os.getenv(
         "KANNADA_TTS_ENGINE_PRIORITY", "elevenlabs,edge,gtts"
@@ -299,6 +334,22 @@ class TTSConfig:
     # ---------------------------------------------------------------------------
     # Third-party TTS API keys
     # ---------------------------------------------------------------------------
+    # Sarvam AI  (https://sarvam.ai — best for Indian languages including Telugu)
+    sarvam_api_key:     str   = field(default_factory=lambda: os.getenv("SARVAM_API_KEY", ""))
+    # Speech pace: 0.5 (slow) → 1.0 (normal) → 2.0 (fast). Default 1.0.
+    sarvam_pace:        float = float(os.getenv("SARVAM_PACE", "1.0"))
+
+    # Google Cloud TTS  (https://cloud.google.com/text-to-speech)
+    google_tts_api_key: str = field(default_factory=lambda: os.getenv("GOOGLE_TTS_API_KEY", ""))
+
+    # Gnani.ai  (https://gnani.ai — Indian language specialist)
+    gnani_api_key:      str = field(default_factory=lambda: os.getenv("GNANI_API_KEY",      ""))
+    gnani_client_id:    str = field(default_factory=lambda: os.getenv("GNANI_CLIENT_ID",    ""))
+
+    # TTSMaker  (https://ttsmaker.com — free tier available)
+    ttsmaker_token:     str = field(default_factory=lambda: os.getenv("TTSMAKER_TOKEN",     ""))
+
+    # ElevenLabs  (legacy / Kannada)
     elevenlabs_api_key: str = field(default_factory=lambda: os.getenv("ELEVENLABS_API_KEY", ""))
     narakeet_api_key:   str = field(default_factory=lambda: os.getenv("NARAKEET_API_KEY",   ""))
     micmonster_api_key: str = field(default_factory=lambda: os.getenv("MICMONSTER_API_KEY", ""))

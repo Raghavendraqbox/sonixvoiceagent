@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.9.0] - 2026-04-16
+
+### Fixed — LLM timeout, TTS cascade latency, Sarvam speech rate
+
+#### LLM — 72b cold-start timeout (`backend/llm.py`)
+- **Raised** Ollama HTTP read timeout from `60s` → `300s` to accommodate `qwen2.5:72b` first-inference VRAM load time
+- Previously the second user turn would always hit the 60-second hard limit while the model paged layers into GPU memory, falling back to a neutral stub (`"అర్థమైంది, చూడనివ్వండి."`) with no real LLM response
+
+#### TTS — cascade latency eliminated (`backend/tts.py`, `.env`)
+- **Root cause**: `TELUGU_TTS_ENGINE_PRIORITY` was trying 4 engines with placeholder/invalid API keys before reaching `edge-tts`, burning ~1.3s of wasted HTTP calls on every single response
+- **Fixed** default priority to skip engines without valid keys; now goes `sarvam → edge → gtts`
+
+#### Sarvam TTS — speech rate reduced (`backend/tts.py`, `backend/config.py`)
+- **Fixed** hardcoded `pace: 1.65` (65% above normal) → now driven by `SARVAM_PACE` env var (default `1.0` = natural speed)
+- Added `sarvam_pace: float` field to `TTSConfig` in `config.py`
+- Added `SARVAM_PACE` to `.env.example` with tuning guide (`0.5` slow → `1.0` normal → `2.0` fast)
+
+#### Infrastructure
+- Installed `qwen2.5:72b` (47 GB) on NVIDIA A100-SXM4-80GB — full model served locally via Ollama
+- Verified Sarvam API key and `bulbul:v2` model working for Telugu TTS
+
+---
+
 ## [2.8.0] - 2026-04-11
 
 ### Changed — Two-column UI layout + conversation display fix

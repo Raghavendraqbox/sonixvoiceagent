@@ -59,7 +59,9 @@ class VoiceLLMClient:
 
         self._http = httpx.AsyncClient(
             base_url=config.ollama.base_url,
-            timeout=httpx.Timeout(60.0, connect=10.0),
+            # 72b models need up to 3-4 min for the very first inference while
+            # layers are paged into VRAM.  Subsequent requests are much faster.
+            timeout=httpx.Timeout(300.0, connect=15.0),
         )
 
     # ------------------------------------------------------------------
