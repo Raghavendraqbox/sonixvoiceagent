@@ -33,6 +33,14 @@ logger = logging.getLogger(__name__)
 # Sentence boundaries: Western + Arabic punctuation (؟ = ?, ، = comma, ۔ = full stop)
 _SENTENCE_BOUNDARY = re.compile(r"([.!?,|؟،۔])\s*(?=\S|$)")
 
+# Word-count dispatch: yield after this many words even without punctuation.
+# Telugu/Kannada sentences rarely use early commas, so without this trigger the
+# buffer accumulates the FULL first sentence (~50-70 tokens) before TTS can start.
+# At 24 tok/s that costs ~3-4s.  Dispatching at 8 words (~16-24 tokens) cuts
+# first-audio latency by ~3-4s.  8 words is enough for Sarvam to produce
+# natural-sounding speech without being too fragmentary.
+_WORD_DISPATCH_THRESHOLD = 6   # Telugu words are long; 6 space-separated units ≈ 20-25 tokens
+
 
 class VoiceLLMClient:
     """
@@ -85,7 +93,13 @@ class VoiceLLMClient:
         Yields:
             Sentence fragments suitable for direct TTS synthesis.
         """
-        prompt = self._build_prompt(user_query, memory)
+        # Build prompt in a thread executor so the RAG embedding call
+        # (sentence-transformer CPU inference, ~10-30ms) does not block
+        # the asyncio event loop.
+        loop = asyncio.get_event_loop()
+        prompt = await loop.run_in_executor(
+            None, self._build_prompt, user_query, memory
+        )
         logger.debug(
             "LLM prompt built (%d chars): %s",
             len(prompt), user_query[:60],
@@ -240,25 +254,38 @@ class VoiceLLMClient:
     @staticmethod
     def _split_fragment(buffer: str) -> "tuple[str, str]":
         """
-        Extract the longest complete sentence fragment from the buffer.
+        Extract the next TTS-ready fragment from the buffer.
 
-        Handles Western punctuation (.  !  ?  ,) and Arabic punctuation
-        (؟ ،  ۔) used in Dari and Pashto text.
+        Priority:
+          1. Sentence boundary (.  !  ?  ,  | and Arabic equivalents) — cleanest split.
+          2. Word-count trigger — if no punctuation arrives after
+             _WORD_DISPATCH_THRESHOLD words, dispatch what we have so TTS
+             can start speaking immediately instead of waiting for the full
+             sentence.  This is critical for Telugu/Kannada where the LLM
+             often generates a full sentence (~50-70 tokens) with no early
+             comma, causing 4-5 s of silence before the first audio chunk.
 
         Returns (fragment, remaining_buffer).
-        fragment is empty string if no sentence boundary reached yet.
+        fragment is empty string if neither condition is met yet.
         """
+        # ── Priority 1: sentence boundary ──────────────────────────────────
         match = None
         for m in _SENTENCE_BOUNDARY.finditer(buffer):
             match = m  # take the last boundary
 
-        if match is None:
-            return "", buffer
+        if match is not None:
+            split_pos = match.end()
+            return buffer[:split_pos].strip(), buffer[split_pos:]
 
-        split_pos = match.end()
-        fragment  = buffer[:split_pos].strip()
-        remaining = buffer[split_pos:]
-        return fragment, remaining
+        # ── Priority 2: word-count trigger ─────────────────────────────────
+        words = buffer.split()
+        if len(words) >= _WORD_DISPATCH_THRESHOLD:
+            # Split at the last space so we never break a word mid-character.
+            last_space = buffer.rfind(" ")
+            if last_space > 0:
+                return buffer[:last_space].strip(), buffer[last_space + 1:]
+
+        return "", buffer
 
 
 # ---------------------------------------------------------------------------

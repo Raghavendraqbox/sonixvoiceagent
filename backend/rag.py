@@ -24,7 +24,11 @@ logger = logging.getLogger(__name__)
 
 def _load_sentence_transformer():
     from sentence_transformers import SentenceTransformer  # type: ignore
-    return SentenceTransformer(config.rag.embedding_model)
+    # Force CPU so the tiny embedding model does not compete with qwen2.5:72b
+    # for A100 memory bandwidth.  CPU inference for a single 384-dim embedding
+    # takes ~10-30ms — fast enough, and keeps the GPU free for LLM generation.
+    model = SentenceTransformer(config.rag.embedding_model, device="cpu")
+    return model
 
 
 def _load_faiss():

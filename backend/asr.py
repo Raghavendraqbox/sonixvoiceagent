@@ -366,7 +366,7 @@ class ASRHandler:
 
         # VAD parameters
         SILENCE_RMS_THRESHOLD = 0.008
-        SILENCE_FRAMES_TO_COMMIT = 6    # 0.6 s silence ends utterance
+        SILENCE_FRAMES_TO_COMMIT = 3    # 0.3 s silence ends utterance (halved from 0.6s to reduce latency)
         MIN_SPEECH_FRAMES = 1
         MAX_SILENCE_FRAMES = 20         # 2 s hard reset
 
