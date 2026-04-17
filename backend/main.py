@@ -163,6 +163,7 @@ async def websocket_endpoint(
     language: str = "telugu",
     voice: str = "male",
     tts_engine: str = "auto",
+    stt_engine: str = "auto",
 ):
     """
     Main WebSocket handler.
@@ -173,6 +174,8 @@ async def websocket_endpoint(
       tts_engine — Kannada TTS engine override: auto | elevenlabs | mms | edge |
                    narakeet | micmonster | speakatoo | gtts
                    "auto" uses KANNADA_TTS_ENGINE_PRIORITY from .env
+      stt_engine — STT engine: auto | sarvam | soniox | whisper
+                   "auto" follows the priority chain (Sarvam → Soniox → Whisper)
     """
     # Normalize and validate
     language = language.lower()
@@ -180,14 +183,18 @@ async def websocket_endpoint(
         language = config.default_language
     voice = voice.lower() if voice.lower() in ("male", "female") else "male"
     tts_engine = tts_engine.lower().strip()
+    stt_engine = stt_engine.lower().strip()
+    if stt_engine not in ("auto", "sarvam", "soniox", "whisper"):
+        stt_engine = "auto"
 
     await websocket.accept()
     logger.info(
-        "WebSocket connected from %s (language=%s, voice=%s, tts_engine=%s)",
+        "WebSocket connected from %s (language=%s, voice=%s, tts_engine=%s, stt_engine=%s)",
         websocket.client,
         language,
         voice,
         tts_engine,
+        stt_engine,
     )
 
     async def send_audio(pcm_bytes: bytes) -> None:
@@ -208,6 +215,7 @@ async def websocket_endpoint(
         language=language,
         voice=voice,
         tts_engine=tts_engine,
+        stt_engine=stt_engine,
     )
     await send_json_msg({
         "type": "session_ready",
@@ -246,6 +254,15 @@ async def websocket_endpoint(
 
                 elif msg_type == "transcript_partial":
                     session.interrupt_event.set()
+
+                elif msg_type == "set_stt_engine":
+                    new_engine = msg.get("engine", "auto")
+                    session_manager.switch_asr_engine(session.session_id, new_engine)
+                    await send_json_msg({"type": "stt_engine_changed", "engine": new_engine})
+                    logger.info(
+                        "STT engine switched to '%s' for session %s",
+                        new_engine, session.session_id,
+                    )
 
                 elif msg_type == "ping":
                     await send_json_msg({"type": "pong"})

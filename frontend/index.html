@@ -406,6 +406,17 @@
         </select>
       </div>
 
+      <!-- STT Engine selector — can be changed mid-session -->
+      <div class="selector-card">
+        <label for="stt-select">STT</label>
+        <select id="stt-select" onchange="onSTTEngineChange(this.value)">
+          <option value="auto"    selected>Auto</option>
+          <option value="sarvam"          >Sarvam AI</option>
+          <option value="soniox"          >Soniox</option>
+          <option value="whisper"         >Whisper</option>
+        </select>
+      </div>
+
       <!-- Orb -->
       <div class="orb-wrapper">
         <div class="orb idle" id="orb"></div>
@@ -451,6 +462,7 @@ const LANG_INFO = {
 // ---------------------------------------------------------------------------
 let selectedLanguage  = "telugu";
 let selectedVoice     = "male";
+let selectedSTTEngine = "auto";
 let sessionLanguage   = "telugu";   // locked at session start — used for all WS reconnects
 // Conversation history: [{role:"user"|"bot", text:"...", ts: Date}]
 let conversationHistory = [];
@@ -491,6 +503,7 @@ const langSelect        = document.getElementById("lang-select");
 const langNative        = document.getElementById("lang-native");
 const voiceSelector     = document.getElementById("voice-selector");
 const voiceSelect       = document.getElementById("voice-select");
+const sttSelect         = document.getElementById("stt-select");
 const conversationLog   = document.getElementById("conversation-log");
 const conversationHeader= document.getElementById("conversation-header");
 const btnDownload       = document.getElementById("btn-download");
@@ -504,6 +517,19 @@ function onLanguageChange(lang) {
   voiceSelector.style.display = "flex";
   const info = LANG_INFO[lang] || LANG_INFO.telugu;
   langNative.textContent = info.native;
+}
+
+// ---------------------------------------------------------------------------
+// STT engine selector
+// ---------------------------------------------------------------------------
+function onSTTEngineChange(engine) {
+  selectedSTTEngine = engine;
+  if (sessionActive) {
+    // Send live switch request — backend restarts ASR with the new engine
+    sendJSON({ type: "set_stt_engine", engine });
+    const labels = { auto: "Auto", sarvam: "Sarvam AI", soniox: "Soniox", whisper: "Whisper" };
+    setStatus("Switching STT to " + (labels[engine] || engine) + "…");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -771,7 +797,7 @@ function connectWebSocket() {
   // a language-switch + reconnect from spawning a second session in a
   // different language and playing two voices simultaneously.
   const lang = sessionLanguage;
-  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&voice=${encodeURIComponent(selectedVoice)}`;
+  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&voice=${encodeURIComponent(selectedVoice)}&stt_engine=${encodeURIComponent(selectedSTTEngine)}`;
   setStatus("Connecting to server…");
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";
@@ -936,6 +962,13 @@ function onJSONReceived(raw) {
       interruptSent = false;
       if (!userSpeaking) setOrb("idle", "Listening");
       break;
+
+    case "stt_engine_changed": {
+      const labels = { auto: "Auto", sarvam: "Sarvam AI", soniox: "Soniox", whisper: "Whisper" };
+      const engineLabel = labels[msg.engine] || msg.engine;
+      setStatus(`STT switched to ${engineLabel} — listening…`);
+      break;
+    }
 
     case "error":
       setStatus("Error: " + (msg.message || "Unknown error"));

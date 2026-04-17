@@ -89,6 +89,12 @@ class ASRHandler:
         4. Consume TranscriptResult objects from `transcript_queue`.
 
     Falls back to faster-whisper large-v3 (GPU) when Soniox is unavailable.
+
+    stt_engine selects the ASR backend:
+        "auto"    — Sarvam (if key) → Soniox (if key) → Whisper
+        "sarvam"  — force Sarvam AI (falls back to Whisper if key missing)
+        "soniox"  — force Soniox    (falls back to Whisper if key/SDK missing)
+        "whisper" — force local Whisper large-v3
     """
 
     def __init__(
@@ -98,13 +104,16 @@ class ASRHandler:
         transcript_queue: asyncio.Queue,
         interrupt_event: asyncio.Event,
         language: str = "telugu",
+        stt_engine: str = "auto",
     ) -> None:
         self.session_id = session_id
         self.audio_queue = audio_queue
         self.transcript_queue = transcript_queue
         self.interrupt_event = interrupt_event
         self._stopped = False
+        self._force_restart = False  # set by set_engine() to switch mid-session
         self._soniox_failed = False  # set True on fatal Soniox errors → permanent Whisper fallback
+        self._stt_engine: str = stt_engine.lower().strip()
 
         lang_cfg = get_language_config(language)
         self._soniox_language_code: str = lang_cfg["soniox_language_code"]
@@ -112,42 +121,95 @@ class ASRHandler:
         self._sarvam_stt_language_code: str = lang_cfg.get("sarvam_stt_language_code", "te-IN")
         self._language_display: str = lang_cfg["display_name"]
 
+    def set_engine(self, engine: str) -> None:
+        """Switch STT engine mid-session. Takes effect after the current inner loop exits."""
+        engine = engine.lower().strip()
+        if engine not in ("auto", "sarvam", "soniox", "whisper"):
+            logger.warning(
+                "Unknown STT engine '%s' requested — ignoring", engine,
+                extra={"session_id": self.session_id},
+            )
+            return
+        logger.info(
+            "STT engine switch requested: %s → %s",
+            self._stt_engine, engine,
+            extra={"session_id": self.session_id},
+        )
+        self._stt_engine = engine
+        self._force_restart = True
+        self._stopped = True  # breaks inner session loops that check self._stopped
+
     async def run(self) -> None:
         """Main ASR loop with exponential back-off reconnection.
 
-        Priority:
-          1. Sarvam AI STT (saarika:v2.5) — cloud API, best for Telugu/Kannada
-          2. Soniox streaming ASR            — cloud, real-time
-          3. faster-whisper large-v3 (GPU)   — local fallback
+        Engine selection (per self._stt_engine):
+          "auto"    — Sarvam (if key) → Soniox (if key+SDK) → Whisper
+          "sarvam"  — Sarvam AI only (Whisper fallback if key absent)
+          "soniox"  — Soniox only    (Whisper fallback if unavailable)
+          "whisper" — local Whisper large-v3 only
+
+        Calling set_engine() sets _force_restart=True and _stopped=True.
+        The outer loop sees _force_restart, resets both flags, and re-enters
+        with the new engine — no task cancel needed.
         """
         backoff = 1.0
-        while not self._stopped:
+        while True:
+            # Normal stop (session destroyed)
+            if self._stopped and not self._force_restart:
+                break
+            # Engine switch requested — reset and re-enter with new engine
+            if self._force_restart:
+                self._stopped = False
+                self._force_restart = False
+                backoff = 1.0
+
             try:
                 _sarvam_key = config.sarvam_stt.api_key
                 _soniox_key = config.soniox.api_key
 
-                use_sarvam = (
-                    bool(_sarvam_key)
-                    and not _sarvam_key.startswith("your-")
-                )
-                use_soniox = (
+                _sarvam_available = bool(_sarvam_key) and not _sarvam_key.startswith("your-")
+                _soniox_available = (
                     _SONIOX_AVAILABLE
                     and bool(_soniox_key)
                     and not _soniox_key.startswith("your-")
                     and not self._soniox_failed
                 )
 
-                if use_sarvam:
-                    await self._run_sarvam_stt_session()
-                elif use_soniox:
-                    await self._run_soniox_streaming()
-                else:
+                engine = self._stt_engine
+
+                if engine == "sarvam":
+                    if _sarvam_available:
+                        await self._run_sarvam_stt_session()
+                    else:
+                        logger.warning(
+                            "Sarvam STT selected but SARVAM_API_KEY missing — falling back to Whisper",
+                            extra={"session_id": self.session_id},
+                        )
+                        await self._run_whisper_session()
+                elif engine == "soniox":
+                    if _soniox_available:
+                        await self._run_soniox_streaming()
+                    else:
+                        logger.warning(
+                            "Soniox selected but unavailable (no key or SDK) — falling back to Whisper",
+                            extra={"session_id": self.session_id},
+                        )
+                        await self._run_whisper_session()
+                elif engine == "whisper":
                     await self._run_whisper_session()
+                else:  # "auto"
+                    if _sarvam_available:
+                        await self._run_sarvam_stt_session()
+                    elif _soniox_available:
+                        await self._run_soniox_streaming()
+                    else:
+                        await self._run_whisper_session()
+
                 backoff = 1.0
             except asyncio.CancelledError:
                 break
             except _SonioxFatalError as exc:
-                if self._stopped:
+                if self._stopped and not self._force_restart:
                     break
                 self._soniox_failed = True
                 logger.warning(
@@ -157,7 +219,7 @@ class ASRHandler:
                 )
                 backoff = 1.0  # retry immediately with Whisper
             except Exception as exc:
-                if self._stopped:
+                if self._stopped and not self._force_restart:
                     break
                 logger.error(
                     "ASR error (reconnecting in %.1fs): %s", backoff, exc,
@@ -169,6 +231,7 @@ class ASRHandler:
     def stop(self) -> None:
         """Signal the run loop to exit."""
         self._stopped = True
+        self._force_restart = False
 
     # ------------------------------------------------------------------
     # Sarvam AI STT session (primary ASR)

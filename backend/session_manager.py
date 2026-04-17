@@ -164,6 +164,14 @@ class SessionManager:
                 "LLM warm-up failed (Ollama may not be running yet): %s", exc
             )
 
+    def switch_asr_engine(self, session_id: str, engine: str) -> None:
+        """Switch the STT engine for an active session without restarting it."""
+        session = self._sessions.get(session_id)
+        if session and session.asr_handler:
+            session.asr_handler.set_engine(engine)
+        else:
+            logger.warning("switch_asr_engine: session %s not found", session_id)
+
     def create_session(
         self,
         send_audio_cb: AudioSendCallback,
@@ -171,6 +179,7 @@ class SessionManager:
         language: str = "telugu",
         voice: str = "male",
         tts_engine: str = "auto",
+        stt_engine: str = "auto",
     ) -> Session:
         """
         Allocate a new session for the given language, wire all handlers,
@@ -198,6 +207,7 @@ class SessionManager:
             transcript_queue=session.transcript_queue,
             interrupt_event=session.interrupt_event,
             language=language,
+            stt_engine=stt_engine,
         )
 
         # Wire TTS
@@ -233,9 +243,11 @@ class SessionManager:
 
         self._sessions[session_id] = session
         logger.info(
-            "Session created [%s / %s]",
+            "Session created [%s / %s] stt=%s tts=%s",
             lang_cfg["display_name"],
             lang_cfg["display_name_native"],
+            stt_engine,
+            tts_engine,
             extra={"session_id": session_id},
         )
         return session
