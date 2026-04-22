@@ -423,7 +423,7 @@ class VoiceTTSHandler:
         # Build Telugu engine priority list
         # "auto" → use TELUGU_TTS_ENGINE_PRIORITY from .env
         if self._language == "telugu":
-            TELUGU_VALID = {"sarvam", "google_tts", "gnani", "ttsmaker", "elevenlabs", "edge", "gtts"}
+            TELUGU_VALID = {"sarvam", "google_tts", "gnani", "ttsmaker", "elevenlabs", "azure_tts", "amazon_polly", "edge", "gtts"}
             if tts_engine and tts_engine != "auto" and tts_engine in TELUGU_VALID:
                 fallbacks = [e for e in ["edge", "gtts"] if e != tts_engine]
                 self._telugu_engines: list[str] = [tts_engine] + fallbacks
@@ -510,6 +510,10 @@ class VoiceTTSHandler:
                 result = await self._synthesize_ttsmaker(text)
             elif engine == "elevenlabs":
                 result = await self._synthesize_elevenlabs(text)
+            elif engine == "azure_tts":
+                result = await self._synthesize_azure_tts(text)
+            elif engine == "amazon_polly":
+                result = await self._synthesize_amazon_polly(text)
             elif engine == "edge":
                 result = await self._synthesize_edge_tts(text)
             elif engine == "gtts":
@@ -1467,6 +1471,193 @@ class VoiceTTSHandler:
                 "Speakatoo TTS error: %s", exc,
                 extra={"session_id": self.session_id},
             )
+            return False
+
+    # ------------------------------------------------------------------
+    # Microsoft Azure Cognitive Services TTS
+    # Docs: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/rest-text-to-speech
+    # Telugu neural voices: te-IN-ShrutiNeural (F), te-IN-MohanNeural (M)
+    # Requires: AZURE_TTS_KEY, AZURE_TTS_REGION (default: eastus)
+    # ------------------------------------------------------------------
+
+    async def _synthesize_azure_tts(self, text: str) -> bool:
+        if self._cancel_event.is_set():
+            return False
+
+        api_key = config.tts.azure_tts_key
+        region  = config.tts.azure_tts_region
+        if not api_key:
+            logger.warning(
+                "Azure TTS: AZURE_TTS_KEY not set, skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        voice_name    = (
+            self._lang_cfg.get("azure_tts_voice", "te-IN-ShrutiNeural")
+            if self._voice == "female"
+            else self._lang_cfg.get("azure_tts_voice_male", "te-IN-MohanNeural")
+        )
+        language_code = self._lang_cfg.get("azure_tts_language", "te-IN")
+
+        try:
+            import httpx
+        except ImportError:
+            logger.error("Azure TTS: httpx not installed — pip install httpx",
+                         extra={"session_id": self.session_id})
+            return False
+
+        import xml.sax.saxutils as saxutils
+        ssml = (
+            f"<speak version='1.0' xml:lang='{language_code}'>"
+            f"<voice xml:lang='{language_code}' name='{voice_name}'>"
+            f"{saxutils.escape(text)}"
+            f"</voice></speak>"
+        )
+
+        url = f"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1"
+        headers = {
+            "Ocp-Apim-Subscription-Key": api_key,
+            "Content-Type":              "application/ssml+xml",
+            "X-Microsoft-OutputFormat":  "audio-24khz-96kbitrate-mono-mp3",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, headers=headers, content=ssml.encode("utf-8"))
+                if resp.status_code == 401:
+                    logger.error("Azure TTS: invalid key (401) — check AZURE_TTS_KEY",
+                                 extra={"session_id": self.session_id})
+                    return False
+                if resp.status_code == 400:
+                    logger.error("Azure TTS: bad request (400): %s", resp.text[:300],
+                                 extra={"session_id": self.session_id})
+                    return False
+                if resp.status_code != 200:
+                    logger.error(
+                        "Azure TTS API error %d: %s",
+                        resp.status_code, resp.text[:200],
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+                mp3_bytes = resp.content
+
+            if not mp3_bytes:
+                return False
+
+            loop = asyncio.get_running_loop()
+            pcm_bytes = await loop.run_in_executor(
+                None, lambda: _mp3_bytes_to_pcm(mp3_bytes, denoise=False)
+            )
+            if pcm_bytes is None:
+                return False
+
+            _debug_dump_audio_pair(
+                provider="azure_tts",
+                session_id=self.session_id,
+                source_audio=mp3_bytes,
+                source_ext="mp3",
+                decoded_pcm=pcm_bytes,
+            )
+            logger.info(
+                "Azure TTS success: voice=%s region=%s (%d bytes)",
+                voice_name, region, len(mp3_bytes),
+                extra={"session_id": self.session_id},
+            )
+            return await self._stream_pcm(pcm_bytes)
+
+        except Exception as exc:
+            logger.error("Azure TTS error: %s", exc,
+                         extra={"session_id": self.session_id})
+            return False
+
+    # ------------------------------------------------------------------
+    # Amazon Polly TTS
+    # Docs: https://docs.aws.amazon.com/polly/latest/dg/API_SynthesizeSpeech.html
+    # Requires: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION_NAME
+    # Voice: AWS_POLLY_VOICE_TELUGU (default: Aditi/hi-IN — Telugu not natively in Polly)
+    # Override AWS_POLLY_LANGUAGE_TELUGU if/when Polly adds a native te-IN voice.
+    # ------------------------------------------------------------------
+
+    async def _synthesize_amazon_polly(self, text: str) -> bool:
+        if self._cancel_event.is_set():
+            return False
+
+        access_key = config.tts.amazon_polly_access_key
+        secret_key = config.tts.amazon_polly_secret_key
+        region     = config.tts.amazon_polly_region
+
+        if not access_key or not secret_key:
+            logger.warning(
+                "Amazon Polly: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY not set, skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        voice_id      = (
+            self._lang_cfg.get("amazon_polly_voice", "Aditi")
+            if self._voice == "female"
+            else self._lang_cfg.get("amazon_polly_voice_male", "Aditi")
+        )
+        language_code = self._lang_cfg.get("amazon_polly_language_code", "hi-IN")
+        engine        = self._lang_cfg.get("amazon_polly_engine", "standard")
+
+        try:
+            import boto3
+        except ImportError:
+            logger.warning(
+                "Amazon Polly: boto3 not installed — pip install boto3",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        try:
+            loop = asyncio.get_running_loop()
+
+            def _call_polly() -> bytes:
+                client = boto3.client(
+                    "polly",
+                    region_name=region,
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                )
+                resp = client.synthesize_speech(
+                    Text=text,
+                    OutputFormat="mp3",
+                    VoiceId=voice_id,
+                    LanguageCode=language_code,
+                    Engine=engine,
+                )
+                return resp["AudioStream"].read()
+
+            mp3_bytes = await loop.run_in_executor(None, _call_polly)
+
+            if not mp3_bytes:
+                return False
+
+            pcm_bytes = await loop.run_in_executor(
+                None, lambda: _mp3_bytes_to_pcm(mp3_bytes, denoise=False)
+            )
+            if pcm_bytes is None:
+                return False
+
+            _debug_dump_audio_pair(
+                provider="amazon_polly",
+                session_id=self.session_id,
+                source_audio=mp3_bytes,
+                source_ext="mp3",
+                decoded_pcm=pcm_bytes,
+            )
+            logger.info(
+                "Amazon Polly TTS success: voice=%s engine=%s (%d bytes)",
+                voice_id, engine, len(mp3_bytes),
+                extra={"session_id": self.session_id},
+            )
+            return await self._stream_pcm(pcm_bytes)
+
+        except Exception as exc:
+            logger.error("Amazon Polly TTS error: %s", exc,
+                         extra={"session_id": self.session_id})
             return False
 
     # ------------------------------------------------------------------

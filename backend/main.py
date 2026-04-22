@@ -184,7 +184,7 @@ async def websocket_endpoint(
     voice = voice.lower() if voice.lower() in ("male", "female") else "male"
     tts_engine = tts_engine.lower().strip()
     stt_engine = stt_engine.lower().strip()
-    if stt_engine not in ("auto", "sarvam", "soniox", "whisper"):
+    if stt_engine not in ("auto", "sarvam", "soniox", "google", "azure", "amazon", "whisper"):
         stt_engine = "auto"
 
     await websocket.accept()

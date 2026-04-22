@@ -116,15 +116,18 @@ class ASRHandler:
         self._stt_engine: str = stt_engine.lower().strip()
 
         lang_cfg = get_language_config(language)
-        self._soniox_language_code: str = lang_cfg["soniox_language_code"]
-        self._whisper_language: str = lang_cfg["whisper_language"]
-        self._sarvam_stt_language_code: str = lang_cfg.get("sarvam_stt_language_code", "te-IN")
-        self._language_display: str = lang_cfg["display_name"]
+        self._soniox_language_code: str           = lang_cfg["soniox_language_code"]
+        self._whisper_language: str               = lang_cfg["whisper_language"]
+        self._sarvam_stt_language_code: str       = lang_cfg.get("sarvam_stt_language_code",        "te-IN")
+        self._google_stt_language_code: str       = lang_cfg.get("google_stt_language_code",        "te-IN")
+        self._azure_stt_language_code: str        = lang_cfg.get("azure_stt_language_code",         "te-IN")
+        self._amazon_transcribe_language_code: str = lang_cfg.get("amazon_transcribe_language_code", "te-IN")
+        self._language_display: str               = lang_cfg["display_name"]
 
     def set_engine(self, engine: str) -> None:
         """Switch STT engine mid-session. Takes effect after the current inner loop exits."""
         engine = engine.lower().strip()
-        if engine not in ("auto", "sarvam", "soniox", "whisper"):
+        if engine not in ("auto", "sarvam", "soniox", "whisper", "google", "azure", "amazon"):
             logger.warning(
                 "Unknown STT engine '%s' requested — ignoring", engine,
                 extra={"session_id": self.session_id},
@@ -192,6 +195,33 @@ class ASRHandler:
                     else:
                         logger.warning(
                             "Soniox selected but unavailable (no key or SDK) — falling back to Whisper",
+                            extra={"session_id": self.session_id},
+                        )
+                        await self._run_whisper_session()
+                elif engine == "google":
+                    if config.google_stt.api_key:
+                        await self._run_google_stt_session()
+                    else:
+                        logger.warning(
+                            "Google STT selected but GOOGLE_STT_API_KEY missing — falling back to Whisper",
+                            extra={"session_id": self.session_id},
+                        )
+                        await self._run_whisper_session()
+                elif engine == "azure":
+                    if config.azure_stt.api_key:
+                        await self._run_azure_stt_session()
+                    else:
+                        logger.warning(
+                            "Azure STT selected but AZURE_STT_KEY missing — falling back to Whisper",
+                            extra={"session_id": self.session_id},
+                        )
+                        await self._run_whisper_session()
+                elif engine == "amazon":
+                    if config.amazon_transcribe.access_key and config.amazon_transcribe.secret_key:
+                        await self._run_amazon_transcribe_session()
+                    else:
+                        logger.warning(
+                            "Amazon Transcribe selected but AWS credentials missing — falling back to Whisper",
                             extra={"session_id": self.session_id},
                         )
                         await self._run_whisper_session()
@@ -545,6 +575,328 @@ class ASRHandler:
             text[:60],
             extra={"session_id": self.session_id},
         )
+
+    # ------------------------------------------------------------------
+    # Google Cloud Speech-to-Text (VAD + REST batch)
+    # Docs: https://cloud.google.com/speech-to-text/docs/reference/rest/v1/speech/recognize
+    # ------------------------------------------------------------------
+
+    async def _run_google_stt_session(self) -> None:
+        try:
+            import numpy as np
+        except ImportError:
+            logger.warning("numpy missing — Google STT unavailable, falling back to Whisper",
+                           extra={"session_id": self.session_id})
+            await self._run_whisper_session()
+            return
+
+        logger.info("Google STT started (language=%s)", self._google_stt_language_code,
+                    extra={"session_id": self.session_id})
+
+        SILENCE_RMS_THRESHOLD    = 0.008
+        SILENCE_FRAMES_TO_COMMIT = 3
+        MIN_SPEECH_FRAMES        = 1
+        MAX_SILENCE_FRAMES       = 20
+
+        audio_buf: list = []
+        silence_frames = 0
+        speech_started = False
+        speech_frame_count = 0
+
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+            while not self._stopped:
+                try:
+                    chunk: bytes = await asyncio.wait_for(self.audio_queue.get(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    if (speech_started and silence_frames >= SILENCE_FRAMES_TO_COMMIT
+                            and speech_frame_count >= MIN_SPEECH_FRAMES):
+                        await self._google_transcribe(client, audio_buf, np)
+                        audio_buf = []; speech_started = False
+                        silence_frames = 0; speech_frame_count = 0
+                    continue
+
+                samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
+                rms = float(np.sqrt(np.mean(samples ** 2)))
+
+                if rms > SILENCE_RMS_THRESHOLD:
+                    speech_started = True; silence_frames = 0
+                    speech_frame_count += 1; audio_buf.append(samples)
+                elif speech_started:
+                    audio_buf.append(samples)
+                    silence_frames += 1
+                    if silence_frames >= SILENCE_FRAMES_TO_COMMIT:
+                        if speech_frame_count >= MIN_SPEECH_FRAMES:
+                            await self._google_transcribe(client, audio_buf, np)
+                        audio_buf = []; speech_started = False
+                        silence_frames = 0; speech_frame_count = 0
+                    elif silence_frames >= MAX_SILENCE_FRAMES:
+                        audio_buf = []; speech_started = False
+                        silence_frames = 0; speech_frame_count = 0
+
+    async def _google_transcribe(self, client: "httpx.AsyncClient", audio_buf: list, np) -> None:
+        import base64
+        audio_array = np.concatenate(audio_buf).astype(np.float32)
+        pcm_int16 = (audio_array * 32767).clip(-32768, 32767).astype(np.int16)
+
+        wav_buf = io.BytesIO()
+        with wave.open(wav_buf, "wb") as wf:
+            wf.setnchannels(1); wf.setsampwidth(2)
+            wf.setframerate(16000); wf.writeframes(pcm_int16.tobytes())
+
+        audio_b64 = base64.b64encode(wav_buf.getvalue()).decode("utf-8")
+        url = f"https://speech.googleapis.com/v1/speech:recognize?key={config.google_stt.api_key}"
+        payload = {
+            "config": {
+                "encoding": "LINEAR16",
+                "sampleRateHertz": 16000,
+                "languageCode": self._google_stt_language_code,
+            },
+            "audio": {"content": audio_b64},
+        }
+        try:
+            resp = await client.post(url, json=payload)
+            resp.raise_for_status()
+            results = resp.json().get("results", [])
+            if not results:
+                return
+            text = (results[0].get("alternatives", [{}])[0].get("transcript", "") or "").strip()
+            if not text:
+                return
+            logger.info("Google STT [%s]: %s", self._language_display, text[:80],
+                        extra={"session_id": self.session_id})
+            if not self.interrupt_event.is_set():
+                self.interrupt_event.set()
+            await self.transcript_queue.put(TranscriptResult(text=text, is_final=True, confidence=1.0))
+        except httpx.HTTPStatusError as exc:
+            logger.error("Google STT HTTP error %d: %s", exc.response.status_code,
+                         exc.response.text[:200], extra={"session_id": self.session_id})
+        except Exception as exc:
+            logger.error("Google STT error: %s", exc, extra={"session_id": self.session_id})
+
+    # ------------------------------------------------------------------
+    # Microsoft Azure Speech-to-Text (VAD + REST batch)
+    # Docs: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/rest-speech-to-text
+    # ------------------------------------------------------------------
+
+    async def _run_azure_stt_session(self) -> None:
+        try:
+            import numpy as np
+        except ImportError:
+            logger.warning("numpy missing — Azure STT unavailable, falling back to Whisper",
+                           extra={"session_id": self.session_id})
+            await self._run_whisper_session()
+            return
+
+        region = config.azure_stt.region
+        logger.info("Azure STT started (language=%s, region=%s)",
+                    self._azure_stt_language_code, region,
+                    extra={"session_id": self.session_id})
+
+        SILENCE_RMS_THRESHOLD    = 0.008
+        SILENCE_FRAMES_TO_COMMIT = 3
+        MIN_SPEECH_FRAMES        = 1
+        MAX_SILENCE_FRAMES       = 20
+
+        audio_buf: list = []
+        silence_frames = 0
+        speech_started = False
+        speech_frame_count = 0
+
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+            while not self._stopped:
+                try:
+                    chunk: bytes = await asyncio.wait_for(self.audio_queue.get(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    if (speech_started and silence_frames >= SILENCE_FRAMES_TO_COMMIT
+                            and speech_frame_count >= MIN_SPEECH_FRAMES):
+                        await self._azure_transcribe(client, audio_buf, np)
+                        audio_buf = []; speech_started = False
+                        silence_frames = 0; speech_frame_count = 0
+                    continue
+
+                samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
+                rms = float(np.sqrt(np.mean(samples ** 2)))
+
+                if rms > SILENCE_RMS_THRESHOLD:
+                    speech_started = True; silence_frames = 0
+                    speech_frame_count += 1; audio_buf.append(samples)
+                elif speech_started:
+                    audio_buf.append(samples)
+                    silence_frames += 1
+                    if silence_frames >= SILENCE_FRAMES_TO_COMMIT:
+                        if speech_frame_count >= MIN_SPEECH_FRAMES:
+                            await self._azure_transcribe(client, audio_buf, np)
+                        audio_buf = []; speech_started = False
+                        silence_frames = 0; speech_frame_count = 0
+                    elif silence_frames >= MAX_SILENCE_FRAMES:
+                        audio_buf = []; speech_started = False
+                        silence_frames = 0; speech_frame_count = 0
+
+    async def _azure_transcribe(self, client: "httpx.AsyncClient", audio_buf: list, np) -> None:
+        audio_array = np.concatenate(audio_buf).astype(np.float32)
+        pcm_int16 = (audio_array * 32767).clip(-32768, 32767).astype(np.int16)
+
+        wav_buf = io.BytesIO()
+        with wave.open(wav_buf, "wb") as wf:
+            wf.setnchannels(1); wf.setsampwidth(2)
+            wf.setframerate(16000); wf.writeframes(pcm_int16.tobytes())
+        wav_bytes = wav_buf.getvalue()
+
+        region = config.azure_stt.region
+        url = (
+            f"https://{region}.stt.speech.microsoft.com"
+            f"/speech/recognition/conversation/cognitiveservices/v1"
+            f"?language={self._azure_stt_language_code}&format=simple"
+        )
+        headers = {
+            "Ocp-Apim-Subscription-Key": config.azure_stt.api_key,
+            "Content-Type": "audio/wav; codecs=audio/pcm; samplerate=16000",
+            "Accept": "application/json",
+        }
+        try:
+            resp = await client.post(url, headers=headers, content=wav_bytes)
+            if resp.status_code == 401:
+                logger.error("Azure STT: invalid key (401) — check AZURE_STT_KEY",
+                             extra={"session_id": self.session_id})
+                return
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("RecognitionStatus") != "Success":
+                return
+            text = (data.get("DisplayText") or "").strip()
+            if not text:
+                return
+            logger.info("Azure STT [%s]: %s", self._language_display, text[:80],
+                        extra={"session_id": self.session_id})
+            if not self.interrupt_event.is_set():
+                self.interrupt_event.set()
+            await self.transcript_queue.put(TranscriptResult(text=text, is_final=True, confidence=1.0))
+        except httpx.HTTPStatusError as exc:
+            logger.error("Azure STT HTTP error %d: %s", exc.response.status_code,
+                         exc.response.text[:200], extra={"session_id": self.session_id})
+        except Exception as exc:
+            logger.error("Azure STT error: %s", exc, extra={"session_id": self.session_id})
+
+    # ------------------------------------------------------------------
+    # Amazon Transcribe Streaming (VAD + streaming SDK)
+    # Requires: pip install amazon-transcribe
+    # Docs: https://docs.aws.amazon.com/transcribe/latest/dg/streaming.html
+    # ------------------------------------------------------------------
+
+    async def _run_amazon_transcribe_session(self) -> None:
+        try:
+            from amazon_transcribe.client import TranscribeStreamingClient  # type: ignore
+        except ImportError:
+            logger.warning(
+                "amazon-transcribe not installed — pip install amazon-transcribe. Falling back to Whisper.",
+                extra={"session_id": self.session_id},
+            )
+            await self._run_whisper_session()
+            return
+
+        try:
+            import numpy as np
+        except ImportError:
+            await self._run_whisper_session()
+            return
+
+        import os
+        # Pass credentials via environment so TranscribeStreamingClient picks them up
+        os.environ["AWS_ACCESS_KEY_ID"]     = config.amazon_transcribe.access_key
+        os.environ["AWS_SECRET_ACCESS_KEY"] = config.amazon_transcribe.secret_key
+        os.environ["AWS_DEFAULT_REGION"]    = config.amazon_transcribe.region
+
+        logger.info("Amazon Transcribe started (language=%s, region=%s)",
+                    self._amazon_transcribe_language_code, config.amazon_transcribe.region,
+                    extra={"session_id": self.session_id})
+
+        SILENCE_RMS_THRESHOLD    = 0.008
+        SILENCE_FRAMES_TO_COMMIT = 3
+        MIN_SPEECH_FRAMES        = 1
+        MAX_SILENCE_FRAMES       = 20
+
+        audio_buf: list = []
+        silence_frames = 0
+        speech_started = False
+        speech_frame_count = 0
+
+        while not self._stopped:
+            try:
+                chunk: bytes = await asyncio.wait_for(self.audio_queue.get(), timeout=0.5)
+            except asyncio.TimeoutError:
+                if (speech_started and silence_frames >= SILENCE_FRAMES_TO_COMMIT
+                        and speech_frame_count >= MIN_SPEECH_FRAMES):
+                    await self._amazon_transcribe_utterance(audio_buf, np)
+                    audio_buf = []; speech_started = False
+                    silence_frames = 0; speech_frame_count = 0
+                continue
+
+            samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
+            rms = float(np.sqrt(np.mean(samples ** 2)))
+
+            if rms > SILENCE_RMS_THRESHOLD:
+                speech_started = True; silence_frames = 0
+                speech_frame_count += 1; audio_buf.append(samples)
+            elif speech_started:
+                audio_buf.append(samples)
+                silence_frames += 1
+                if silence_frames >= SILENCE_FRAMES_TO_COMMIT:
+                    if speech_frame_count >= MIN_SPEECH_FRAMES:
+                        await self._amazon_transcribe_utterance(audio_buf, np)
+                    audio_buf = []; speech_started = False
+                    silence_frames = 0; speech_frame_count = 0
+                elif silence_frames >= MAX_SILENCE_FRAMES:
+                    audio_buf = []; speech_started = False
+                    silence_frames = 0; speech_frame_count = 0
+
+    async def _amazon_transcribe_utterance(self, audio_buf: list, np) -> None:
+        from amazon_transcribe.client import TranscribeStreamingClient  # type: ignore
+        from amazon_transcribe.handlers import TranscriptResultStreamHandler  # type: ignore
+        from amazon_transcribe.model import TranscriptEvent  # type: ignore
+
+        audio_array = np.concatenate(audio_buf).astype(np.float32)
+        pcm_bytes = (audio_array * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
+
+        result_texts: list = []
+
+        class _Handler(TranscriptResultStreamHandler):
+            async def handle_transcript_event(self, event: TranscriptEvent):
+                for result in event.transcript.results:
+                    if not result.is_partial:
+                        for alt in result.alternatives:
+                            if alt.transcript:
+                                result_texts.append(alt.transcript)
+
+        try:
+            client = TranscribeStreamingClient(region=config.amazon_transcribe.region)
+            stream = await client.start_stream_transcription(
+                language_code=self._amazon_transcribe_language_code,
+                media_sample_rate_hz=16000,
+                media_encoding="pcm",
+            )
+            handler = _Handler(stream.output_stream)
+
+            CHUNK = 3200  # 100 ms at 16 kHz
+
+            async def _send():
+                async with stream.input_stream:
+                    for i in range(0, len(pcm_bytes), CHUNK):
+                        await stream.input_stream.send_audio_event(audio_chunk=pcm_bytes[i:i + CHUNK])
+                        await asyncio.sleep(0)
+                    await stream.input_stream.end_stream()
+
+            await asyncio.gather(_send(), handler.handle_events())
+
+            text = " ".join(result_texts).strip()
+            if not text:
+                return
+            logger.info("Amazon Transcribe [%s]: %s", self._language_display, text[:80],
+                        extra={"session_id": self.session_id})
+            if not self.interrupt_event.is_set():
+                self.interrupt_event.set()
+            await self.transcript_queue.put(TranscriptResult(text=text, is_final=True, confidence=1.0))
+        except Exception as exc:
+            logger.error("Amazon Transcribe error: %s", exc, extra={"session_id": self.session_id})
 
     # ------------------------------------------------------------------
     # faster-whisper fallback (GPU, large-v3)

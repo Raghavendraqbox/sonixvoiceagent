@@ -413,7 +413,25 @@
           <option value="auto"    selected>Auto</option>
           <option value="sarvam"          >Sarvam AI</option>
           <option value="soniox"          >Soniox</option>
-          <option value="whisper"         >Whisper</option>
+          <option value="google"          >Google Cloud</option>
+          <option value="azure"           >Microsoft Azure</option>
+          <option value="amazon"          >Amazon Transcribe</option>
+          <option value="whisper"         >Whisper (local)</option>
+        </select>
+      </div>
+
+      <!-- TTS Engine selector — locked once session starts -->
+      <div class="selector-card">
+        <label for="tts-select">TTS</label>
+        <select id="tts-select">
+          <option value="auto"         selected>Auto</option>
+          <option value="sarvam"               >Sarvam AI</option>
+          <option value="google_tts"           >Google Cloud</option>
+          <option value="azure_tts"            >Microsoft Azure</option>
+          <option value="amazon_polly"         >Amazon Polly</option>
+          <option value="elevenlabs"           >ElevenLabs</option>
+          <option value="edge"                 >Edge TTS (free)</option>
+          <option value="gtts"                 >gTTS (free)</option>
         </select>
       </div>
 
@@ -463,6 +481,7 @@ const LANG_INFO = {
 let selectedLanguage  = "telugu";
 let selectedVoice     = "male";
 let selectedSTTEngine = "auto";
+let selectedTTSEngine = "auto";
 let sessionLanguage   = "telugu";   // locked at session start — used for all WS reconnects
 // Conversation history: [{role:"user"|"bot", text:"...", ts: Date}]
 let conversationHistory = [];
@@ -504,6 +523,7 @@ const langNative        = document.getElementById("lang-native");
 const voiceSelector     = document.getElementById("voice-selector");
 const voiceSelect       = document.getElementById("voice-select");
 const sttSelect         = document.getElementById("stt-select");
+const ttsSelect         = document.getElementById("tts-select");
 const conversationLog   = document.getElementById("conversation-log");
 const conversationHeader= document.getElementById("conversation-header");
 const btnDownload       = document.getElementById("btn-download");
@@ -527,7 +547,7 @@ function onSTTEngineChange(engine) {
   if (sessionActive) {
     // Send live switch request — backend restarts ASR with the new engine
     sendJSON({ type: "set_stt_engine", engine });
-    const labels = { auto: "Auto", sarvam: "Sarvam AI", soniox: "Soniox", whisper: "Whisper" };
+    const labels = { auto: "Auto", sarvam: "Sarvam AI", soniox: "Soniox", google: "Google Cloud", azure: "Microsoft Azure", amazon: "Amazon Transcribe", whisper: "Whisper" };
     setStatus("Switching STT to " + (labels[engine] || engine) + "…");
   }
 }
@@ -563,10 +583,13 @@ async function startSession() {
   // different language and play two voices simultaneously.
   sessionLanguage = selectedLanguage;
 
+  selectedTTSEngine = ttsSelect.value;
+
   setStatus("Requesting microphone permission…");
   btnStart.disabled = true;
   langSelect.disabled = true;
   voiceSelect.disabled = true;
+  ttsSelect.disabled = true;
 
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -583,6 +606,7 @@ async function startSession() {
     btnStart.disabled = false;
     langSelect.disabled = false;
     voiceSelect.disabled = false;
+    ttsSelect.disabled = false;
     return;
   }
 
@@ -617,6 +641,7 @@ function stopSession() {
   btnStart.classList.remove("active");
   langSelect.disabled = false;
   voiceSelect.disabled = false;
+  ttsSelect.disabled = false;
   finalizeBotBubble();
   conversationHeader.classList.remove("active");
 
@@ -797,7 +822,7 @@ function connectWebSocket() {
   // a language-switch + reconnect from spawning a second session in a
   // different language and playing two voices simultaneously.
   const lang = sessionLanguage;
-  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&voice=${encodeURIComponent(selectedVoice)}&stt_engine=${encodeURIComponent(selectedSTTEngine)}`;
+  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&voice=${encodeURIComponent(selectedVoice)}&stt_engine=${encodeURIComponent(selectedSTTEngine)}&tts_engine=${encodeURIComponent(selectedTTSEngine)}`;
   setStatus("Connecting to server…");
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";
@@ -964,7 +989,7 @@ function onJSONReceived(raw) {
       break;
 
     case "stt_engine_changed": {
-      const labels = { auto: "Auto", sarvam: "Sarvam AI", soniox: "Soniox", whisper: "Whisper" };
+      const labels = { auto: "Auto", sarvam: "Sarvam AI", soniox: "Soniox", google: "Google Cloud", azure: "Microsoft Azure", amazon: "Amazon Transcribe", whisper: "Whisper" };
       const engineLabel = labels[msg.engine] || msg.engine;
       setStatus(`STT switched to ${engineLabel} — listening…`);
       break;

@@ -24,7 +24,10 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # ASR
         "soniox_language_code": "te",    # Telugu language code
         "whisper_language": "te",         # Whisper language code for Telugu
-        "sarvam_stt_language_code": "te-IN",  # Sarvam STT language code
+        "sarvam_stt_language_code":         "te-IN",  # Sarvam STT language code
+        "google_stt_language_code":         "te-IN",  # Google Cloud STT language code
+        "azure_stt_language_code":          "te-IN",  # Azure STT language code
+        "amazon_transcribe_language_code":  "te-IN",  # Amazon Transcribe language code
 
         # TTS — Meta MMS-TTS (local GPU)
         # facebook/mms-tts-tel — ISO 639-3: tel = Telugu
@@ -62,6 +65,21 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # onwK4e9ZLuTAKqWW03F9 = River (female, multilingual v2, best quality)
         "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_TELUGU_MALE",   "iP95p4xoKVk53GoZ742B"),
         "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_TELUGU_FEMALE", "onwK4e9ZLuTAKqWW03F9"),
+
+        # TTS — Azure Cognitive Services (https://azure.microsoft.com/en-us/products/ai-services/text-to-speech)
+        # Telugu neural voices: te-IN-ShrutiNeural (female), te-IN-MohanNeural (male)
+        "azure_tts_voice":      os.getenv("AZURE_TTS_VOICE_TELUGU",      "te-IN-ShrutiNeural"),
+        "azure_tts_voice_male": os.getenv("AZURE_TTS_VOICE_TELUGU_MALE", "te-IN-MohanNeural"),
+        "azure_tts_language":   "te-IN",
+
+        # TTS — Amazon Polly (https://aws.amazon.com/polly/)
+        # Telugu voice: set AWS_POLLY_VOICE_TELUGU to a valid Polly voice ID.
+        # Polly does not have a dedicated Telugu voice; use "Aditi" (hi-IN, Indian accent)
+        # or check https://docs.aws.amazon.com/polly/latest/dg/voicelist.html for updates.
+        "amazon_polly_voice":          os.getenv("AWS_POLLY_VOICE_TELUGU",        "Aditi"),
+        "amazon_polly_voice_male":     os.getenv("AWS_POLLY_VOICE_TELUGU_MALE",   "Aditi"),
+        "amazon_polly_language_code":  os.getenv("AWS_POLLY_LANGUAGE_TELUGU",     "hi-IN"),
+        "amazon_polly_engine":         os.getenv("AWS_POLLY_ENGINE",              "standard"),
 
         # TTS — edge-tts (free Microsoft neural voices)
         "edge_tts_voice": os.getenv("TTS_VOICE_TELUGU", "te-IN-ShrutiNeural"),
@@ -106,7 +124,10 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # ASR
         "soniox_language_code": "kn",    # Kannada language code
         "whisper_language": "kn",         # faster-whisper supports Kannada
-        "sarvam_stt_language_code": "kn-IN",  # Sarvam STT language code
+        "sarvam_stt_language_code":         "kn-IN",  # Sarvam STT language code
+        "google_stt_language_code":         "kn-IN",  # Google Cloud STT language code
+        "azure_stt_language_code":          "kn-IN",  # Azure STT language code
+        "amazon_transcribe_language_code":  "kn-IN",  # Amazon Transcribe language code
 
         # TTS — Meta MMS-TTS (primary, local GPU — same engine as Telugu)
         "mms_tts_model": "facebook/mms-tts-kan",   # Kannada (HuggingFace model ID)
@@ -216,6 +237,76 @@ class SonioxConfig:
     sample_rate_hertz: int = 16000
     num_audio_channels: int = 1
     include_nonfinal: bool = True   # stream partial results for real-time display
+
+
+# ---------------------------------------------------------------------------
+# Google Cloud Speech-to-Text config
+# ---------------------------------------------------------------------------
+
+@dataclass
+class GoogleSTTConfig:
+    """
+    Google Cloud Speech-to-Text — REST API, supports te-IN and kn-IN.
+
+    Endpoint: POST https://speech.googleapis.com/v1/speech:recognize?key={api_key}
+    Accepts:  LINEAR16 WAV, 16 kHz mono
+    Docs:     https://cloud.google.com/speech-to-text/docs/reference/rest/v1/speech/recognize
+
+    Uses GOOGLE_STT_API_KEY (or GOOGLE_TTS_API_KEY as fallback — same GCP project key works).
+    """
+    @property
+    def api_key(self) -> str:
+        return os.getenv("GOOGLE_STT_API_KEY") or os.getenv("GOOGLE_TTS_API_KEY", "")
+
+
+# ---------------------------------------------------------------------------
+# Azure Cognitive Services Speech-to-Text config
+# ---------------------------------------------------------------------------
+
+@dataclass
+class AzureSTTConfig:
+    """
+    Microsoft Azure Speech-to-Text — REST API, supports te-IN and kn-IN.
+
+    Endpoint: POST https://{region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1
+    Accepts:  WAV audio/wav, 16 kHz mono
+    Docs:     https://learn.microsoft.com/en-us/azure/ai-services/speech-service/rest-speech-to-text
+
+    Uses AZURE_STT_KEY (or AZURE_TTS_KEY fallback) and AZURE_STT_REGION (or AZURE_TTS_REGION fallback).
+    """
+    @property
+    def api_key(self) -> str:
+        return os.getenv("AZURE_STT_KEY") or os.getenv("AZURE_TTS_KEY", "")
+
+    @property
+    def region(self) -> str:
+        return os.getenv("AZURE_STT_REGION") or os.getenv("AZURE_TTS_REGION", "eastus")
+
+
+# ---------------------------------------------------------------------------
+# Amazon Transcribe config
+# ---------------------------------------------------------------------------
+
+@dataclass
+class AmazonTranscribeConfig:
+    """
+    Amazon Transcribe Streaming — supports te-IN and kn-IN.
+
+    Uses amazon-transcribe Python package (pip install amazon-transcribe).
+    Shares AWS credentials with Amazon Polly TTS.
+    Docs: https://docs.aws.amazon.com/transcribe/latest/dg/streaming.html
+    """
+    @property
+    def access_key(self) -> str:
+        return os.getenv("AWS_ACCESS_KEY_ID", "")
+
+    @property
+    def secret_key(self) -> str:
+        return os.getenv("AWS_SECRET_ACCESS_KEY", "")
+
+    @property
+    def region(self) -> str:
+        return os.getenv("AWS_REGION_NAME", "us-east-1")
 
 
 # ---------------------------------------------------------------------------
@@ -352,6 +443,15 @@ class TTSConfig:
     micmonster_api_key: str = field(default_factory=lambda: os.getenv("MICMONSTER_API_KEY", ""))
     speakatoo_api_key:  str = field(default_factory=lambda: os.getenv("SPEAKATOO_API_KEY",  ""))
 
+    # Azure Cognitive Services TTS  (https://azure.microsoft.com/en-us/products/ai-services/text-to-speech)
+    azure_tts_key:    str = field(default_factory=lambda: os.getenv("AZURE_TTS_KEY",    ""))
+    azure_tts_region: str = field(default_factory=lambda: os.getenv("AZURE_TTS_REGION", "eastus"))
+
+    # Amazon Polly  (https://aws.amazon.com/polly/)
+    amazon_polly_access_key: str = field(default_factory=lambda: os.getenv("AWS_ACCESS_KEY_ID",     ""))
+    amazon_polly_secret_key: str = field(default_factory=lambda: os.getenv("AWS_SECRET_ACCESS_KEY", ""))
+    amazon_polly_region:     str = field(default_factory=lambda: os.getenv("AWS_REGION_NAME",       "us-east-1"))
+
     # ---------------------------------------------------------------------------
     # Debug audio dumps (optional, disabled by default)
     # ---------------------------------------------------------------------------
@@ -383,6 +483,9 @@ class AppConfig:
     """Root application config — single source of truth."""
     sarvam_stt: SarvamSTTConfig = field(default_factory=SarvamSTTConfig)
     soniox: SonioxConfig = field(default_factory=SonioxConfig)
+    google_stt: GoogleSTTConfig = field(default_factory=GoogleSTTConfig)
+    azure_stt: AzureSTTConfig = field(default_factory=AzureSTTConfig)
+    amazon_transcribe: AmazonTranscribeConfig = field(default_factory=AmazonTranscribeConfig)
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
     rag: RAGConfig = field(default_factory=RAGConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
