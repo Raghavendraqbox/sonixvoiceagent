@@ -95,10 +95,10 @@ class VoiceLLMClient:
         """
         import time as _time
         _t0 = _time.monotonic()
-        loop = asyncio.get_event_loop()
-        prompt = await loop.run_in_executor(
-            None, self._build_prompt, user_query, memory
-        )
+        # _build_prompt takes <5ms (RAG embed + string ops) — safe to call directly
+        # in the coroutine.  run_in_executor was adding 4-5s of scheduler delay
+        # in uvicorn's event loop when the thread pool was under load.
+        prompt = self._build_prompt(user_query, memory)
         logger.info(
             "TIMING prompt_build=%.3fs chars=%d",
             _time.monotonic()-_t0, len(prompt),
