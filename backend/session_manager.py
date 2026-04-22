@@ -69,14 +69,11 @@ class Session:
         self.cancel_tts()
         task = self.tts_orch_task
         if task and not task.done():
+            task.cancel()
             try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=0.5)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                task.cancel()
-                try:
-                    await task
-                except (asyncio.CancelledError, Exception):
-                    pass
+                await asyncio.wait_for(task, timeout=0.3)
+            except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+                pass
         self.interrupt_event.clear()
         self.tts_cancel_event.clear()
         logger.debug("TTS fully stopped and events reset",
@@ -387,7 +384,10 @@ class SessionManager:
             # Interrupt any ongoing TTS and wait until it fully stops
             # before clearing the cancel event — prevents old MMS thread
             # from streaming audio alongside the new response.
+            import time as _time
+            _t0 = _time.monotonic()
             await session.cancel_and_wait_tts(timeout=3.0)
+            logger.info("TIMING cancel_tts=%.3fs", _time.monotonic()-_t0, extra={"session_id": session.session_id})
 
             session.memory.add_user_turn(user_text)
             await send_json_cb({"type": "transcript_final", "text": user_text})
@@ -396,6 +396,7 @@ class SessionManager:
             # LLM response for every user utterance
             # ----------------------------------------------------------
             await send_json_cb({"type": "tts_start"})
+            logger.info("TIMING pre_llm=%.3fs", _time.monotonic()-_t0, extra={"session_id": session.session_id})
 
             session.tts_orchestrator = TTSOrchestrator(
                 session_id=session.session_id,
@@ -410,12 +411,16 @@ class SessionManager:
 
             full_bot_response = ""
             llm_was_interrupted = False
+            _first_fragment = True
             try:
                 async for fragment in session.llm_client.stream_response(
                     user_query=user_text,
                     memory=session.memory,
                     session_id=session.session_id,
                 ):
+                    if _first_fragment:
+                        logger.info("TIMING first_llm_fragment=%.3fs", _time.monotonic()-_t0, extra={"session_id": session.session_id})
+                        _first_fragment = False
                     if session.tts_cancel_event.is_set():
                         llm_was_interrupted = True
                         break

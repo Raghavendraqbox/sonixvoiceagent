@@ -368,7 +368,7 @@ class OllamaConfig:
     model: str = os.getenv("OLLAMA_MODEL", "qwen2.5:72b")
     temperature: float = float(os.getenv("OLLAMA_TEMPERATURE", "0.7"))
     top_p: float = float(os.getenv("OLLAMA_TOP_P", "0.9"))
-    max_tokens: int = int(os.getenv("OLLAMA_MAX_TOKENS", "300"))
+    max_tokens: int = int(os.getenv("OLLAMA_MAX_TOKENS", "100"))
     # Keep context small for voice — large context (Ollama default: 262144) causes
     # 8-10s prefill on 72b models. 4096 is more than enough for voice conversations.
     num_ctx: int = int(os.getenv("OLLAMA_NUM_CTX", "4096"))

@@ -39,7 +39,7 @@ _SENTENCE_BOUNDARY = re.compile(r"([.!?,|؟،۔])\s*(?=\S|$)")
 # At 24 tok/s that costs ~3-4s.  Dispatching at 8 words (~16-24 tokens) cuts
 # first-audio latency by ~3-4s.  8 words is enough for Sarvam to produce
 # natural-sounding speech without being too fragmentary.
-_WORD_DISPATCH_THRESHOLD = 4   # Telugu words are long; 4 space-separated units ≈ 12-16 tokens
+_WORD_DISPATCH_THRESHOLD = 2   # Dispatch early — edge-tts is fast enough to handle 2-word chunks
 
 
 class VoiceLLMClient:
@@ -93,16 +93,15 @@ class VoiceLLMClient:
         Yields:
             Sentence fragments suitable for direct TTS synthesis.
         """
-        # Build prompt in a thread executor so the RAG embedding call
-        # (sentence-transformer CPU inference, ~10-30ms) does not block
-        # the asyncio event loop.
+        import time as _time
+        _t0 = _time.monotonic()
         loop = asyncio.get_event_loop()
         prompt = await loop.run_in_executor(
             None, self._build_prompt, user_query, memory
         )
-        logger.debug(
-            "LLM prompt built (%d chars): %s",
-            len(prompt), user_query[:60],
+        logger.info(
+            "TIMING prompt_build=%.3fs chars=%d",
+            _time.monotonic()-_t0, len(prompt),
             extra={"session_id": session_id},
         )
         async for fragment in self._stream_ollama(prompt, session_id):
