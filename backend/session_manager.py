@@ -70,7 +70,7 @@ class Session:
         task = self.tts_orch_task
         if task and not task.done():
             try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+                await asyncio.wait_for(asyncio.shield(task), timeout=0.5)
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 task.cancel()
                 try:
@@ -322,12 +322,10 @@ class SessionManager:
         await send_json_cb({"type": "tts_end"})
         session.memory.add_bot_turn(text)
 
-        # Wait for the client to finish playing the audio it received.
-        # PCM is 24 000 Hz, 16-bit mono → 48 000 bytes per second.
-        bytes_sent = session.tts_handler.last_pcm_bytes_sent
-        if bytes_sent > 0:
-            playback_secs = bytes_sent / (24_000 * 2)
-            await asyncio.sleep(playback_secs + 0.4)   # +400 ms safety buffer
+        # Wait briefly for ASR to transcribe any microphone echo from TTS playback,
+        # then drain it. 400ms is enough for Sarvam STT round-trip without
+        # blocking the loop for the full playback duration.
+        await asyncio.sleep(0.4)
 
         # Drain any transcripts that arrived while the bot was speaking —
         # these are almost always microphone echo of the TTS output itself.

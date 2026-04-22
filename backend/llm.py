@@ -39,7 +39,7 @@ _SENTENCE_BOUNDARY = re.compile(r"([.!?,|؟،۔])\s*(?=\S|$)")
 # At 24 tok/s that costs ~3-4s.  Dispatching at 8 words (~16-24 tokens) cuts
 # first-audio latency by ~3-4s.  8 words is enough for Sarvam to produce
 # natural-sounding speech without being too fragmentary.
-_WORD_DISPATCH_THRESHOLD = 6   # Telugu words are long; 6 space-separated units ≈ 20-25 tokens
+_WORD_DISPATCH_THRESHOLD = 4   # Telugu words are long; 4 space-separated units ≈ 12-16 tokens
 
 
 class VoiceLLMClient:

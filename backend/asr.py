@@ -300,7 +300,7 @@ class ASRHandler:
 
         # VAD parameters — same as Whisper fallback
         SILENCE_RMS_THRESHOLD  = 0.008
-        SILENCE_FRAMES_TO_COMMIT = 3   # 0.3s silence ends utterance
+        SILENCE_FRAMES_TO_COMMIT = 2   # 0.2s silence ends utterance
         MIN_SPEECH_FRAMES       = 1
         MAX_SILENCE_FRAMES      = 20   # 2s hard reset
 
@@ -594,7 +594,7 @@ class ASRHandler:
                     extra={"session_id": self.session_id})
 
         SILENCE_RMS_THRESHOLD    = 0.008
-        SILENCE_FRAMES_TO_COMMIT = 3
+        SILENCE_FRAMES_TO_COMMIT = 2
         MIN_SPEECH_FRAMES        = 1
         MAX_SILENCE_FRAMES       = 20
 
@@ -693,7 +693,7 @@ class ASRHandler:
                     extra={"session_id": self.session_id})
 
         SILENCE_RMS_THRESHOLD    = 0.008
-        SILENCE_FRAMES_TO_COMMIT = 3
+        SILENCE_FRAMES_TO_COMMIT = 2
         MIN_SPEECH_FRAMES        = 1
         MAX_SILENCE_FRAMES       = 20
 
@@ -811,7 +811,7 @@ class ASRHandler:
                     extra={"session_id": self.session_id})
 
         SILENCE_RMS_THRESHOLD    = 0.008
-        SILENCE_FRAMES_TO_COMMIT = 3
+        SILENCE_FRAMES_TO_COMMIT = 2
         MIN_SPEECH_FRAMES        = 1
         MAX_SILENCE_FRAMES       = 20
 
@@ -965,7 +965,7 @@ class ASRHandler:
 
         # VAD parameters
         SILENCE_RMS_THRESHOLD = 0.008
-        SILENCE_FRAMES_TO_COMMIT = 3    # 0.3 s silence ends utterance (halved from 0.6s to reduce latency)
+        SILENCE_FRAMES_TO_COMMIT = 2    # 0.2 s silence ends utterance
         MIN_SPEECH_FRAMES = 1
         MAX_SILENCE_FRAMES = 20         # 2 s hard reset
 
