@@ -345,10 +345,8 @@ class SessionManager:
         """
         Full conversation loop.
 
-        Phase 0 — Greeting (on first user utterance):
-            Play language-specific welcome message.
-        Phase 1+ — Normal LLM turn:
-            Stream LLM response → TTS.
+        Phase 0 — Greeting (played proactively at session start, before any user input).
+        Phase 1+ — Every user utterance goes to the LLM for a response.
         """
         lang_cfg = get_language_config(session.language)
         logger.info(
@@ -356,6 +354,16 @@ class SessionManager:
             lang_cfg["display_name"],
             extra={"session_id": session.session_id},
         )
+
+        # Play greeting immediately at session start — before waiting for user input.
+        # This ensures every user utterance always gets an LLM response.
+        greeting = lang_cfg.get("greeting", "")
+        if greeting:
+            await self._play_hardcoded(session, send_json_cb, greeting)
+        ivr_main_menu = lang_cfg.get("ivr_main_menu", "")
+        if ivr_main_menu:
+            await self._play_hardcoded(session, send_json_cb, ivr_main_menu)
+        session.greeted = True
 
         while True:
             # Wait for a final transcript
@@ -387,28 +395,7 @@ class SessionManager:
             await send_json_cb({"type": "transcript_final", "text": user_text})
 
             # ----------------------------------------------------------
-            # Phase 0: Full IVR intro — plays exactly once, code-driven.
-            # Steps 1-4 are hardcoded so the IVR flow is guaranteed
-            # regardless of LLM behavior.
-            # ----------------------------------------------------------
-            if not session.greeted:
-                session.greeted = True
-
-                # Step 1 — Greeting / language confirmation
-                await self._play_hardcoded(
-                    session, send_json_cb, lang_cfg["greeting"]
-                )
-
-                # Step 2 — Welcome + main menu (plays after greeting finishes)
-                ivr_main_menu = lang_cfg.get("ivr_main_menu", "")
-                if ivr_main_menu:
-                    await self._play_hardcoded(session, send_json_cb, ivr_main_menu)
-
-                # Now wait for the caller's 1-9 menu selection
-                continue
-
-            # ----------------------------------------------------------
-            # Phase 1+: LLM response
+            # LLM response for every user utterance
             # ----------------------------------------------------------
             await send_json_cb({"type": "tts_start"})
 
