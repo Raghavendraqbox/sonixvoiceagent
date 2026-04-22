@@ -17,16 +17,22 @@ Priority chain per language:
 
   Kannada (configurable via KANNADA_TTS_ENGINE_PRIORITY):
     Engines available:
-      mms        — facebook/mms-tts-kan  (local GPU, default primary)
-      elevenlabs — ElevenLabs REST API   (requires ELEVENLABS_API_KEY)
-      narakeet   — Narakeet REST API     (requires NARAKEET_API_KEY)
-      micmonster — MicMonster REST API   (requires MICMONSTER_API_KEY)
-      speakatoo  — Speakatoo REST API    (requires SPEAKATOO_API_KEY)
-      edge       — Microsoft edge-tts    (free, kn-IN-SapnaNeural / GaganNeural)
-      gtts       — Google gTTS           (fallback, uses Kannada kn)
+      sarvam       — Sarvam AI REST API    (requires SARVAM_API_KEY, best Indian language quality)
+      google_tts   — Google Cloud TTS      (requires GOOGLE_TTS_API_KEY)
+      gnani        — Gnani.ai REST API     (requires GNANI_API_KEY + GNANI_CLIENT_ID)
+      ttsmaker     — TTSMaker REST API     (requires TTSMAKER_TOKEN + TTSMAKER_VOICE_ID_KANNADA)
+      elevenlabs   — ElevenLabs REST API   (requires ELEVENLABS_API_KEY)
+      azure_tts    — Microsoft Azure TTS   (requires AZURE_TTS_KEY, kn-IN-SapnaNeural / GaganNeural)
+      amazon_polly — Amazon Polly          (requires AWS credentials, no native kn voice)
+      mms          — facebook/mms-tts-kan  (local GPU)
+      narakeet     — Narakeet REST API     (requires NARAKEET_API_KEY)
+      micmonster   — MicMonster REST API   (requires MICMONSTER_API_KEY)
+      speakatoo    — Speakatoo REST API    (requires SPEAKATOO_API_KEY)
+      edge         — Microsoft edge-tts    (free, kn-IN-SapnaNeural / GaganNeural)
+      gtts         — Google gTTS           (fallback, uses Kannada kn)
 
-    Default priority: elevenlabs,edge,gtts
-    Override via env: KANNADA_TTS_ENGINE_PRIORITY=elevenlabs,edge,gtts
+    Default priority: sarvam,google_tts,gnani,ttsmaker,elevenlabs,edge,gtts
+    Override via env: KANNADA_TTS_ENGINE_PRIORITY=sarvam,edge,gtts
 
 Audio output contract:
   PCM 16-bit signed LE, 24 000 Hz, mono
@@ -374,18 +380,12 @@ class VoiceTTSHandler:
     """
     Synthesizes Telugu or Kannada text to PCM audio and streams it chunk-by-chunk.
 
-    Telugu (strict):
-      Primary  : facebook/mms-tts-tel (local GPU)
-      Fallback : Silence
+    Telugu (order set by TELUGU_TTS_ENGINE_PRIORITY):
+      sarvam, google_tts, gnani, ttsmaker, elevenlabs, azure_tts, amazon_polly, edge, gtts
 
     Kannada (order set by KANNADA_TTS_ENGINE_PRIORITY):
-      mms        — facebook/mms-tts-kan (local GPU)
-      elevenlabs — ElevenLabs REST API
-      narakeet   — Narakeet REST API
-      micmonster — MicMonster REST API
-      speakatoo  — Speakatoo REST API
-      edge       — Microsoft edge-tts (kn-IN)
-      gtts       — Google gTTS (Kannada kn)
+      sarvam, google_tts, gnani, ttsmaker, elevenlabs, azure_tts, amazon_polly,
+      mms, narakeet, micmonster, speakatoo, edge, gtts
     """
 
     def __init__(
@@ -442,17 +442,14 @@ class VoiceTTSHandler:
         # If a specific engine is requested from the UI, put it first with fallbacks.
         # "auto" → use KANNADA_TTS_ENGINE_PRIORITY from .env
         if self._language == "kannada":
-            VALID_ENGINES = {"mms", "elevenlabs", "narakeet", "micmonster", "speakatoo", "edge", "gtts"}
+            VALID_ENGINES = {
+                "sarvam", "google_tts", "gnani", "ttsmaker",
+                "elevenlabs", "azure_tts", "amazon_polly",
+                "mms", "narakeet", "micmonster", "speakatoo", "edge", "gtts",
+            }
             if tts_engine and tts_engine != "auto" and tts_engine in VALID_ENGINES:
-                # Place the chosen engine first with appropriate fallbacks.
-                # Cloud engines (elevenlabs, narakeet, etc.) fall back only to other
-                # cloud/neural engines — never MMS, which sounds like a different
-                # (female-robotic) voice and would confuse callers mid-conversation.
-                # MMS only falls back to edge/gtts (same "local" tier).
-                if tts_engine == "mms":
-                    fallbacks = ["edge", "gtts"]
-                else:
-                    fallbacks = [e for e in ["edge", "gtts"] if e != tts_engine]
+                # MMS falls back to edge/gtts; all others fall back to edge/gtts too.
+                fallbacks = [e for e in ["edge", "gtts"] if e != tts_engine]
                 self._kannada_engines: list[str] = [tts_engine] + fallbacks
             else:
                 raw = config.tts.kannada_engine_priority
@@ -550,10 +547,22 @@ class VoiceTTSHandler:
                 extra={"session_id": self.session_id},
             )
 
-            if engine == "mms":
-                result = await self._synthesize_mms(text)
+            if engine == "sarvam":
+                result = await self._synthesize_sarvam(text)
+            elif engine == "google_tts":
+                result = await self._synthesize_google_tts(text)
+            elif engine == "gnani":
+                result = await self._synthesize_gnani(text)
+            elif engine == "ttsmaker":
+                result = await self._synthesize_ttsmaker(text)
             elif engine == "elevenlabs":
                 result = await self._synthesize_elevenlabs(text)
+            elif engine == "azure_tts":
+                result = await self._synthesize_azure_tts(text)
+            elif engine == "amazon_polly":
+                result = await self._synthesize_amazon_polly(text)
+            elif engine == "mms":
+                result = await self._synthesize_mms(text)
             elif engine == "narakeet":
                 result = await self._synthesize_narakeet(text)
             elif engine == "micmonster":
@@ -566,7 +575,7 @@ class VoiceTTSHandler:
                 result = await self._synthesize_gtts(text)
             else:
                 logger.warning(
-                    "Unknown Pashto TTS engine '%s', skipping", engine,
+                    "Unknown Kannada TTS engine '%s', skipping", engine,
                     extra={"session_id": self.session_id},
                 )
                 continue

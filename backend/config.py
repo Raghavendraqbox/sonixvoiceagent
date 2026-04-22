@@ -129,20 +129,49 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "azure_stt_language_code":          "kn-IN",  # Azure STT language code
         "amazon_transcribe_language_code":  "kn-IN",  # Amazon Transcribe language code
 
-        # TTS — Meta MMS-TTS (primary, local GPU — same engine as Telugu)
+        # TTS — Meta MMS-TTS (local GPU)
         "mms_tts_model": "facebook/mms-tts-kan",   # Kannada (HuggingFace model ID)
         "mms_tts_sample_rate": 16_000,
 
-        # TTS — edge-tts (fallback 1, Microsoft Azure)
-        "edge_tts_voice": os.getenv("TTS_VOICE_KANNADA", "kn-IN-SapnaNeural"),
-        "edge_tts_voice_male": "kn-IN-GaganNeural",
+        # TTS — Sarvam AI (https://sarvam.ai — best for Indian languages including Kannada)
+        # Same speaker pool as Telugu; bulbul:v2 supports kn-IN
+        "sarvam_speaker":        os.getenv("SARVAM_SPEAKER_KANNADA",        "anushka"),
+        "sarvam_speaker_male":   os.getenv("SARVAM_SPEAKER_KANNADA_MALE",   "abhilash"),
+        "sarvam_language_code":  "kn-IN",
+        "sarvam_model":          os.getenv("SARVAM_MODEL", "bulbul:v2"),
 
-        # TTS — gTTS (fallback 2, Google)
-        "gtts_language": "kn",
+        # TTS — Google Cloud TTS (https://cloud.google.com/text-to-speech)
+        # Kannada voices: kn-IN-Standard-A (female), kn-IN-Standard-B (male)
+        #                 kn-IN-Wavenet-A  (female), kn-IN-Wavenet-B  (male)
+        "google_tts_voice":        os.getenv("GOOGLE_TTS_VOICE_KANNADA",      "kn-IN-Standard-A"),
+        "google_tts_voice_male":   os.getenv("GOOGLE_TTS_VOICE_KANNADA_MALE", "kn-IN-Standard-B"),
+        "google_tts_language":     "kn-IN",
+
+        # TTS — Gnani.ai (https://gnani.ai — Indian language specialist)
+        "gnani_language_code":   "kn",
+        "gnani_voice":           os.getenv("GNANI_VOICE_KANNADA", "female"),
+
+        # TTS — TTSMaker (https://ttsmaker.com — free tier available)
+        # Find Kannada voice IDs at: https://api.ttsmaker.com/v1/get-voice-list
+        "ttsmaker_voice_id":     int(os.getenv("TTSMAKER_VOICE_ID_KANNADA", "0")),
 
         # TTS — ElevenLabs (API-based, high quality Kannada)
         "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_KANNADA_MALE",   "iP95p4xoKVk53GoZ742B"),
         "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_KANNADA_FEMALE", "onwK4e9ZLuTAKqWW03F9"),
+
+        # TTS — Azure Cognitive Services (https://azure.microsoft.com/en-us/products/ai-services/text-to-speech)
+        # Kannada neural voices: kn-IN-SapnaNeural (female), kn-IN-GaganNeural (male)
+        "azure_tts_voice":      os.getenv("AZURE_TTS_VOICE_KANNADA",      "kn-IN-SapnaNeural"),
+        "azure_tts_voice_male": os.getenv("AZURE_TTS_VOICE_KANNADA_MALE", "kn-IN-GaganNeural"),
+        "azure_tts_language":   "kn-IN",
+
+        # TTS — Amazon Polly (https://aws.amazon.com/polly/)
+        # Polly does not have a dedicated Kannada voice; use "Aditi" (hi-IN, Indian accent)
+        # or check https://docs.aws.amazon.com/polly/latest/dg/voicelist.html for updates.
+        "amazon_polly_voice":          os.getenv("AWS_POLLY_VOICE_KANNADA",        "Aditi"),
+        "amazon_polly_voice_male":     os.getenv("AWS_POLLY_VOICE_KANNADA_MALE",   "Aditi"),
+        "amazon_polly_language_code":  os.getenv("AWS_POLLY_LANGUAGE_KANNADA",     "hi-IN"),
+        "amazon_polly_engine":         os.getenv("AWS_POLLY_ENGINE",               "standard"),
 
         # TTS — Narakeet (REST API)
         "narakeet_voice": os.getenv("NARAKEET_VOICE_KANNADA", ""),
@@ -152,6 +181,13 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # TTS — Speakatoo (REST API)
         "speakatoo_voice_id": os.getenv("SPEAKATOO_VOICE_ID_KANNADA", ""),
+
+        # TTS — edge-tts (free Microsoft neural voices)
+        "edge_tts_voice": os.getenv("TTS_VOICE_KANNADA", "kn-IN-SapnaNeural"),
+        "edge_tts_voice_male": "kn-IN-GaganNeural",
+
+        # TTS — gTTS (last resort fallback)
+        "gtts_language": "kn",
 
         # LLM sentence boundaries
         "sentence_delimiters": (".", "!", "?", ",", "।", "?"),
@@ -413,10 +449,11 @@ class TTSConfig:
     # ---------------------------------------------------------------------------
     # Kannada TTS engine priority
     # Comma-separated list tried in order until one succeeds.
-    # Options: mms | elevenlabs | narakeet | micmonster | speakatoo | edge | gtts
+    # Options: sarvam | google_tts | gnani | ttsmaker | elevenlabs | azure_tts |
+    #          amazon_polly | mms | narakeet | micmonster | speakatoo | edge | gtts
     # ---------------------------------------------------------------------------
     kannada_engine_priority: str = os.getenv(
-        "KANNADA_TTS_ENGINE_PRIORITY", "elevenlabs,edge,gtts"
+        "KANNADA_TTS_ENGINE_PRIORITY", "sarvam,google_tts,gnani,ttsmaker,elevenlabs,edge,gtts"
     )
 
     # ---------------------------------------------------------------------------
