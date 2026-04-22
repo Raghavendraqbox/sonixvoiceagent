@@ -388,6 +388,25 @@ class SessionManager:
             # from streaming audio alongside the new response.
             await session.cancel_and_wait_tts(timeout=3.0)
 
+            # Drain any transcripts that accumulated before this turn was
+            # dequeued (user repeated themselves, Sarvam sent a duplicate,
+            # or a prior slow turn caused a build-up).  Processing stale
+            # transcripts would cancel the new response immediately after
+            # it starts, making the bot appear to stop mid-sentence.
+            _pre_llm_drained = 0
+            while not session.transcript_queue.empty():
+                try:
+                    session.transcript_queue.get_nowait()
+                    _pre_llm_drained += 1
+                except asyncio.QueueEmpty:
+                    break
+            if _pre_llm_drained:
+                logger.debug(
+                    "Drained %d stale transcript(s) before LLM start",
+                    _pre_llm_drained,
+                    extra={"session_id": session.session_id},
+                )
+
             session.memory.add_user_turn(user_text)
             await send_json_cb({"type": "transcript_final", "text": user_text})
 
@@ -408,19 +427,22 @@ class SessionManager:
             session.tts_orch_task = orch_task
 
             full_bot_response = ""
-            llm_was_interrupted = False
             try:
                 async for fragment in session.llm_client.stream_response(
                     user_query=user_text,
                     memory=session.memory,
                     session_id=session.session_id,
                 ):
-                    if session.tts_cancel_event.is_set():
-                        llm_was_interrupted = True
-                        break
+                    # Always complete LLM generation even if TTS was cancelled
+                    # (e.g. client VAD echo → "interrupt" message).  Stopping
+                    # early stores a truncated response in memory, which
+                    # confuses the next turn.  The TTS orchestrator stops
+                    # on its own when cancel_event is set; we just stop
+                    # feeding it new fragments.
                     full_bot_response += fragment + " "
                     await send_json_cb({"type": "bot_text_fragment", "text": fragment})
-                    await session.tts_orchestrator.fragment_queue.put(fragment)
+                    if not session.tts_cancel_event.is_set():
+                        await session.tts_orchestrator.fragment_queue.put(fragment)
 
             except asyncio.CancelledError:
                 break
@@ -430,25 +452,6 @@ class SessionManager:
                     extra={"session_id": session.session_id},
                 )
                 await send_json_cb({"type": "error", "message": "LLM processing failed"})
-
-            # If the user barged in while the LLM was still generating, drain
-            # all but the most recent queued transcript.  Without this, every
-            # "hello? can you hear me?" utterance the user spoke during a slow
-            # cold-start gets processed sequentially, flooding the conversation.
-            if llm_was_interrupted:
-                latest: Optional[TranscriptResult] = None
-                while not session.transcript_queue.empty():
-                    try:
-                        latest = session.transcript_queue.get_nowait()
-                    except asyncio.QueueEmpty:
-                        break
-                if latest is not None:
-                    await session.transcript_queue.put(latest)
-                    logger.debug(
-                        "LLM barge-in drain: kept latest transcript '%s', discarded queued utterances",
-                        latest.text[:60],
-                        extra={"session_id": session.session_id},
-                    )
 
             await session.tts_orchestrator.fragment_queue.put(None)
 
