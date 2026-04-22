@@ -93,17 +93,7 @@ class VoiceLLMClient:
         Yields:
             Sentence fragments suitable for direct TTS synthesis.
         """
-        import time as _time
-        _t0 = _time.monotonic()
-        # _build_prompt takes <5ms (RAG embed + string ops) — safe to call directly
-        # in the coroutine.  run_in_executor was adding 4-5s of scheduler delay
-        # in uvicorn's event loop when the thread pool was under load.
         prompt = self._build_prompt(user_query, memory)
-        logger.info(
-            "TIMING prompt_build=%.3fs chars=%d",
-            _time.monotonic()-_t0, len(prompt),
-            extra={"session_id": session_id},
-        )
         async for fragment in self._stream_ollama(prompt, session_id):
             yield fragment
 

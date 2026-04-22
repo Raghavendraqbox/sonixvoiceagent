@@ -222,9 +222,11 @@ class SessionManager:
             cancel_event=session.tts_cancel_event,
         )
 
-        # Wire LLM
+        # Wire LLM — RAG disabled for voice: encode() causes 4-5s page-fault
+        # stall when weights are swapped out between turns. System prompt +
+        # conversation history is sufficient context for voice interactions.
         session.llm_client = VoiceLLMClient(
-            retriever=self._retriever,
+            retriever=None,
             language=language,
         )
 
