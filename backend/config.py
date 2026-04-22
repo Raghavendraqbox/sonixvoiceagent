@@ -369,6 +369,9 @@ class OllamaConfig:
     temperature: float = float(os.getenv("OLLAMA_TEMPERATURE", "0.7"))
     top_p: float = float(os.getenv("OLLAMA_TOP_P", "0.9"))
     max_tokens: int = int(os.getenv("OLLAMA_MAX_TOKENS", "300"))
+    # Keep context small for voice — large context (Ollama default: 262144) causes
+    # 8-10s prefill on 72b models. 4096 is more than enough for voice conversations.
+    num_ctx: int = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
 
 
 # ---------------------------------------------------------------------------
@@ -443,7 +446,7 @@ class TTSConfig:
     # Default: sarvam,google_tts,gnani,ttsmaker,edge,gtts
     # ---------------------------------------------------------------------------
     telugu_engine_priority: str = os.getenv(
-        "TELUGU_TTS_ENGINE_PRIORITY", "sarvam,google_tts,gnani,ttsmaker,edge,gtts"
+        "TELUGU_TTS_ENGINE_PRIORITY", "edge,sarvam,gtts"
     )
 
     # ---------------------------------------------------------------------------
@@ -453,7 +456,7 @@ class TTSConfig:
     #          amazon_polly | mms | narakeet | micmonster | speakatoo | edge | gtts
     # ---------------------------------------------------------------------------
     kannada_engine_priority: str = os.getenv(
-        "KANNADA_TTS_ENGINE_PRIORITY", "sarvam,google_tts,gnani,ttsmaker,elevenlabs,edge,gtts"
+        "KANNADA_TTS_ENGINE_PRIORITY", "edge,sarvam,gtts"
     )
 
     # ---------------------------------------------------------------------------

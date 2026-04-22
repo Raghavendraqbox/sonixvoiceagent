@@ -165,6 +165,7 @@ class VoiceLLMClient:
                 "temperature": config.ollama.temperature,
                 "top_p": config.ollama.top_p,
                 "num_predict": config.ollama.max_tokens,
+                "num_ctx": config.ollama.num_ctx,
             },
         }
 
