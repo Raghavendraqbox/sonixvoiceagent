@@ -150,7 +150,7 @@ class SessionManager:
                         "model": config.ollama.model,
                         "prompt": "hi",
                         "stream": False,
-                        "options": {"num_predict": 1},
+                        "options": {"num_predict": 1, "num_ctx": config.ollama.num_ctx},
                     },
                 )
                 resp.raise_for_status()
