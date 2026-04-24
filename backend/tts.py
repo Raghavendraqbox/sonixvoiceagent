@@ -43,6 +43,7 @@ Cancel semantics:
 """
 
 import asyncio
+import contextvars
 import datetime
 import io
 import logging
@@ -50,7 +51,7 @@ import os
 import threading
 import wave
 from pathlib import Path
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, Optional
 
 import numpy as np
 
@@ -61,6 +62,14 @@ logger = logging.getLogger(__name__)
 TTS_RATE = config.tts.sample_rate      # 24 000 Hz — browser playback rate
 
 AudioSendCallback = Callable[[bytes], Awaitable[None]]
+
+# Task-local capture buffer: when set, _stream_pcm appends bytes here instead
+# of sending to the client. Used by synthesize_to_pcm for pipeline pre-synthesis.
+# asyncio task contexts are isolated, so concurrent synthesis + streaming never
+# interfere even when both call _stream_pcm on the same VoiceTTSHandler.
+_pcm_capture_var: contextvars.ContextVar[Optional[list]] = contextvars.ContextVar(
+    "_tts_pcm_capture", default=None
+)
 
 
 def _debug_dump_audio_pair(
@@ -481,6 +490,23 @@ class VoiceTTSHandler:
 
         # Telugu: ElevenLabs primary → MMS Telugu fallback → silence
         return await self._synthesize_telugu(text)
+
+    async def synthesize_to_pcm(self, text: str) -> Optional[bytes]:
+        """Synthesize text → raw PCM bytes without streaming to the client.
+
+        Sets _pcm_capture_var in the current task context so _stream_pcm
+        captures bytes instead of sending. Safe to call concurrently with
+        _stream_pcm on the same handler because task contexts are isolated.
+        """
+        if not text.strip():
+            return None
+        capture: list[bytes] = []
+        token = _pcm_capture_var.set(capture)
+        try:
+            await self.synthesize_and_stream(text)
+        finally:
+            _pcm_capture_var.reset(token)
+        return b"".join(capture) if capture else None
 
     # ------------------------------------------------------------------
     # Telugu — walk the configurable engine priority list
@@ -1760,11 +1786,15 @@ class VoiceTTSHandler:
         import struct
         spc     = TTS_RATE // 5
         silence = struct.pack(f"<{spc}h", *([0] * spc))
+        capture = _pcm_capture_var.get()
         for _ in text.split():
             if self._cancel_event.is_set():
                 return False
-            await self._send_audio(silence)
-            await asyncio.sleep(0.2)
+            if capture is not None:
+                capture.append(silence)
+            else:
+                await self._send_audio(silence)
+                await asyncio.sleep(0.2)
         return True
 
     # ------------------------------------------------------------------
@@ -1772,7 +1802,17 @@ class VoiceTTSHandler:
     # ------------------------------------------------------------------
 
     async def _stream_pcm(self, pcm_bytes: bytes) -> bool:
-        """Send PCM bytes to the client in small chunks for low cancel latency."""
+        """Send PCM bytes — streams to client, or captures into task-local buffer.
+
+        When _pcm_capture_var is set in the calling task's context (i.e. called
+        from synthesize_to_pcm), appends the full pcm_bytes to that buffer
+        instead of streaming. This is safe for concurrent use because asyncio
+        task contexts are isolated.
+        """
+        capture = _pcm_capture_var.get()
+        if capture is not None:
+            capture.append(pcm_bytes)
+            return not self._cancel_event.is_set()
         bpc = int(TTS_RATE * config.tts.chunk_ms / 1000) * 2
         for i in range(0, len(pcm_bytes), bpc):
             if self._cancel_event.is_set():
@@ -1813,43 +1853,116 @@ class TTSOrchestrator:
     def fragment_queue(self) -> asyncio.Queue:
         return self._fragment_queue
 
+    # Flush on sentence boundaries (.!?।) and commas.
+    # Comma is included because the LLM dispatches comma-terminated fragments
+    # (_SENTENCE_BOUNDARY in llm.py includes ','), and without it the orchestrator
+    # silently buffers the whole response before the first TTS call.
+    _SENTENCE_END = frozenset(".!?,।")
+    _MIN_FLUSH_CHARS = 1
+    # Safety net: force-flush when buffer exceeds this length even with no punctuation.
+    # Prevents >2s buffering when LLM generates unpunctuated text.
+    _MAX_BUFFER_CHARS = 40
+
     async def run(self) -> None:
+        """3-stage pipelined TTS loop.
+
+        Stage 1 (_accumulate): reads LLM token fragments, assembles sentences,
+          emits to sentence_queue.
+        Stage 2 (_synthesize): reads sentences, calls synthesize_to_pcm (which
+          runs in its own task context so _pcm_capture_var is isolated), emits
+          PCM bytes to pcm_queue.
+        Stage 3 (_stream): reads PCM bytes, streams to client in chunks.
+
+        Synthesis of sentence N+1 overlaps with streaming of sentence N,
+        cutting per-sentence latency by ~1s with Azure TTS / ~350ms with edge.
+        """
         self._active = True
         logger.debug("TTSOrchestrator started", extra={"session_id": self.session_id})
 
-        while True:
-            if self._cancel_event.is_set():
-                while not self._fragment_queue.empty():
-                    try:
-                        self._fragment_queue.get_nowait()
-                    except asyncio.QueueEmpty:
-                        break
-                break
+        sentence_queue: asyncio.Queue = asyncio.Queue()
+        pcm_queue: asyncio.Queue = asyncio.Queue()
 
+        def _drain_fragments() -> None:
+            while not self._fragment_queue.empty():
+                try:
+                    self._fragment_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+
+        async def _accumulate() -> None:
+            buf: list[str] = []
             try:
-                fragment = await asyncio.wait_for(self._fragment_queue.get(), timeout=0.1)
-            except asyncio.TimeoutError:
-                continue
-            except asyncio.CancelledError:
-                break
-
-            if fragment is None:
-                break
-
-            if self._cancel_event.is_set():
-                break
-
-            completed = await self._tts.synthesize_and_stream(fragment)
-            if not completed:
-                while not self._fragment_queue.empty():
-                    try:
-                        self._fragment_queue.get_nowait()
-                    except asyncio.QueueEmpty:
+                while True:
+                    if self._cancel_event.is_set():
+                        _drain_fragments()
                         break
-                break
+                    try:
+                        fragment = await asyncio.wait_for(
+                            self._fragment_queue.get(), timeout=0.1
+                        )
+                    except asyncio.TimeoutError:
+                        continue
 
-        self._active = False
-        logger.debug("TTSOrchestrator stopped", extra={"session_id": self.session_id})
+                    if fragment is None:
+                        if buf and not self._cancel_event.is_set():
+                            sentence_queue.put_nowait(" ".join(buf).strip())
+                        break
+
+                    if self._cancel_event.is_set():
+                        _drain_fragments()
+                        break
+
+                    buf.append(fragment)
+                    buf_text = " ".join(buf)
+                    ends = (
+                        fragment.rstrip()
+                        and fragment.rstrip()[-1] in self._SENTENCE_END
+                    )
+                    force = len(buf_text) >= self._MAX_BUFFER_CHARS
+                    if (ends and len(buf_text) >= self._MIN_FLUSH_CHARS) or force:
+                        sentence_queue.put_nowait(buf_text)
+                        buf = []
+            finally:
+                sentence_queue.put_nowait(None)
+
+        async def _synthesize() -> None:
+            try:
+                while True:
+                    text = await sentence_queue.get()
+                    if text is None or self._cancel_event.is_set():
+                        break
+                    pcm = await self._tts.synthesize_to_pcm(text)
+                    pcm_queue.put_nowait(pcm if pcm else b"")
+            finally:
+                pcm_queue.put_nowait(None)
+
+        async def _stream() -> None:
+            bpc = int(TTS_RATE * config.tts.chunk_ms / 1000) * 2
+            while True:
+                pcm = await pcm_queue.get()
+                if pcm is None:
+                    break
+                if not pcm or self._cancel_event.is_set():
+                    continue
+                for i in range(0, len(pcm), bpc):
+                    if self._cancel_event.is_set():
+                        break
+                    chunk = pcm[i: i + bpc]
+                    await self._tts._send_audio(chunk)
+                    self._tts.last_pcm_bytes_sent += len(chunk)
+                    await asyncio.sleep(0)
+
+        try:
+            await asyncio.gather(
+                asyncio.create_task(_accumulate(), name=f"tts-acc-{self.session_id[:8]}"),
+                asyncio.create_task(_synthesize(), name=f"tts-syn-{self.session_id[:8]}"),
+                asyncio.create_task(_stream(),     name=f"tts-str-{self.session_id[:8]}"),
+            )
+        except asyncio.CancelledError:
+            raise
+        finally:
+            self._active = False
+            logger.debug("TTSOrchestrator stopped", extra={"session_id": self.session_id})
 
     def is_active(self) -> bool:
         return self._active

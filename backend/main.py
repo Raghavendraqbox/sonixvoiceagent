@@ -71,9 +71,9 @@ async def lifespan(app: FastAPI):
     logger.info("Telugu & Kannada Voice AI Agent starting…")
     logger.info("Default language : %s", config.default_language)
     logger.info("Supported        : %s", ", ".join(SUPPORTED_LANGUAGES))
-    logger.info("ASR  : Soniox (%s) → Whisper large-v3 fallback", config.soniox.model)
+    logger.info("STT  : %s (default engine: %s)", config.soniox.model, config.default_stt_engine)
     logger.info("LLM  : Ollama %s @ %s", config.ollama.model, config.ollama.base_url)
-    logger.info("TTS  : Telugu=ElevenLabs→MMS(tel) fallback | Kannada=ElevenLabs→edge→gTTS")
+    logger.info("TTS  : Telugu=%s | Kannada=%s", config.tts.telugu_engine_priority, config.tts.kannada_engine_priority)
     logger.info("Audio: input 16kHz | TTS output 24kHz")
     logger.info("=" * 60)
     session_manager.initialize_rag()
@@ -91,7 +91,7 @@ app = FastAPI(
     title="Telugu & Kannada Voice AI Agent",
     description=(
         "Real-time full-duplex Telugu and Kannada conversational voice agent. "
-        "Powered by Soniox ASR + Ollama LLM + Meta MMS-TTS."
+        "Powered by multi-provider ASR + Ollama LLM + multi-provider TTS."
     ),
     version="3.0.0",
     lifespan=lifespan,
