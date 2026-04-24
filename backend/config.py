@@ -536,6 +536,10 @@ class AppConfig:
     # Default language for the server
     default_language: str = DEFAULT_LANGUAGE
 
+    # Default STT engine (overridden per-session via ?stt_engine= query param)
+    # Options: auto | sarvam | soniox | google | azure | amazon | whisper
+    default_stt_engine: str = os.getenv("STT_ENGINE", "auto")
+
 
 # Module-level singleton — import this everywhere
 config = AppConfig()

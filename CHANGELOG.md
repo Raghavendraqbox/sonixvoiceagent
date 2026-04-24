@@ -5,6 +5,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.0.0] - 2026-04-24
+
+### Added — Multi-provider STT/TTS support + Azure integration
+
+#### STT — Four new cloud providers (`backend/asr.py`, `backend/config.py`)
+- **Added** Microsoft Azure STT (`_run_azure_stt_session`, `_azure_transcribe`) — supports `te-IN` and `kn-IN`; uses `AZURE_STT_KEY` + `AZURE_STT_REGION`
+- **Added** Google Cloud STT (`_run_google_stt_session`, `_google_transcribe`) — REST batch, supports `te-IN` and `kn-IN`; uses `GOOGLE_STT_API_KEY`
+- **Added** Amazon Transcribe STT (`_run_amazon_transcribe_session`, `_amazon_transcribe_utterance`) — streaming SDK, supports `te-IN` and `kn-IN`; uses shared AWS credentials
+- **Extended** `set_engine()` to accept `google`, `azure`, `amazon` in addition to existing `auto`, `sarvam`, `soniox`, `whisper`
+
+#### STT — `STT_ENGINE` env var (`backend/config.py`, `backend/main.py`)
+- **Added** `default_stt_engine` field to `AppConfig` — reads `STT_ENGINE` from `.env` (default: `auto`)
+- **Fixed** WebSocket endpoint to use `config.default_stt_engine` as the server-wide default instead of hardcoded `"auto"`, so you can set `STT_ENGINE=azure` in `.env` without touching any URL
+
+#### TTS — Azure TTS priority updated (`.env`, `.env.example`)
+- **Added** `azure_tts` to TTS engine priority chains for both Telugu and Kannada
+- **Default priorities** changed to `azure_tts,sarvam,edge,gtts` — Azure goes first when key is present
+
+#### Config — All providers now have complete `.env` and `.env.example` entries
+- **Added** `AZURE_STT_KEY`, `AZURE_STT_REGION`, `AZURE_TTS_KEY`, `AZURE_TTS_REGION`
+- **Added** `GOOGLE_STT_API_KEY`
+- **Added** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION_NAME`
+- **Added** `SARVAM_STT_MODEL`, `SARVAM_SPEAKER_KANNADA`, `SARVAM_SPEAKER_KANNADA_MALE`
+- **Added** `GOOGLE_TTS_VOICE_KANNADA`, `GOOGLE_TTS_VOICE_KANNADA_MALE`
+- **Added** `ELEVENLABS_VOICE_ID_TELUGU_FEMALE`, `ELEVENLABS_VOICE_ID_TELUGU_MALE` with working default voice IDs
+- **Added** all Amazon Polly, Gnani, TTSMaker, Narakeet, MicMonster, Speakatoo vars
+- All empty keys are safely skipped — no errors if a key is not set
+
+---
+
 ## [2.9.0] - 2026-04-16
 
 ### Fixed — LLM timeout, TTS cascade latency, Sarvam speech rate

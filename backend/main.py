@@ -133,10 +133,15 @@ async def health():
         "asr": (
             f"soniox/{config.soniox.model}"
             if os.getenv("SONIOX_API_KEY")
+            else "sarvam-stt/saarika:v2.5"
+            if os.getenv("SARVAM_API_KEY")
             else "whisper-large-v3 (local GPU)"
         ),
         "llm": f"ollama/{config.ollama.model} @ {config.ollama.base_url}",
-        "tts": "telugu: mms-tts strict | kannada: configurable chain (24kHz output)",
+        "tts": (
+            f"telugu: {config.tts.telugu_engine_priority} | "
+            f"kannada: {config.tts.kannada_engine_priority}"
+        ),
     }
 
 
@@ -163,7 +168,7 @@ async def websocket_endpoint(
     language: str = "telugu",
     voice: str = "male",
     tts_engine: str = "auto",
-    stt_engine: str = "auto",
+    stt_engine: str = "",
 ):
     """
     Main WebSocket handler.
@@ -183,7 +188,7 @@ async def websocket_endpoint(
         language = config.default_language
     voice = voice.lower() if voice.lower() in ("male", "female") else "male"
     tts_engine = tts_engine.lower().strip()
-    stt_engine = stt_engine.lower().strip()
+    stt_engine = stt_engine.lower().strip() or config.default_stt_engine
     if stt_engine not in ("auto", "sarvam", "soniox", "google", "azure", "amazon", "whisper"):
         stt_engine = "auto"
 
