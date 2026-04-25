@@ -41,8 +41,8 @@ _SENTENCE_BOUNDARY = re.compile(r"([.!?؟۔])\s*(?=\S|$)")
 # At 24 tok/s that costs ~3-4s.  Dispatching at 8 words (~16-24 tokens) cuts
 # first-audio latency by ~3-4s.  8 words is enough for Sarvam to produce
 # natural-sounding speech without being too fragmentary.
-# Keep early dispatch for latency, but avoid over-fragmentation.
-_WORD_DISPATCH_THRESHOLD = 8
+# Keep early dispatch for latency while avoiding micro-fragments.
+_WORD_DISPATCH_THRESHOLD = 6
 
 
 class VoiceLLMClient:

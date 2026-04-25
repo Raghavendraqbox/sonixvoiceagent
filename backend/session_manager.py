@@ -384,11 +384,14 @@ class SessionManager:
             # LLM sees the full sentence and frontend transcript is complete.
             merged_parts = [user_text]
             # Adaptive merge window:
-            # - short first chunk is likely a prematurely committed partial utterance
-            #   (e.g., "హలో హలో..."), so wait a bit longer for continuation.
-            # - longer chunks use a short window to keep latency low.
+            # - If ASR final already ends a sentence, process immediately for
+            #   lowest latency.
+            # - Otherwise allow a short continuation window for split finals.
             first_word_count = len(user_text.split())
-            merge_timeout = 1.8 if first_word_count <= 5 else 0.25
+            if user_text and user_text[-1] in ".!?।":
+                merge_timeout = 0.0
+            else:
+                merge_timeout = 0.20 if first_word_count <= 5 else 0.12
             while True:
                 try:
                     more: TranscriptResult = await asyncio.wait_for(
@@ -400,7 +403,7 @@ class SessionManager:
                     break
                 if more.is_final and more.text.strip():
                     merged_parts.append(more.text.strip())
-                    merge_timeout = 0.25
+                    merge_timeout = 0.10
                 # Ignore partial/empty here; they belong to ASR streaming state.
             user_text = " ".join(merged_parts).strip()
 

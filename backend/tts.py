@@ -1825,15 +1825,14 @@ class TTSOrchestrator:
     def fragment_queue(self) -> asyncio.Queue:
         return self._fragment_queue
 
-    # Flush on sentence boundaries (.!?।) and commas.
-    # Comma is included because the LLM dispatches comma-terminated fragments
-    # (_SENTENCE_BOUNDARY in llm.py includes ','), and without it the orchestrator
-    # silently buffers the whole response before the first TTS call.
-    _SENTENCE_END = frozenset(".!?,।")
+    # Flush on sentence boundaries only.
+    # Avoid comma-based flushes because they over-segment responses and increase
+    # cloud TTS round-trips (higher latency, choppier playback).
+    _SENTENCE_END = frozenset(".!?।")
     _MIN_FLUSH_CHARS = 1
     # Safety net: force-flush when buffer exceeds this length even with no punctuation.
     # Prevents >2s buffering when LLM generates unpunctuated text.
-    _MAX_BUFFER_CHARS = 40
+    _MAX_BUFFER_CHARS = 75
 
     async def run(self) -> None:
         """3-stage pipelined TTS loop.
