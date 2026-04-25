@@ -55,7 +55,9 @@
       "Bash(echo \"EXIT: $?\")",
       "Bash(git -C /workspace/sonixvoiceagent remote -v)",
       "Bash(git -C /workspace/sonixvoiceagent status)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(pkill -f \"python main.py\")",
+      "Bash(GEMINI_API_KEY=AIzaSyCxjhXvkzWnLXa0m07g0Sh6tK6_60UheJM python main.py)"
     ]
   }
 }
