@@ -206,6 +206,9 @@ async def websocket_endpoint(
 
     async def send_audio(pcm_bytes: bytes) -> None:
         try:
+            # Mark bot audio active only when the first PCM chunk is actually sent.
+            # This prevents pre-audio interrupt messages from cancelling the turn.
+            session.bot_audio_active = True
             await websocket.send_bytes(pcm_bytes)
         except Exception as exc:
             logger.debug("send_audio error: %s", exc)
@@ -256,8 +259,22 @@ async def websocket_endpoint(
                 msg_type = msg.get("type", "")
 
                 if msg_type == "interrupt":
-                    session.cancel_tts()
-                    await send_json_msg({"type": "tts_stopped"})
+                    # Accept barge-in only if bot audio has actually started.
+                    # During long-user-utterance processing the frontend can
+                    # emit early interrupt messages; cancelling then causes
+                    # "LLM text but no audio" for that turn.
+                    if (
+                        session.tts_orchestrator
+                        and session.tts_orchestrator.is_active()
+                        and session.bot_audio_active
+                    ):
+                        session.cancel_tts()
+                        await send_json_msg({"type": "tts_stopped"})
+                    else:
+                        logger.debug(
+                            "Ignoring interrupt before bot audio start",
+                            extra={"session_id": session.session_id},
+                        )
 
                 elif msg_type == "transcript_partial":
                     session.interrupt_event.set()

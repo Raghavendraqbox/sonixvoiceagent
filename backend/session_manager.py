@@ -48,11 +48,13 @@ class Session:
     tts_orchestrator: Optional[TTSOrchestrator] = field(default=None, init=False)
     tts_orch_task: Optional[asyncio.Task] = field(default=None, init=False)
     llm_client: Optional[VoiceLLMClient] = field(default=None, init=False)
+    bot_audio_active: bool = field(default=False, init=False)
 
     def cancel_tts(self) -> None:
         """Signal TTS to stop immediately."""
         self.tts_cancel_event.set()
         self.interrupt_event.set()
+        self.bot_audio_active = False
         logger.info("TTS cancel signalled", extra={"session_id": self.session_id})
 
     async def cancel_and_wait_tts(self, timeout: float = 3.0) -> None:
@@ -318,6 +320,7 @@ class SessionManager:
             await asyncio.wait_for(orch_task, timeout=30.0)
         except asyncio.TimeoutError:
             orch_task.cancel()
+        session.bot_audio_active = False
         await send_json_cb({"type": "tts_end"})
         session.memory.add_bot_turn(text)
 
@@ -376,6 +379,31 @@ class SessionManager:
             if not user_text:
                 continue
 
+            # ASR engines may emit multiple final chunks for one long utterance
+            # separated by very short pauses. Coalesce contiguous finals so the
+            # LLM sees the full sentence and frontend transcript is complete.
+            merged_parts = [user_text]
+            # Adaptive merge window:
+            # - short first chunk is likely a prematurely committed partial utterance
+            #   (e.g., "హలో హలో..."), so wait a bit longer for continuation.
+            # - longer chunks use a short window to keep latency low.
+            first_word_count = len(user_text.split())
+            merge_timeout = 1.8 if first_word_count <= 5 else 0.25
+            while True:
+                try:
+                    more: TranscriptResult = await asyncio.wait_for(
+                        session.transcript_queue.get(), timeout=merge_timeout
+                    )
+                except asyncio.TimeoutError:
+                    break
+                except asyncio.CancelledError:
+                    break
+                if more.is_final and more.text.strip():
+                    merged_parts.append(more.text.strip())
+                    merge_timeout = 0.25
+                # Ignore partial/empty here; they belong to ASR streaming state.
+            user_text = " ".join(merged_parts).strip()
+
             logger.info(
                 "Processing [%s]: %s",
                 lang_cfg["display_name"],
@@ -425,6 +453,8 @@ class SessionManager:
                 tts_handler=session.tts_handler,
                 cancel_event=session.tts_cancel_event,
             )
+            # Track this turn's audio output and detect "LLM text but no audio".
+            bytes_before_turn = session.tts_handler.last_pcm_bytes_sent
             orch_task = asyncio.create_task(
                 session.tts_orchestrator.run(),
                 name=f"tts-orch-{session.session_id}",
@@ -432,6 +462,7 @@ class SessionManager:
             session.tts_orch_task = orch_task
 
             full_bot_response = ""
+            queued_fragment_this_turn = False
             try:
                 async for fragment in session.llm_client.stream_response(
                     user_query=user_text,
@@ -446,8 +477,11 @@ class SessionManager:
                     # feeding it new fragments.
                     full_bot_response += fragment + " "
                     await send_json_cb({"type": "bot_text_fragment", "text": fragment})
-                    if not session.tts_cancel_event.is_set():
+                    # Always allow the first fragment to enter TTS queue so a
+                    # spurious early cancel cannot mute the entire reply.
+                    if (not session.tts_cancel_event.is_set()) or (not queued_fragment_this_turn):
                         await session.tts_orchestrator.fragment_queue.put(fragment)
+                        queued_fragment_this_turn = True
 
             except asyncio.CancelledError:
                 break
@@ -472,6 +506,27 @@ class SessionManager:
             if bot_text:
                 session.memory.add_bot_turn(bot_text)
 
+            bytes_after_turn = session.tts_handler.last_pcm_bytes_sent
+            bytes_sent_this_turn = bytes_after_turn - bytes_before_turn
+            if (
+                bot_text
+                and not session.tts_cancel_event.is_set()
+                and bytes_sent_this_turn <= 0
+            ):
+                logger.warning(
+                    "No TTS audio streamed for completed turn; retrying full response synthesis once",
+                    extra={"session_id": session.session_id},
+                )
+                try:
+                    await session.tts_handler.synthesize_and_stream(bot_text)
+                except Exception as exc:
+                    logger.error(
+                        "TTS fallback synthesis failed: %s",
+                        exc,
+                        extra={"session_id": session.session_id},
+                    )
+
+            session.bot_audio_active = False
             await send_json_cb({"type": "tts_end"})
             logger.info(
                 "Turn complete [%s]: %s",

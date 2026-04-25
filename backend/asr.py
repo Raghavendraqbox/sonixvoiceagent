@@ -300,9 +300,10 @@ class ASRHandler:
 
         # VAD parameters — same as Whisper fallback
         SILENCE_RMS_THRESHOLD  = 0.008
-        SILENCE_FRAMES_TO_COMMIT = 2   # 0.2s silence ends utterance
+        # 0.3s commit balances latency and long-utterance stability.
+        SILENCE_FRAMES_TO_COMMIT = 3
         MIN_SPEECH_FRAMES       = 1
-        MAX_SILENCE_FRAMES      = 20   # 2s hard reset
+        MAX_SILENCE_FRAMES      = 30   # 3s hard reset
 
         audio_buf: list = []
         silence_frames   = 0
@@ -594,9 +595,10 @@ class ASRHandler:
                     extra={"session_id": self.session_id})
 
         SILENCE_RMS_THRESHOLD    = 0.008
-        SILENCE_FRAMES_TO_COMMIT = 2
+        # 0.3s commit balances latency and long-utterance stability.
+        SILENCE_FRAMES_TO_COMMIT = 3
         MIN_SPEECH_FRAMES        = 1
-        MAX_SILENCE_FRAMES       = 20
+        MAX_SILENCE_FRAMES       = 30
 
         audio_buf: list = []
         silence_frames = 0
@@ -693,9 +695,10 @@ class ASRHandler:
                     extra={"session_id": self.session_id})
 
         SILENCE_RMS_THRESHOLD    = 0.008
-        SILENCE_FRAMES_TO_COMMIT = 2
+        # 0.3s commit balances latency and long-utterance stability.
+        SILENCE_FRAMES_TO_COMMIT = 3
         MIN_SPEECH_FRAMES        = 1
-        MAX_SILENCE_FRAMES       = 20
+        MAX_SILENCE_FRAMES       = 30
 
         audio_buf: list = []
         silence_frames = 0
@@ -811,9 +814,10 @@ class ASRHandler:
                     extra={"session_id": self.session_id})
 
         SILENCE_RMS_THRESHOLD    = 0.008
-        SILENCE_FRAMES_TO_COMMIT = 2
+        # 0.3s commit balances latency and long-utterance stability.
+        SILENCE_FRAMES_TO_COMMIT = 3
         MIN_SPEECH_FRAMES        = 1
-        MAX_SILENCE_FRAMES       = 20
+        MAX_SILENCE_FRAMES       = 30
 
         audio_buf: list = []
         silence_frames = 0
@@ -965,9 +969,10 @@ class ASRHandler:
 
         # VAD parameters
         SILENCE_RMS_THRESHOLD = 0.008
-        SILENCE_FRAMES_TO_COMMIT = 2    # 0.2 s silence ends utterance
+        # 0.3s commit balances latency and long-utterance stability.
+        SILENCE_FRAMES_TO_COMMIT = 3
         MIN_SPEECH_FRAMES = 1
-        MAX_SILENCE_FRAMES = 20         # 2 s hard reset
+        MAX_SILENCE_FRAMES = 30         # 3 s hard reset
 
         audio_buf: list = []
         silence_frames = 0

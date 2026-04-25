@@ -30,8 +30,10 @@ from rag import RAGRetriever
 
 logger = logging.getLogger(__name__)
 
-# Sentence boundaries: Western + Arabic punctuation (؟ = ?, ، = comma, ۔ = full stop)
-_SENTENCE_BOUNDARY = re.compile(r"([.!?,|؟،۔])\s*(?=\S|$)")
+# Sentence boundaries: sentence-ending punctuation only.
+# Do not split on commas/pipes, otherwise long utterances fragment unnaturally
+# and generate many tiny TTS requests.
+_SENTENCE_BOUNDARY = re.compile(r"([.!?؟۔])\s*(?=\S|$)")
 
 # Word-count dispatch: yield after this many words even without punctuation.
 # Telugu/Kannada sentences rarely use early commas, so without this trigger the
@@ -39,7 +41,8 @@ _SENTENCE_BOUNDARY = re.compile(r"([.!?,|؟،۔])\s*(?=\S|$)")
 # At 24 tok/s that costs ~3-4s.  Dispatching at 8 words (~16-24 tokens) cuts
 # first-audio latency by ~3-4s.  8 words is enough for Sarvam to produce
 # natural-sounding speech without being too fragmentary.
-_WORD_DISPATCH_THRESHOLD = 2   # Dispatch early — edge-tts is fast enough to handle 2-word chunks
+# Keep early dispatch for latency, but avoid over-fragmentation.
+_WORD_DISPATCH_THRESHOLD = 8
 
 
 class VoiceLLMClient:
