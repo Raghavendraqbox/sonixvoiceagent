@@ -435,6 +435,15 @@
         </select>
       </div>
 
+      <!-- LLM Backend selector — locked once session starts -->
+      <div class="selector-card">
+        <label for="llm-select">LLM</label>
+        <select id="llm-select">
+          <option value="ollama" selected>Ollama (local)</option>
+          <option value="gemini"         >Gemini (cloud ✨)</option>
+        </select>
+      </div>
+
       <!-- Orb -->
       <div class="orb-wrapper">
         <div class="orb idle" id="orb"></div>
@@ -478,10 +487,11 @@ const LANG_INFO = {
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-let selectedLanguage  = "telugu";
-let selectedVoice     = "male";
-let selectedSTTEngine = "auto";
-let selectedTTSEngine = "auto";
+let selectedLanguage   = "telugu";
+let selectedVoice      = "male";
+let selectedSTTEngine  = "auto";
+let selectedTTSEngine  = "auto";
+let selectedLLMBackend = "ollama";
 let sessionLanguage   = "telugu";   // locked at session start — used for all WS reconnects
 // Conversation history: [{role:"user"|"bot", text:"...", ts: Date}]
 let conversationHistory = [];
@@ -524,6 +534,7 @@ const voiceSelector     = document.getElementById("voice-selector");
 const voiceSelect       = document.getElementById("voice-select");
 const sttSelect         = document.getElementById("stt-select");
 const ttsSelect         = document.getElementById("tts-select");
+const llmSelect         = document.getElementById("llm-select");
 const conversationLog   = document.getElementById("conversation-log");
 const conversationHeader= document.getElementById("conversation-header");
 const btnDownload       = document.getElementById("btn-download");
@@ -583,13 +594,15 @@ async function startSession() {
   // different language and play two voices simultaneously.
   sessionLanguage = selectedLanguage;
 
-  selectedTTSEngine = ttsSelect.value;
+  selectedTTSEngine  = ttsSelect.value;
+  selectedLLMBackend = llmSelect.value;
 
   setStatus("Requesting microphone permission…");
   btnStart.disabled = true;
   langSelect.disabled = true;
   voiceSelect.disabled = true;
   ttsSelect.disabled = true;
+  llmSelect.disabled = true;
 
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -607,6 +620,7 @@ async function startSession() {
     langSelect.disabled = false;
     voiceSelect.disabled = false;
     ttsSelect.disabled = false;
+    llmSelect.disabled = false;
     return;
   }
 
@@ -642,6 +656,7 @@ function stopSession() {
   langSelect.disabled = false;
   voiceSelect.disabled = false;
   ttsSelect.disabled = false;
+  llmSelect.disabled = false;
   finalizeBotBubble();
   conversationHeader.classList.remove("active");
 
@@ -822,7 +837,7 @@ function connectWebSocket() {
   // a language-switch + reconnect from spawning a second session in a
   // different language and playing two voices simultaneously.
   const lang = sessionLanguage;
-  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&voice=${encodeURIComponent(selectedVoice)}&stt_engine=${encodeURIComponent(selectedSTTEngine)}&tts_engine=${encodeURIComponent(selectedTTSEngine)}`;
+  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&voice=${encodeURIComponent(selectedVoice)}&stt_engine=${encodeURIComponent(selectedSTTEngine)}&tts_engine=${encodeURIComponent(selectedTTSEngine)}&llm_backend=${encodeURIComponent(selectedLLMBackend)}`;
   setStatus("Connecting to server…");
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";

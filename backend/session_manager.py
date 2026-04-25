@@ -17,7 +17,7 @@ from memory import ConversationMemory
 from rag import RAGRetriever
 from asr import ASRHandler, TranscriptResult
 from tts import VoiceTTSHandler, TTSOrchestrator, schedule_tts_warmup
-from llm import VoiceLLMClient
+from llm import VoiceLLMClient, create_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +179,7 @@ class SessionManager:
         voice: str = "male",
         tts_engine: str = "auto",
         stt_engine: str = "auto",
+        llm_backend: str = "ollama",
     ) -> Session:
         """
         Allocate a new session for the given language, wire all handlers,
@@ -227,7 +228,8 @@ class SessionManager:
         # Wire LLM — RAG disabled for voice: encode() causes 4-5s page-fault
         # stall when weights are swapped out between turns. System prompt +
         # conversation history is sufficient context for voice interactions.
-        session.llm_client = VoiceLLMClient(
+        session.llm_client = create_llm_client(
+            backend=llm_backend,
             retriever=None,
             language=language,
         )

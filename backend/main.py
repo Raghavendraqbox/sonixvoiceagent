@@ -139,7 +139,11 @@ async def health():
             if os.getenv("SARVAM_API_KEY")
             else "whisper-large-v3 (local GPU)"
         ),
-        "llm": f"ollama/{config.ollama.model} @ {config.ollama.base_url}",
+        "llm": (
+            f"gemini/{config.gemini.model}"
+            if config.default_llm_backend == "gemini" and config.gemini.api_key
+            else f"ollama/{config.ollama.model} @ {config.ollama.base_url}"
+        ),
         "tts": (
             f"telugu: {config.tts.telugu_engine_priority} | "
             f"kannada: {config.tts.kannada_engine_priority}"
@@ -171,6 +175,7 @@ async def websocket_endpoint(
     voice: str = "male",
     tts_engine: str = "auto",
     stt_engine: str = "",
+    llm_backend: str = "",
 ):
     """
     Main WebSocket handler.
@@ -193,15 +198,19 @@ async def websocket_endpoint(
     stt_engine = stt_engine.lower().strip() or config.default_stt_engine
     if stt_engine not in ("auto", "sarvam", "soniox", "google", "azure", "amazon", "whisper"):
         stt_engine = "auto"
+    llm_backend = llm_backend.lower().strip() or config.default_llm_backend
+    if llm_backend not in ("ollama", "gemini"):
+        llm_backend = "ollama"
 
     await websocket.accept()
     logger.info(
-        "WebSocket connected from %s (language=%s, voice=%s, tts_engine=%s, stt_engine=%s)",
+        "WebSocket connected from %s (language=%s, voice=%s, tts=%s, stt=%s, llm=%s)",
         websocket.client,
         language,
         voice,
         tts_engine,
         stt_engine,
+        llm_backend,
     )
 
     async def send_audio(pcm_bytes: bytes) -> None:
@@ -226,6 +235,7 @@ async def websocket_endpoint(
         voice=voice,
         tts_engine=tts_engine,
         stt_engine=stt_engine,
+        llm_backend=llm_backend,
     )
     await send_json_msg({
         "type": "session_ready",

@@ -506,6 +506,31 @@ class TTSConfig:
 
 
 # ---------------------------------------------------------------------------
+# Gemini LLM config
+# ---------------------------------------------------------------------------
+
+@dataclass
+class GeminiConfig:
+    """
+    Google Gemini cloud LLM — best natural quality for Telugu/Kannada.
+
+    Get a free API key at: https://aistudio.google.com
+    Recommended models (set GEMINI_MODEL env var):
+      gemini-2.0-flash      ← fastest streaming, best for voice (default)
+      gemini-1.5-flash      ← slightly slower, still fast
+      gemini-1.5-pro        ← highest quality, slower/pricier
+      gemini-2.5-pro-preview ← bleeding edge, best quality
+    """
+    @property
+    def api_key(self) -> str:
+        return os.getenv("GEMINI_API_KEY", "")
+
+    model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    temperature: float = float(os.getenv("GEMINI_TEMPERATURE", "0.7"))
+    max_tokens: int = int(os.getenv("GEMINI_MAX_TOKENS", "200"))
+
+
+# ---------------------------------------------------------------------------
 # Server config
 # ---------------------------------------------------------------------------
 
@@ -531,6 +556,7 @@ class AppConfig:
     azure_stt: AzureSTTConfig = field(default_factory=AzureSTTConfig)
     amazon_transcribe: AmazonTranscribeConfig = field(default_factory=AmazonTranscribeConfig)
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
+    gemini: GeminiConfig = field(default_factory=GeminiConfig)
     rag: RAGConfig = field(default_factory=RAGConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
@@ -543,6 +569,10 @@ class AppConfig:
     # Default STT engine (overridden per-session via ?stt_engine= query param)
     # Options: auto | sarvam | soniox | google | azure | amazon | whisper
     default_stt_engine: str = os.getenv("STT_ENGINE", "auto")
+
+    # Default LLM backend (overridden per-session via ?llm_backend= query param)
+    # Options: ollama | gemini
+    default_llm_backend: str = os.getenv("LLM_BACKEND", "ollama")
 
 
 # Module-level singleton — import this everywhere

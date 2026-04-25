@@ -284,3 +284,144 @@ class VoiceLLMClient:
 # Backwards-compat alias
 # ---------------------------------------------------------------------------
 TeluguLLMClient = VoiceLLMClient
+
+
+# ---------------------------------------------------------------------------
+# Gemini LLM client — cloud, best natural Telugu/Kannada quality
+# ---------------------------------------------------------------------------
+
+class GeminiLLMClient:
+    """
+    Async streaming LLM client using Google Gemini cloud API.
+
+    Same public interface as VoiceLLMClient — drop-in replacement.
+    Requires GEMINI_API_KEY environment variable.
+    Recommended model: gemini-2.0-flash (fast streaming, excellent Telugu).
+    """
+
+    def __init__(
+        self,
+        retriever: Optional[RAGRetriever] = None,
+        language: str = "telugu",
+    ) -> None:
+        self._retriever = retriever
+        self._language  = language
+
+        lang_cfg = get_language_config(language)
+        self._system_prompt: str = lang_cfg["system_prompt"]
+        self._neutral_stubs: list = lang_cfg["neutral_stubs"]
+        self._language_display: str = lang_cfg["display_name"]
+
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=config.gemini.api_key)
+            self._genai = genai
+            self._model = genai.GenerativeModel(
+                model_name=config.gemini.model,
+                system_instruction=self._system_prompt,
+            )
+            logger.info(
+                "GeminiLLMClient ready: model=%s language=%s",
+                config.gemini.model,
+                self._language_display,
+            )
+        except ImportError:
+            raise RuntimeError(
+                "google-generativeai not installed. Run: pip install google-generativeai"
+            )
+
+    async def stream_response(
+        self,
+        user_query: str,
+        memory: ConversationMemory,
+        session_id: str = "unknown",
+    ) -> AsyncIterator[str]:
+        """Stream sentence fragments from Gemini for the given user query."""
+        messages = self._build_messages(user_query, memory)
+        buffer = ""
+        try:
+            generation_config = self._genai.GenerationConfig(
+                temperature=config.gemini.temperature,
+                max_output_tokens=config.gemini.max_tokens,
+            )
+            response = await self._model.generate_content_async(
+                messages,
+                stream=True,
+                generation_config=generation_config,
+            )
+            async for chunk in response:
+                try:
+                    token = chunk.text or ""
+                except Exception:
+                    continue
+
+                buffer += token
+                fragment, buffer = VoiceLLMClient._split_fragment(buffer)
+                if fragment:
+                    logger.debug(
+                        "Gemini fragment [%s]: %s",
+                        self._language_display,
+                        fragment[:50],
+                        extra={"session_id": session_id},
+                    )
+                    yield fragment
+
+            if buffer.strip():
+                yield buffer.strip()
+
+        except Exception as exc:
+            logger.error(
+                "Gemini error: %s", exc,
+                extra={"session_id": session_id},
+            )
+            import random
+            yield random.choice(self._neutral_stubs)
+
+    async def close(self) -> None:
+        pass
+
+    def _build_messages(self, user_query: str, memory: ConversationMemory) -> list:
+        """Convert conversation history + query into Gemini message format."""
+        messages = []
+        for role, text in memory.get_turns():
+            gemini_role = "user" if role == "User" else "model"
+            messages.append({"role": gemini_role, "parts": [text]})
+
+        # Attach RAG context to the current user turn if available
+        user_text = user_query
+        if self._retriever is not None:
+            rag_ctx = self._retriever.format_context(user_query)
+            if rag_ctx:
+                user_text = f"{rag_ctx}\n\nUser: {user_query}"
+
+        messages.append({"role": "user", "parts": [user_text]})
+        return messages
+
+
+# ---------------------------------------------------------------------------
+# Factory — returns the right client for the requested backend
+# ---------------------------------------------------------------------------
+
+def create_llm_client(
+    backend: str = "ollama",
+    retriever: Optional[RAGRetriever] = None,
+    language: str = "telugu",
+) -> "VoiceLLMClient | GeminiLLMClient":
+    """
+    Return an LLM client for the requested backend.
+
+    Args:
+        backend:   "ollama" (local) or "gemini" (cloud).
+        retriever: Optional RAG retriever (passed through to client).
+        language:  "telugu" or "kannada".
+    """
+    backend = backend.lower().strip()
+    if backend == "gemini":
+        if not config.gemini.api_key:
+            logger.warning(
+                "GEMINI_API_KEY not set — falling back to Ollama. "
+                "Get a free key at https://aistudio.google.com"
+            )
+            return VoiceLLMClient(retriever=retriever, language=language)
+        return GeminiLLMClient(retriever=retriever, language=language)
+    return VoiceLLMClient(retriever=retriever, language=language)
