@@ -5,6 +5,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.1.0] - 2026-04-25
+
+### Fixed — Long-utterance cutoffs, silent LLM replies, and turn-start latency
+
+#### STT/VAD stability + latency tuning (`backend/asr.py`)
+- **Rebalanced** VAD commit windows across cloud/local ASR loops to reduce long-sentence over-segmentation while preserving responsiveness.
+- **Changed** `SILENCE_FRAMES_TO_COMMIT` from aggressive/slow extremes to a balanced value (`3`) and extended hard reset windows (`MAX_SILENCE_FRAMES=30`) for steadier utterance capture.
+
+#### LLM fragmenting behavior (`backend/llm.py`)
+- **Fixed** over-fragmentation by removing comma/pipe boundaries from sentence splitting; now only sentence-ending punctuation triggers boundary flush.
+- **Raised** early word dispatch threshold (`2 -> 8`) to avoid tiny TTS requests that caused choppy playback and missing trailing audio in long responses.
+
+#### Session turn reliability (`backend/session_manager.py`)
+- **Added** adaptive ASR-final coalescing window to merge split finals from one long user utterance before LLM handoff.
+- **Fixed** race where early cancel signals could suppress queued TTS fragments, producing "LLM text with no audio".
+- **Added** per-turn no-audio guard: if a response completes with text but no streamed PCM, server retries full-response synthesis once.
+- **Tracked** per-turn audio byte deltas to detect silent-turn regressions safely.
+
+#### WebSocket interrupt handling (`backend/main.py`)
+- **Fixed** false barge-in cancellation path: `interrupt` now cancels only when bot audio is truly active in the current turn.
+- **Added** explicit "audio started" activation on first sent PCM chunk, preventing pre-audio interrupts from muting the reply.
+
+#### Result
+- Long user sentences are less likely to split mid-thought.
+- Final bot sentences no longer drop audio even when transcripts arrive in multiple chunks.
+- Turn-start latency is reduced without breaking full-duplex interrupt behavior.
+
+---
+
 ## [3.0.0] - 2026-04-24
 
 ### Added — Multi-provider STT/TTS support + Azure integration
