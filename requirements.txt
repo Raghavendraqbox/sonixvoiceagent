@@ -95,7 +95,7 @@ gtts>=2.5.1
 # Get free API key: https://aistudio.google.com
 # Set GEMINI_API_KEY in .env — falls back to Ollama without it
 # ---------------------------------------------------------------------------
-google-generativeai>=0.7.0
+google-genai>=0.8.0
 
 # ---------------------------------------------------------------------------
 # Async / utilities

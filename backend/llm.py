@@ -292,7 +292,7 @@ TeluguLLMClient = VoiceLLMClient
 
 class GeminiLLMClient:
     """
-    Async streaming LLM client using Google Gemini cloud API.
+    Async streaming LLM client using Google Gemini cloud API (google-genai SDK).
 
     Same public interface as VoiceLLMClient — drop-in replacement.
     Requires GEMINI_API_KEY environment variable.
@@ -313,13 +313,10 @@ class GeminiLLMClient:
         self._language_display: str = lang_cfg["display_name"]
 
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=config.gemini.api_key)
-            self._genai = genai
-            self._model = genai.GenerativeModel(
-                model_name=config.gemini.model,
-                system_instruction=self._system_prompt,
-            )
+            from google import genai
+            from google.genai import types as genai_types
+            self._client = genai.Client(api_key=config.gemini.api_key)
+            self._genai_types = genai_types
             logger.info(
                 "GeminiLLMClient ready: model=%s language=%s",
                 config.gemini.model,
@@ -327,7 +324,7 @@ class GeminiLLMClient:
             )
         except ImportError:
             raise RuntimeError(
-                "google-generativeai not installed. Run: pip install google-generativeai"
+                "google-genai not installed. Run: pip install google-genai"
             )
 
     async def stream_response(
@@ -337,22 +334,21 @@ class GeminiLLMClient:
         session_id: str = "unknown",
     ) -> AsyncIterator[str]:
         """Stream sentence fragments from Gemini for the given user query."""
-        messages = self._build_messages(user_query, memory)
+        contents = self._build_contents(user_query, memory)
+        gen_config = self._genai_types.GenerateContentConfig(
+            system_instruction=self._system_prompt,
+            temperature=config.gemini.temperature,
+            max_output_tokens=config.gemini.max_tokens,
+        )
         buffer = ""
         try:
-            generation_config = self._genai.GenerationConfig(
-                temperature=config.gemini.temperature,
-                max_output_tokens=config.gemini.max_tokens,
-            )
-            response = await self._model.generate_content_async(
-                messages,
-                stream=True,
-                generation_config=generation_config,
-            )
-            async for chunk in response:
-                try:
-                    token = chunk.text or ""
-                except Exception:
+            async for chunk in self._client.aio.models.generate_content_stream(
+                model=config.gemini.model,
+                contents=contents,
+                config=gen_config,
+            ):
+                token = chunk.text or ""
+                if not token:
                     continue
 
                 buffer += token
@@ -380,22 +376,21 @@ class GeminiLLMClient:
     async def close(self) -> None:
         pass
 
-    def _build_messages(self, user_query: str, memory: ConversationMemory) -> list:
-        """Convert conversation history + query into Gemini message format."""
-        messages = []
+    def _build_contents(self, user_query: str, memory: ConversationMemory) -> list:
+        """Convert conversation history + query into Gemini contents format."""
+        contents = []
         for role, text in memory.get_turns():
             gemini_role = "user" if role == "User" else "model"
-            messages.append({"role": gemini_role, "parts": [text]})
+            contents.append({"role": gemini_role, "parts": [{"text": text}]})
 
-        # Attach RAG context to the current user turn if available
         user_text = user_query
         if self._retriever is not None:
             rag_ctx = self._retriever.format_context(user_query)
             if rag_ctx:
                 user_text = f"{rag_ctx}\n\nUser: {user_query}"
 
-        messages.append({"role": "user", "parts": [user_text]})
-        return messages
+        contents.append({"role": "user", "parts": [{"text": user_text}]})
+        return contents
 
 
 # ---------------------------------------------------------------------------
