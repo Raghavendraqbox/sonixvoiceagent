@@ -525,7 +525,7 @@ class GeminiConfig:
     def api_key(self) -> str:
         return os.getenv("GEMINI_API_KEY", "")
 
-    model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     temperature: float = float(os.getenv("GEMINI_TEMPERATURE", "0.7"))
     max_tokens: int = int(os.getenv("GEMINI_MAX_TOKENS", "200"))
 
