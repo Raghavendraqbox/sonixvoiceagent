@@ -78,6 +78,8 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
     session_manager.initialize_rag()
     await session_manager.warmup_llm()
+    from tts import warmup_tts_connection
+    await warmup_tts_connection()
     logger.info("Server ready.")
     yield
     logger.info("Shutting down…")

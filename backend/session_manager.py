@@ -415,6 +415,11 @@ class SessionManager:
             # ----------------------------------------------------------
             await send_json_cb({"type": "tts_start"})
 
+            # Clear any stale interrupt/cancel that arrived between
+            # cancel_and_wait_tts clearing the events and now — prevents an
+            # old barge-in signal from silently disabling this turn's TTS.
+            session.reset_for_new_turn()
+
             session.tts_orchestrator = TTSOrchestrator(
                 session_id=session.session_id,
                 tts_handler=session.tts_handler,

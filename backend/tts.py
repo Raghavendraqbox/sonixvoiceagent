@@ -55,9 +55,27 @@ from typing import Callable, Awaitable, Optional
 
 import numpy as np
 
+import httpx
+
 from config import config, get_language_config
 
 logger = logging.getLogger(__name__)
+
+# Persistent HTTP client reused across all cloud TTS calls — eliminates
+# ~150-200ms TCP+TLS reconnection overhead per sentence synthesis.
+_cloud_http: Optional[httpx.AsyncClient] = None
+
+
+def _get_cloud_client() -> httpx.AsyncClient:
+    """Return the shared persistent HTTP client, creating it on first call."""
+    global _cloud_http
+    if _cloud_http is None or _cloud_http.is_closed:
+        _cloud_http = httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=5.0),
+            limits=httpx.Limits(max_keepalive_connections=5, keepalive_expiry=120),
+        )
+    return _cloud_http
+
 
 TTS_RATE = config.tts.sample_rate      # 24 000 Hz — browser playback rate
 
@@ -185,6 +203,31 @@ def schedule_tts_warmup(language: str = "telugu") -> None:
             logger.warning("MMS-TTS warmup failed for %s: %s", model_id, exc)
 
     threading.Thread(target=_warmup, daemon=True, name=f"mms-warmup-{language}").start()
+
+
+async def warmup_tts_connection() -> None:
+    """
+    Pre-establish TLS connections to configured cloud TTS endpoints.
+
+    Eliminates the ~150-200ms TCP+TLS handshake cost from the very first
+    synthesis request per call. Called once at startup after LLM warmup.
+    """
+    endpoints: list[str] = []
+    if config.tts.azure_tts_key:
+        endpoints.append(
+            f"https://{config.tts.azure_tts_region}.tts.speech.microsoft.com"
+        )
+    if config.tts.sarvam_api_key:
+        endpoints.append("https://api.sarvam.ai")
+    if not endpoints:
+        return
+    client = _get_cloud_client()
+    for url in endpoints:
+        try:
+            await client.get(url, timeout=5.0)
+        except Exception:
+            pass  # Any response (even 4xx) means TLS session is established
+    logger.info("TTS connections pre-warmed (%d endpoint(s))", len(endpoints))
 
 
 # ---------------------------------------------------------------------------
@@ -698,13 +741,6 @@ class VoiceTTSHandler:
         language_code = self._lang_cfg.get("sarvam_language_code", "te-IN")
         model         = self._lang_cfg.get("sarvam_model", "bulbul:v2")
 
-        try:
-            import httpx
-        except ImportError:
-            logger.error("Sarvam AI: httpx not installed — pip install httpx",
-                         extra={"session_id": self.session_id})
-            return False
-
         url = "https://api.sarvam.ai/text-to-speech"
         headers = {
             "API-Subscription-Key": api_key,
@@ -724,20 +760,20 @@ class VoiceTTSHandler:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                if resp.status_code == 401:
-                    logger.error("Sarvam AI: invalid API key (401)",
-                                 extra={"session_id": self.session_id})
-                    return False
-                if resp.status_code != 200:
-                    logger.error(
-                        "Sarvam AI API error %d: %s",
-                        resp.status_code, resp.text[:200],
-                        extra={"session_id": self.session_id},
-                    )
-                    return False
-                data = resp.json()
+            client = _get_cloud_client()
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code == 401:
+                logger.error("Sarvam AI: invalid API key (401)",
+                             extra={"session_id": self.session_id})
+                return False
+            if resp.status_code != 200:
+                logger.error(
+                    "Sarvam AI API error %d: %s",
+                    resp.status_code, resp.text[:200],
+                    extra={"session_id": self.session_id},
+                )
+                return False
+            data = resp.json()
 
             audios = data.get("audios") or []
             if not audios:
@@ -806,13 +842,6 @@ class VoiceTTSHandler:
         )
         language_code = self._lang_cfg.get("google_tts_language", "te-IN")
 
-        try:
-            import httpx
-        except ImportError:
-            logger.error("Google TTS: httpx not installed — pip install httpx",
-                         extra={"session_id": self.session_id})
-            return False
-
         url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}"
         payload = {
             "input": {"text": text},
@@ -827,29 +856,29 @@ class VoiceTTSHandler:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 400:
-                    logger.error(
-                        "Google TTS: bad request (400): %s", resp.text[:300],
-                        extra={"session_id": self.session_id},
-                    )
-                    return False
-                if resp.status_code == 403:
-                    logger.error(
-                        "Google TTS: permission denied (403) — check GOOGLE_TTS_API_KEY and "
-                        "ensure the Cloud Text-to-Speech API is enabled in your GCP project",
-                        extra={"session_id": self.session_id},
-                    )
-                    return False
-                if resp.status_code != 200:
-                    logger.error(
-                        "Google TTS API error %d: %s",
-                        resp.status_code, resp.text[:200],
-                        extra={"session_id": self.session_id},
-                    )
-                    return False
-                data = resp.json()
+            client = _get_cloud_client()
+            resp = await client.post(url, json=payload)
+            if resp.status_code == 400:
+                logger.error(
+                    "Google TTS: bad request (400): %s", resp.text[:300],
+                    extra={"session_id": self.session_id},
+                )
+                return False
+            if resp.status_code == 403:
+                logger.error(
+                    "Google TTS: permission denied (403) — check GOOGLE_TTS_API_KEY and "
+                    "ensure the Cloud Text-to-Speech API is enabled in your GCP project",
+                    extra={"session_id": self.session_id},
+                )
+                return False
+            if resp.status_code != 200:
+                logger.error(
+                    "Google TTS API error %d: %s",
+                    resp.status_code, resp.text[:200],
+                    extra={"session_id": self.session_id},
+                )
+                return False
+            data = resp.json()
 
             import base64
             audio_content = data.get("audioContent", "")
@@ -913,13 +942,6 @@ class VoiceTTSHandler:
         language_code = self._lang_cfg.get("gnani_language_code", "te")
         voice         = self._lang_cfg.get("gnani_voice", "female")
 
-        try:
-            import httpx
-        except ImportError:
-            logger.error("Gnani.ai: httpx not installed — pip install httpx",
-                         extra={"session_id": self.session_id})
-            return False
-
         # Gnani.ai REST TTS endpoint
         url = "https://dev.gnani.ai/api/v1/synthesize"
         headers: dict = {
@@ -937,25 +959,25 @@ class VoiceTTSHandler:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                if resp.status_code in (401, 403):
-                    logger.error(
-                        "Gnani.ai: auth error (%d) — check GNANI_API_KEY / GNANI_CLIENT_ID",
-                        resp.status_code,
-                        extra={"session_id": self.session_id},
-                    )
-                    return False
-                if resp.status_code != 200:
-                    logger.error(
-                        "Gnani.ai API error %d: %s",
-                        resp.status_code, resp.text[:200],
-                        extra={"session_id": self.session_id},
-                    )
-                    return False
+            client = _get_cloud_client()
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code in (401, 403):
+                logger.error(
+                    "Gnani.ai: auth error (%d) — check GNANI_API_KEY / GNANI_CLIENT_ID",
+                    resp.status_code,
+                    extra={"session_id": self.session_id},
+                )
+                return False
+            if resp.status_code != 200:
+                logger.error(
+                    "Gnani.ai API error %d: %s",
+                    resp.status_code, resp.text[:200],
+                    extra={"session_id": self.session_id},
+                )
+                return False
 
-                # Gnani returns raw MP3 bytes (content-type: audio/mpeg)
-                audio_bytes = resp.content
+            # Gnani returns raw MP3 bytes (content-type: audio/mpeg)
+            audio_bytes = resp.content
 
             if not audio_bytes:
                 return False
@@ -1015,13 +1037,6 @@ class VoiceTTSHandler:
             )
             return False
 
-        try:
-            import httpx
-        except ImportError:
-            logger.error("TTSMaker: httpx not installed — pip install httpx",
-                         extra={"session_id": self.session_id})
-            return False
-
         order_url = "https://api.ttsmaker.com/v1/create-tts-order"
         payload = {
             "token":                    token,
@@ -1034,41 +1049,41 @@ class VoiceTTSHandler:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                # Step 1: create the TTS order
-                resp = await client.post(order_url, json=payload)
-                if resp.status_code != 200:
-                    logger.error(
-                        "TTSMaker order error %d: %s",
-                        resp.status_code, resp.text[:200],
-                        extra={"session_id": self.session_id},
-                    )
-                    return False
-                data = resp.json()
+            client = _get_cloud_client()
+            # Step 1: create the TTS order (longer timeout for synthesis)
+            resp = await client.post(order_url, json=payload, timeout=60.0)
+            if resp.status_code != 200:
+                logger.error(
+                    "TTSMaker order error %d: %s",
+                    resp.status_code, resp.text[:200],
+                    extra={"session_id": self.session_id},
+                )
+                return False
+            data = resp.json()
 
-                if data.get("status") != 200:
-                    logger.error(
-                        "TTSMaker: order failed — %s", data,
-                        extra={"session_id": self.session_id},
-                    )
-                    return False
+            if data.get("status") != 200:
+                logger.error(
+                    "TTSMaker: order failed — %s", data,
+                    extra={"session_id": self.session_id},
+                )
+                return False
 
-                audio_url = data.get("audio_file_url", "")
-                if not audio_url:
-                    logger.error("TTSMaker: no audio_file_url in response",
-                                 extra={"session_id": self.session_id})
-                    return False
+            audio_url = data.get("audio_file_url", "")
+            if not audio_url:
+                logger.error("TTSMaker: no audio_file_url in response",
+                             extra={"session_id": self.session_id})
+                return False
 
-                # Step 2: download the generated MP3
-                dl_resp = await client.get(audio_url, timeout=30.0)
-                if dl_resp.status_code != 200:
-                    logger.error(
-                        "TTSMaker: download error %d for %s",
-                        dl_resp.status_code, audio_url,
-                        extra={"session_id": self.session_id},
-                    )
-                    return False
-                mp3_bytes = dl_resp.content
+            # Step 2: download the generated MP3
+            dl_resp = await client.get(audio_url, timeout=30.0)
+            if dl_resp.status_code != 200:
+                logger.error(
+                    "TTSMaker: download error %d for %s",
+                    dl_resp.status_code, audio_url,
+                    extra={"session_id": self.session_id},
+                )
+                return False
+            mp3_bytes = dl_resp.content
 
             if not mp3_bytes:
                 return False
@@ -1143,15 +1158,6 @@ class VoiceTTSHandler:
                 extra={"session_id": self.session_id},
             )
 
-        try:
-            import httpx
-        except ImportError:
-            logger.error(
-                "ElevenLabs: httpx not installed — pip install httpx",
-                extra={"session_id": self.session_id},
-            )
-            return False
-
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
         headers = {
             "xi-api-key": api_key,
@@ -1171,32 +1177,32 @@ class VoiceTTSHandler:
             extra={"session_id": self.session_id},
         )
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                if resp.status_code == 401:
-                    logger.error(
-                        "ElevenLabs: invalid API key (401) — check ELEVENLABS_API_KEY",
-                        extra={"session_id": self.session_id},
-                    )
-                    return False
-                if resp.status_code == 402:
-                    logger.error(
-                        "ElevenLabs: payment required (402) — account is on free plan "
-                        "which cannot use library voices via API. "
-                        "Either upgrade your plan or clone a custom voice at elevenlabs.io "
-                        "and set ELEVENLABS_VOICE_ID_TELUGU_MALE or ELEVENLABS_VOICE_ID_KANNADA_MALE in .env",
-                        extra={"session_id": self.session_id},
-                    )
-                    return False
-                if resp.status_code != 200:
-                    logger.error(
-                        "ElevenLabs API error %d: %s",
-                        resp.status_code,
-                        resp.text[:200],
-                        extra={"session_id": self.session_id},
-                    )
-                    return False
-                audio_bytes = resp.content
+            client = _get_cloud_client()
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code == 401:
+                logger.error(
+                    "ElevenLabs: invalid API key (401) — check ELEVENLABS_API_KEY",
+                    extra={"session_id": self.session_id},
+                )
+                return False
+            if resp.status_code == 402:
+                logger.error(
+                    "ElevenLabs: payment required (402) — account is on free plan "
+                    "which cannot use library voices via API. "
+                    "Either upgrade your plan or clone a custom voice at elevenlabs.io "
+                    "and set ELEVENLABS_VOICE_ID_TELUGU_MALE or ELEVENLABS_VOICE_ID_KANNADA_MALE in .env",
+                    extra={"session_id": self.session_id},
+                )
+                return False
+            if resp.status_code != 200:
+                logger.error(
+                    "ElevenLabs API error %d: %s",
+                    resp.status_code,
+                    resp.text[:200],
+                    extra={"session_id": self.session_id},
+                )
+                return False
+            audio_bytes = resp.content
 
             if not audio_bytes:
                 return False
@@ -1255,15 +1261,6 @@ class VoiceTTSHandler:
 
         voice = self._lang_cfg.get("narakeet_voice", "hamid")
 
-        try:
-            import httpx
-        except ImportError:
-            logger.error(
-                "Narakeet: httpx not installed — pip install httpx",
-                extra={"session_id": self.session_id},
-            )
-            return False
-
         url = "https://api.narakeet.com/text-to-speech/mp3"
         headers = {
             "x-api-key": api_key,
@@ -1273,19 +1270,19 @@ class VoiceTTSHandler:
         params = {"voice": voice}
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(
-                    url, headers=headers, params=params, content=text.encode("utf-8")
+            client = _get_cloud_client()
+            resp = await client.post(
+                url, headers=headers, params=params, content=text.encode("utf-8")
+            )
+            if resp.status_code != 200:
+                logger.error(
+                    "Narakeet API error %d: %s",
+                    resp.status_code,
+                    resp.text[:200],
+                    extra={"session_id": self.session_id},
                 )
-                if resp.status_code != 200:
-                    logger.error(
-                        "Narakeet API error %d: %s",
-                        resp.status_code,
-                        resp.text[:200],
-                        extra={"session_id": self.session_id},
-                    )
-                    return False
-                audio_bytes = resp.content
+                return False
+            audio_bytes = resp.content
 
             if not audio_bytes:
                 return False
@@ -1340,15 +1337,6 @@ class VoiceTTSHandler:
             )
             return False
 
-        try:
-            import httpx
-        except ImportError:
-            logger.error(
-                "MicMonster: httpx not installed — pip install httpx",
-                extra={"session_id": self.session_id},
-            )
-            return False
-
         url = "https://api.micmonster.com/tts"
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -1357,33 +1345,33 @@ class VoiceTTSHandler:
         payload = {"voice": voice_id, "text": text, "format": "mp3"}
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                if resp.status_code != 200:
+            client = _get_cloud_client()
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code != 200:
+                logger.error(
+                    "MicMonster API error %d: %s",
+                    resp.status_code,
+                    resp.text[:200],
+                    extra={"session_id": self.session_id},
+                )
+                return False
+
+            # MicMonster returns JSON with audio_url or base64
+            data = resp.json()
+            audio_url = data.get("audio_url") or data.get("url", "")
+            if audio_url:
+                audio_resp = await client.get(audio_url, timeout=30.0)
+                audio_bytes = audio_resp.content
+            else:
+                import base64
+                b64 = data.get("audio", "")
+                if not b64:
                     logger.error(
-                        "MicMonster API error %d: %s",
-                        resp.status_code,
-                        resp.text[:200],
+                        "MicMonster: no audio in response",
                         extra={"session_id": self.session_id},
                     )
                     return False
-
-                # MicMonster returns JSON with audio_url or base64
-                data = resp.json()
-                audio_url = data.get("audio_url") or data.get("url", "")
-                if audio_url:
-                    audio_resp = await client.get(audio_url, timeout=30.0)
-                    audio_bytes = audio_resp.content
-                else:
-                    import base64
-                    b64 = data.get("audio", "")
-                    if not b64:
-                        logger.error(
-                            "MicMonster: no audio in response",
-                            extra={"session_id": self.session_id},
-                        )
-                        return False
-                    audio_bytes = base64.b64decode(b64)
+                audio_bytes = base64.b64decode(b64)
 
             if not audio_bytes:
                 return False
@@ -1438,15 +1426,6 @@ class VoiceTTSHandler:
             )
             return False
 
-        try:
-            import httpx
-        except ImportError:
-            logger.error(
-                "Speakatoo: httpx not installed — pip install httpx",
-                extra={"session_id": self.session_id},
-            )
-            return False
-
         url = "https://www.speakatoo.com/api/v1/convert"
         headers = {"Content-Type": "application/json"}
         payload = {
@@ -1457,32 +1436,32 @@ class VoiceTTSHandler:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                if resp.status_code != 200:
+            client = _get_cloud_client()
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code != 200:
+                logger.error(
+                    "Speakatoo API error %d: %s",
+                    resp.status_code,
+                    resp.text[:200],
+                    extra={"session_id": self.session_id},
+                )
+                return False
+
+            # Response may be raw MP3 bytes or JSON with URL
+            content_type = resp.headers.get("content-type", "")
+            if "audio" in content_type or "octet" in content_type:
+                audio_bytes = resp.content
+            else:
+                data = resp.json()
+                audio_url = data.get("url") or data.get("audio_url", "")
+                if not audio_url:
                     logger.error(
-                        "Speakatoo API error %d: %s",
-                        resp.status_code,
-                        resp.text[:200],
+                        "Speakatoo: no audio URL in response",
                         extra={"session_id": self.session_id},
                     )
                     return False
-
-                # Response may be raw MP3 bytes or JSON with URL
-                content_type = resp.headers.get("content-type", "")
-                if "audio" in content_type or "octet" in content_type:
-                    audio_bytes = resp.content
-                else:
-                    data = resp.json()
-                    audio_url = data.get("url") or data.get("audio_url", "")
-                    if not audio_url:
-                        logger.error(
-                            "Speakatoo: no audio URL in response",
-                            extra={"session_id": self.session_id},
-                        )
-                        return False
-                    audio_resp = await client.get(audio_url, timeout=30.0)
-                    audio_bytes = audio_resp.content
+                audio_resp = await client.get(audio_url, timeout=30.0)
+                audio_bytes = audio_resp.content
 
             if not audio_bytes:
                 return False
@@ -1535,13 +1514,6 @@ class VoiceTTSHandler:
         )
         language_code = self._lang_cfg.get("azure_tts_language", "te-IN")
 
-        try:
-            import httpx
-        except ImportError:
-            logger.error("Azure TTS: httpx not installed — pip install httpx",
-                         extra={"session_id": self.session_id})
-            return False
-
         import xml.sax.saxutils as saxutils
         ssml = (
             f"<speak version='1.0' xml:lang='{language_code}'>"
@@ -1558,24 +1530,24 @@ class VoiceTTSHandler:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(url, headers=headers, content=ssml.encode("utf-8"))
-                if resp.status_code == 401:
-                    logger.error("Azure TTS: invalid key (401) — check AZURE_TTS_KEY",
-                                 extra={"session_id": self.session_id})
-                    return False
-                if resp.status_code == 400:
-                    logger.error("Azure TTS: bad request (400): %s", resp.text[:300],
-                                 extra={"session_id": self.session_id})
-                    return False
-                if resp.status_code != 200:
-                    logger.error(
-                        "Azure TTS API error %d: %s",
-                        resp.status_code, resp.text[:200],
-                        extra={"session_id": self.session_id},
-                    )
-                    return False
-                mp3_bytes = resp.content
+            client = _get_cloud_client()
+            resp = await client.post(url, headers=headers, content=ssml.encode("utf-8"))
+            if resp.status_code == 401:
+                logger.error("Azure TTS: invalid key (401) — check AZURE_TTS_KEY",
+                             extra={"session_id": self.session_id})
+                return False
+            if resp.status_code == 400:
+                logger.error("Azure TTS: bad request (400): %s", resp.text[:300],
+                             extra={"session_id": self.session_id})
+                return False
+            if resp.status_code != 200:
+                logger.error(
+                    "Azure TTS API error %d: %s",
+                    resp.status_code, resp.text[:200],
+                    extra={"session_id": self.session_id},
+                )
+                return False
+            mp3_bytes = resp.content
 
             if not mp3_bytes:
                 return False
@@ -1919,7 +1891,7 @@ class TTSOrchestrator:
                         and fragment.rstrip()[-1] in self._SENTENCE_END
                     )
                     force = len(buf_text) >= self._MAX_BUFFER_CHARS
-                    if (ends and len(buf_text) >= self._MIN_FLUSH_CHARS) or force:
+                    if (ends or force) and len(buf_text) >= self._MIN_FLUSH_CHARS:
                         sentence_queue.put_nowait(buf_text)
                         buf = []
             finally:
