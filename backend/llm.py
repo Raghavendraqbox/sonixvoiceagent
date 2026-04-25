@@ -36,13 +36,8 @@ logger = logging.getLogger(__name__)
 _SENTENCE_BOUNDARY = re.compile(r"([.!?؟۔])\s*(?=\S|$)")
 
 # Word-count dispatch: yield after this many words even without punctuation.
-# Telugu/Kannada sentences rarely use early commas, so without this trigger the
-# buffer accumulates the FULL first sentence (~50-70 tokens) before TTS can start.
-# At 24 tok/s that costs ~3-4s.  Dispatching at 8 words (~16-24 tokens) cuts
-# first-audio latency by ~3-4s.  8 words is enough for Sarvam to produce
-# natural-sounding speech without being too fragmentary.
-# Keep early dispatch for latency while avoiding micro-fragments.
-_WORD_DISPATCH_THRESHOLD = 6
+# Value comes from config so deployments can tune latency without code changes.
+_DEFAULT_WORD_DISPATCH_THRESHOLD = 6
 
 
 class VoiceLLMClient:
@@ -272,7 +267,11 @@ class VoiceLLMClient:
 
         # ── Priority 2: word-count trigger ─────────────────────────────────
         words = buffer.split()
-        if len(words) >= _WORD_DISPATCH_THRESHOLD:
+        threshold = max(
+            3,
+            int(getattr(config.ollama, "word_dispatch_threshold", _DEFAULT_WORD_DISPATCH_THRESHOLD)),
+        )
+        if len(words) >= threshold:
             # Split at the last space so we never break a word mid-character.
             last_space = buffer.rfind(" ")
             if last_space > 0:

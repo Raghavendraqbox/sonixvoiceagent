@@ -372,6 +372,10 @@ class OllamaConfig:
     # Keep context small for voice — large context (Ollama default: 262144) causes
     # 8-10s prefill on 72b models. 4096 is more than enough for voice conversations.
     num_ctx: int = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
+    # Early-dispatch controls for streamed LLM -> TTS.
+    # Lower values reduce first-audio latency but can increase sentence fragmentation.
+    # Defaults preserve existing behavior.
+    word_dispatch_threshold: int = int(os.getenv("OLLAMA_WORD_DISPATCH_THRESHOLD", "6"))
 
 
 # ---------------------------------------------------------------------------
