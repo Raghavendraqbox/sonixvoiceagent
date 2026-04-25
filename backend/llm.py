@@ -342,11 +342,12 @@ class GeminiLLMClient:
         )
         buffer = ""
         try:
-            async for chunk in self._client.aio.models.generate_content_stream(
+            stream = await self._client.aio.models.generate_content_stream(
                 model=config.gemini.model,
                 contents=contents,
                 config=gen_config,
-            ):
+            )
+            async for chunk in stream:
                 token = chunk.text or ""
                 if not token:
                     continue
