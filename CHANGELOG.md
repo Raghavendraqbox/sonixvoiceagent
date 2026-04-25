@@ -5,6 +5,53 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.2.0] - 2026-04-25
+
+### Added — Google Gemini cloud LLM backend + UI selector
+
+#### Gemini LLM client (`backend/llm.py`)
+- **Added** `GeminiLLMClient` — async streaming LLM client using the `google-genai` SDK. Same public interface as `VoiceLLMClient`; drop-in replacement per session.
+- **Added** `create_llm_client(backend, retriever, language)` factory — returns `GeminiLLMClient` when `backend="gemini"`, `VoiceLLMClient` otherwise. Falls back to Ollama with a warning if `GEMINI_API_KEY` is not set.
+- **Default model**: `gemini-2.5-flash` — fastest streaming with free-tier quota; better Telugu naturalness than any local open-source model.
+- Reuses `VoiceLLMClient._split_fragment()` for sentence dispatch so TTS latency behaviour is identical across both backends.
+- Conversation history is converted to Gemini's `user/model` multi-turn format; RAG context injected into the first user part when available.
+
+#### Configuration (`backend/config.py`)
+- **Added** `GeminiConfig` dataclass: `api_key` (from `GEMINI_API_KEY`), `model` (from `GEMINI_MODEL`, default `gemini-2.5-flash`), `temperature`, `max_tokens`.
+- **Added** `default_llm_backend` field to `AppConfig` — reads `LLM_BACKEND` env var (`ollama` | `gemini`, default `ollama`).
+
+#### WebSocket endpoint (`backend/main.py`)
+- **Added** `llm_backend` query parameter to `/ws` — per-session override (`?llm_backend=gemini`).
+- Validates to `ollama` | `gemini`; falls back to `config.default_llm_backend` if omitted or invalid.
+- Health endpoint now reflects `gemini/<model>` when Gemini is the server default.
+
+#### Session manager (`backend/session_manager.py`)
+- **Updated** `create_session()` to accept `llm_backend` param, passed through to `create_llm_client()`.
+
+#### Frontend (`frontend/index.html`)
+- **Added** **LLM** dropdown next to the TTS selector: `Ollama (local)` / `Gemini (cloud ✨)`.
+- Selector is locked once a session starts (same behaviour as Language and TTS selectors).
+- `selectedLLMBackend` state variable included in WebSocket URL as `&llm_backend=`.
+
+#### Dependencies (`requirements.txt`)
+- **Replaced** deprecated `google-generativeai` with `google-genai>=0.8.0` (the official current SDK).
+
+#### New environment variables
+| Variable | Default | Description |
+|---|---|---|
+| `GEMINI_API_KEY` | *(none)* | Google AI Studio key — get free at aistudio.google.com |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Any Gemini model ID |
+| `GEMINI_TEMPERATURE` | `0.7` | Generation temperature |
+| `GEMINI_MAX_TOKENS` | `200` | Max output tokens per turn |
+| `LLM_BACKEND` | `ollama` | Server-wide default: `ollama` or `gemini` |
+
+#### Result
+- Switch between local Ollama (`qwen2.5:72b`) and cloud Gemini from the browser dropdown — no restart needed.
+- Gemini produces significantly more natural conversational Telugu than any open-source model currently available.
+- Falls back gracefully to Ollama if the Gemini key is missing or quota is exceeded.
+
+---
+
 ## [3.1.0] - 2026-04-25
 
 ### Fixed — Long-utterance cutoffs, silent LLM replies, and turn-start latency

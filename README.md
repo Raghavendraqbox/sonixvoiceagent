@@ -11,8 +11,9 @@ STT Engine  ── Speech-to-Text ───────────────�
     │  Azure STT → Google STT → Amazon Transcribe (cloud options)   │
     │  Soniox cloud streaming → Whisper large-v3 local (fallbacks)  │
     ▼  Final transcript                                             │
-Qwen2.5:72b via Ollama  ── Telugu / Kannada LLM response ──────────┤
-    │  (open-source, runs on your GPU)                              │
+LLM Backend (selectable per session) ──────────────────────────────┤
+    │  Gemini 2.5 Flash  ← cloud, best natural Telugu (recommended) │
+    │  Qwen2.5:72b via Ollama  ← local GPU, no API key needed       │
     ▼  Text (streamed sentence by sentence)                         │
 TTS Engine  ── Neural Speech ───────────────────────────────────────┘
     │  Azure TTS → Sarvam bulbul:v2 → edge-tts → gTTS
@@ -180,9 +181,10 @@ http://localhost:8000
 
 1. Select your language: **Telugu (తెలుగు)** or **Kannada (ಕನ್ನಡ)**
 2. Select voice: **Male** or **Female**
-3. Click **Start Conversation**
-4. Allow microphone access when the browser asks
-5. Speak in Telugu or Kannada — the agent will respond in the same language
+3. Select **LLM**: `Ollama (local)` or `Gemini (cloud ✨)` — Gemini gives more natural Telugu
+4. Click **Start Conversation**
+5. Allow microphone access when the browser asks
+6. Speak in Telugu or Kannada — the agent will respond in the same language
 
 > **Must use Chrome or Edge.** Firefox has limited Web Audio API support.
 
@@ -213,6 +215,23 @@ LANGUAGE=telugu
 OLLAMA_MODEL=qwen2.5:72b
 ```
 
+### LLM backend selection
+
+```env
+# Server-wide default: ollama (local GPU) or gemini (cloud)
+LLM_BACKEND=ollama
+
+# Gemini — get a free key at https://aistudio.google.com
+GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-2.5-flash   # fastest free-tier model, best natural Telugu
+# GEMINI_TEMPERATURE=0.7
+# GEMINI_MAX_TOKENS=200
+
+# Override per-session from the browser LLM dropdown (no restart needed)
+```
+
+> **Gemini vs Ollama:** Gemini 2.5 Flash produces more natural conversational Telugu than any open-source model. Use it for demos. Ollama runs fully offline with no API cost — use it for production.
+
 ### STT engine selection
 
 ```env
@@ -238,6 +257,7 @@ KANNADA_TTS_ENGINE_PRIORITY=azure_tts,sarvam,edge,gtts
 
 | Provider | Variables | Used for |
 |---|---|---|
+| **Google Gemini** | `GEMINI_API_KEY` | **LLM — best natural Telugu (free tier at aistudio.google.com)** |
 | Sarvam AI | `SARVAM_API_KEY` | STT + TTS (best for Indian languages) |
 | Azure | `AZURE_STT_KEY` + `AZURE_STT_REGION` | STT |
 | Azure | `AZURE_TTS_KEY` + `AZURE_TTS_REGION` | TTS |
@@ -253,6 +273,16 @@ KANNADA_TTS_ENGINE_PRIORITY=azure_tts,sarvam,edge,gtts
 ---
 
 ## 7. Choosing a GPU & Model
+
+### Option A — Cloud LLM via Gemini (no GPU needed, best Telugu quality)
+
+| Model | Cost | Telugu Quality | Speed |
+|-------|------|----------------|-------|
+| `gemini-2.5-flash` | Free tier / ~$0.15/M tokens | ★★★★★ Most natural | Very Fast |
+
+Get a free key at **aistudio.google.com**, set `GEMINI_API_KEY` in `.env`, and select **Gemini** in the browser LLM dropdown.
+
+### Option B — Local LLM via Ollama (no API key, runs offline)
 
 | Model | VRAM | Download | Telugu Quality | Kannada Quality | Speed |
 |-------|------|----------|----------------|-----------------|-------|
