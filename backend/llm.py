@@ -335,10 +335,16 @@ class GeminiLLMClient:
     ) -> AsyncIterator[str]:
         """Stream sentence fragments from Gemini for the given user query."""
         contents = self._build_contents(user_query, memory)
+        thinking_cfg = (
+            self._genai_types.ThinkingConfig(thinking_budget=config.gemini.thinking_budget)
+            if config.gemini.thinking_budget >= 0
+            else None
+        )
         gen_config = self._genai_types.GenerateContentConfig(
             system_instruction=self._system_prompt,
             temperature=config.gemini.temperature,
             max_output_tokens=config.gemini.max_tokens,
+            **({"thinking_config": thinking_cfg} if thinking_cfg is not None else {}),
         )
         buffer = ""
         try:

@@ -93,26 +93,50 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # Greeting — plays once on the first user utterance
         "greeting": (
-            "నమస్కారం! నేను మీ AI వాయిస్ అసిస్టెంట్‌ను. "
-            "నేను తెలుగులో మీకు సహాయం చేయగలను. మీకు ఏమి అవసరం?"
+            "నమస్కారం! నేను QOBOX లోన్ అసిస్టెంట్‌ను. "
+            "మీకు హోమ్ లోన్ కావాలా లేదా కార్ లోన్ కావాలా?"
         ),
 
-        # ivr_main_menu — leave empty; no IVR menu in generic mode
+        # ivr_main_menu — not used; greeting already asks loan type
         "ivr_main_menu": "",
 
-        # Stubs when Ollama is unreachable
+        # Stubs when LLM is unreachable
         "neutral_stubs": [
             "క్షమించండి, ఒక్క నిమిషం ఆగండి.",
-            "అర్థమైంది, చూడనివ్వండి.",
-            "చాలా ధన్యవాదాలు, ఒక్క నిమిషం ఆగండి.",
+            "అర్థమైంది, మీ వివరాలు తీసుకుంటున్నాను.",
+            "చాలా ధన్యవాదాలు, ఒక్క క్షణం ఆగండి.",
         ],
 
-        # System persona — generic helpful Telugu voice assistant
+        # System persona — QOBOX bank loan agent
         "system_prompt": (
-            "Telugu voice assistant on a live call. Reply ONLY in Telugu (తెలుగు). "
-            "1-2 short sentences max. No lists, bullets, or markdown. "
-            "If goodbye: reply only 'ధన్యవాదాలు! మీ రోజు శుభంగా గడవాలి.' "
-            "Never repeat info already given. Be warm and direct."
+            "You are QOBOX Loan Assistant, a professional and warm Telugu-speaking bank loan agent "
+            "for QOBOX Financial Services. Help customers apply for Home Loans (గృహ రుణం) and "
+            "Car Loans (కార్ రుణం).\n\n"
+
+            "LANGUAGE: Reply ONLY in Telugu (తెలుగు). 1-2 short conversational sentences per "
+            "response. No lists, bullets, or markdown.\n\n"
+
+            "GOAL — collect these details one at a time in natural conversation:\n"
+            "1. Loan type: Home Loan or Car Loan\n"
+            "2. Full name (పూర్తి పేరు)\n"
+            "3. Mobile number (మొబైల్ నంబర్)\n"
+            "4. Date of birth (పుట్టిన తేదీ)\n"
+            "5. PAN card number (PAN నంబర్)\n"
+            "6. Employment type: Salaried (జీతగాడు) or Self-employed (స్వయం ఉపాధి)\n"
+            "7. Monthly income (నెలవారీ ఆదాయం)\n"
+            "8. Loan amount required (కావలసిన రుణ మొత్తం)\n"
+            "9. Home Loan → property city and estimated value | "
+            "Car Loan → car model and on-road price\n\n"
+
+            "RULES:\n"
+            "- Ask only ONE question at a time. Wait for the answer before moving on.\n"
+            "- Repeat back and confirm each answer before asking the next question.\n"
+            "- Be reassuring: tell the user their details are safe.\n"
+            "- If asked about interest rates: say our rates are competitive and a loan specialist "
+            "will share full details.\n"
+            "- If goodbye: reply only "
+            "'ధన్యవాదాలు! QOBOX తరఫున మీకు శుభాకాంక్షలు, మేము త్వరలో మీకు సంప్రదిస్తాము.'\n"
+            "- Never repeat information already collected."
         ),
     },
 
@@ -375,7 +399,7 @@ class OllamaConfig:
     # Early-dispatch controls for streamed LLM -> TTS.
     # Lower values reduce first-audio latency but can increase sentence fragmentation.
     # Defaults preserve existing behavior.
-    word_dispatch_threshold: int = int(os.getenv("OLLAMA_WORD_DISPATCH_THRESHOLD", "6"))
+    word_dispatch_threshold: int = int(os.getenv("OLLAMA_WORD_DISPATCH_THRESHOLD", "4"))
 
 
 # ---------------------------------------------------------------------------
@@ -525,9 +549,12 @@ class GeminiConfig:
     def api_key(self) -> str:
         return os.getenv("GEMINI_API_KEY", "")
 
-    model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     temperature: float = float(os.getenv("GEMINI_TEMPERATURE", "0.7"))
-    max_tokens: int = int(os.getenv("GEMINI_MAX_TOKENS", "200"))
+    max_tokens: int = int(os.getenv("GEMINI_MAX_TOKENS", "150"))
+    # Set GEMINI_THINKING_BUDGET=0 to disable internal reasoning on 2.5-flash/thinking models.
+    # Leave unset (default -1 = don't send thinking_config) for 2.0-flash and other non-thinking models.
+    thinking_budget: int = int(os.getenv("GEMINI_THINKING_BUDGET", "-1"))
 
 
 # ---------------------------------------------------------------------------
