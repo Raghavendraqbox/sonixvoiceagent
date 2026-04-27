@@ -1515,11 +1515,13 @@ class VoiceTTSHandler:
         language_code = self._lang_cfg.get("azure_tts_language", "te-IN")
 
         import xml.sax.saxutils as saxutils
+        rate = config.tts.tts_rate
         ssml = (
             f"<speak version='1.0' xml:lang='{language_code}'>"
             f"<voice xml:lang='{language_code}' name='{voice_name}'>"
+            f"<prosody rate='{rate}'>"
             f"{saxutils.escape(text)}"
-            f"</voice></speak>"
+            f"</prosody></voice></speak>"
         )
 
         url = f"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1"
@@ -1683,7 +1685,7 @@ class VoiceTTSHandler:
             return False
 
         try:
-            communicate = edge_tts.Communicate(text, voice=self._edge_tts_voice)
+            communicate = edge_tts.Communicate(text, voice=self._edge_tts_voice, rate=config.tts.tts_rate)
             audio_bytes = b""
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":

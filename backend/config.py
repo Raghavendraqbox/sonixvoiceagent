@@ -514,6 +514,8 @@ class TTSConfig:
     # Azure Cognitive Services TTS  (https://azure.microsoft.com/en-us/products/ai-services/text-to-speech)
     azure_tts_key:    str = field(default_factory=lambda: os.getenv("AZURE_TTS_KEY",    ""))
     azure_tts_region: str = field(default_factory=lambda: os.getenv("AZURE_TTS_REGION", "eastus"))
+    # Speech rate for Azure TTS and edge-tts. Examples: "+25%" faster, "+0%" normal, "-10%" slower.
+    tts_rate: str = field(default_factory=lambda: os.getenv("TTS_RATE", "+25%"))
 
     # Amazon Polly  (https://aws.amazon.com/polly/)
     amazon_polly_access_key: str = field(default_factory=lambda: os.getenv("AWS_ACCESS_KEY_ID",     ""))
