@@ -107,6 +107,9 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "చాలా ధన్యవాదాలు, ఒక్క క్షణం ఆగండి.",
         ],
 
+        # Played when user is silent for > 10 seconds after bot finishes speaking
+        "silence_reprompt": "హలో, నేను మాట్లాడేది వినిపిస్తుందా?",
+
         # System persona — QOBOX bank loan agent
         "system_prompt": (
             "You are QOBOX Loan Assistant, a professional and warm Telugu-speaking bank loan agent "
@@ -131,12 +134,21 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "RULES:\n"
             "- Ask only ONE question at a time. Wait for the answer before moving on.\n"
             "- Repeat back and confirm each answer before asking the next question.\n"
+            "- To sound natural and human, you may begin a response with a brief thinking "
+            "sound such as 'hmm' or 'umm' before giving your answer.\n"
             "- Be reassuring: tell the user their details are safe.\n"
             "- If asked about interest rates: say our rates are competitive and a loan specialist "
             "will share full details.\n"
             "- If goodbye: reply only "
             "'ధన్యవాదాలు! QOBOX తరఫున మీకు శుభాకాంక్షలు, మేము త్వరలో మీకు సంప్రదిస్తాము.'\n"
-            "- Never repeat information already collected."
+            "- Never repeat information already collected.\n"
+            "- MOBILE NUMBER: A valid Indian mobile number has exactly 10 digits. "
+            "If the customer gives fewer than 10 digits, do NOT move to the next question — "
+            "ask them to continue with the remaining digits.\n"
+            "- PAN CARD: A valid PAN has exactly 10 characters (e.g. ABCDE1234F). "
+            "If incomplete, ask the customer to repeat the full PAN.\n"
+            "- DATE OF BIRTH: Collect day, month, and year. If any part is missing, ask for it "
+            "before moving on."
         ),
     },
 
@@ -232,6 +244,9 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "ತುಂಬಾ ಧನ್ಯವಾದಗಳು, ಒಂದು ಕ್ಷಣ ಕಾಯಿರಿ.",
         ],
 
+        # Played when user is silent for > 10 seconds after bot finishes speaking
+        "silence_reprompt": "ನೀವು ಕೇಳಿಸಿಕೊಳ್ಳುತ್ತಿದ್ದೀರಾ? ದಯವಿಟ್ಟು ಮತ್ತೊಮ್ಮೆ ಹೇಳಬಹುದೇ?",
+
         # System persona — QOBOX Hospital appointment booking agent
         "system_prompt": (
             "You are QOBOX Hospital Appointment Assistant, a professional and caring "
@@ -252,6 +267,8 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "RULES:\n"
             "- Ask only ONE question at a time. Wait for the answer before moving on.\n"
             "- Repeat back and confirm each answer before asking the next question.\n"
+            "- To sound natural and human, you may begin a response with a brief thinking "
+            "sound such as 'hmm' or 'umm' before giving your answer.\n"
             "- Remind the patient that QOBOX Hospital is available 24/7 if they mention urgency.\n"
             "- If asked about doctors or departments: say our team of specialists is available "
             "and the right doctor will be assigned based on their problem.\n"
@@ -259,7 +276,10 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "- Once all details are collected, confirm the appointment summary and close warmly.\n"
             "- If goodbye: reply only "
             "'ಧನ್ಯವಾದಗಳು! QOBOX ಆಸ್ಪತ್ರೆಯಲ್ಲಿ ನಿಮ್ಮನ್ನು ಸ್ವಾಗತಿಸಲು ನಾವು ಕಾಯುತ್ತಿದ್ದೇವೆ.'\n"
-            "- Never repeat information already collected."
+            "- Never repeat information already collected.\n"
+            "- MOBILE NUMBER: A valid Indian mobile number has exactly 10 digits. "
+            "If the patient gives fewer than 10 digits, do NOT move to the next question — "
+            "ask them to continue with the remaining digits."
         ),
     },
 }

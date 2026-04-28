@@ -8,6 +8,7 @@ Language is determined per-session via the WebSocket ?language= query param
 
 import asyncio
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from typing import Callable, Awaitable, Dict, Optional
@@ -357,6 +358,9 @@ class SessionManager:
             extra={"session_id": session.session_id},
         )
 
+        # 24 kHz · 16-bit · mono — used to convert byte count → playback seconds
+        _TTS_BYTES_PER_SEC = 48_000
+
         # Play greeting immediately at session start — before waiting for user input.
         # This ensures every user utterance always gets an LLM response.
         greeting = lang_cfg.get("greeting", "")
@@ -367,10 +371,36 @@ class SessionManager:
             await self._play_hardcoded(session, send_json_cb, ivr_main_menu)
         session.greeted = True
 
+        silence_reprompt = lang_cfg.get("silence_reprompt", "")
+        last_bot_text: str = ""
+
+        # Silence reprompt state — reset after every real user utterance.
+        # _silence_timeout starts at 10s + greeting playback duration so the
+        # timer only fires after the user has actually heard the greeting.
+        # After 2 reprompts, wait indefinitely instead of spamming.
+        _silence_reprompt_count = 0
+        _greeting_play_secs = session.tts_handler.last_pcm_bytes_sent / _TTS_BYTES_PER_SEC
+        _silence_timeout = 10.0 + _greeting_play_secs
+
         while True:
-            # Wait for a final transcript
+            # Wait for a final transcript; re-prompt user if they go silent too long.
             try:
-                transcript: TranscriptResult = await session.transcript_queue.get()
+                transcript: TranscriptResult = await asyncio.wait_for(
+                    session.transcript_queue.get(), timeout=_silence_timeout
+                )
+            except asyncio.TimeoutError:
+                if _silence_reprompt_count < 2:
+                    reprompt = silence_reprompt or last_bot_text
+                    if reprompt:
+                        await self._play_hardcoded(session, send_json_cb, reprompt)
+                    _silence_reprompt_count += 1
+                    # Wait 10s + reprompt playback time before next reprompt
+                    _reprompt_play_secs = session.tts_handler.last_pcm_bytes_sent / _TTS_BYTES_PER_SEC
+                    _silence_timeout = 10.0 + _reprompt_play_secs
+                else:
+                    # Already reprompted twice — wait indefinitely
+                    _silence_timeout = 3600.0
+                continue
             except asyncio.CancelledError:
                 break
 
@@ -381,19 +411,28 @@ class SessionManager:
             if not user_text:
                 continue
 
+            # User spoke — silence state resets; actual timeout set after bot replies
+
             # ASR engines may emit multiple final chunks for one long utterance
             # separated by very short pauses. Coalesce contiguous finals so the
             # LLM sees the full sentence and frontend transcript is complete.
             merged_parts = [user_text]
             # Adaptive merge window:
-            # - If ASR final already ends a sentence, process immediately for
-            #   lowest latency.
-            # - Otherwise allow a short continuation window for split finals.
+            # - Sentence-ending punctuation → process immediately (lowest latency).
+            # - Numeric/very short input (digits, phone numbers, DOB) → wide window
+            #   so slow digit-by-digit speech isn't split across two LLM turns.
+            # - Short utterance → moderate window for general split-final protection.
+            # - Long utterance → narrow window (ASR likely already complete).
             first_word_count = len(user_text.split())
+            _is_numeric_fragment = bool(re.search(r'\d', user_text)) or first_word_count <= 3
             if user_text and user_text[-1] in ".!?।":
                 merge_timeout = 0.0
+            elif _is_numeric_fragment:
+                merge_timeout = 1.2   # wide window: lets slow digit dictation coalesce
+            elif first_word_count <= 5:
+                merge_timeout = 0.40
             else:
-                merge_timeout = 0.20 if first_word_count <= 5 else 0.12
+                merge_timeout = 0.12
             while True:
                 try:
                     more: TranscriptResult = await asyncio.wait_for(
@@ -405,7 +444,7 @@ class SessionManager:
                     break
                 if more.is_final and more.text.strip():
                     merged_parts.append(more.text.strip())
-                    merge_timeout = 0.10
+                    merge_timeout = 0.80  # keep collecting if more digits keep arriving
                 # Ignore partial/empty here; they belong to ASR streaming state.
             user_text = " ".join(merged_parts).strip()
 
@@ -510,6 +549,7 @@ class SessionManager:
             bot_text = full_bot_response.strip()
             if bot_text:
                 session.memory.add_bot_turn(bot_text)
+                last_bot_text = bot_text  # used by silence reprompt
 
             bytes_after_turn = session.tts_handler.last_pcm_bytes_sent
             bytes_sent_this_turn = bytes_after_turn - bytes_before_turn
@@ -539,6 +579,16 @@ class SessionManager:
                 bot_text[:60],
                 extra={"session_id": session.session_id},
             )
+
+            # Set silence timeout = 10s + estimated playback duration of this turn.
+            # This prevents the reprompt from firing while the bot audio is still
+            # playing on the client (bytes sent ÷ 48000 = playback seconds).
+            _turn_play_secs = max(
+                0.0,
+                (session.tts_handler.last_pcm_bytes_sent - bytes_before_turn) / _TTS_BYTES_PER_SEC,
+            )
+            _silence_reprompt_count = 0
+            _silence_timeout = 10.0 + _turn_play_secs
 
             # Drain transcripts that accumulated while the bot was speaking.
             # Prevents TTS audio echo from triggering a false barge-in on the

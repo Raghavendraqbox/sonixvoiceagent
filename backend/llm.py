@@ -346,39 +346,60 @@ class GeminiLLMClient:
             max_output_tokens=config.gemini.max_tokens,
             **({"thinking_config": thinking_cfg} if thinking_cfg is not None else {}),
         )
-        buffer = ""
-        try:
-            stream = await self._client.aio.models.generate_content_stream(
-                model=config.gemini.model,
-                contents=contents,
-                config=gen_config,
-            )
-            async for chunk in stream:
-                token = chunk.text or ""
-                if not token:
-                    continue
+        import random
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            buffer = ""
+            fragments_yielded = 0
+            try:
+                stream = await self._client.aio.models.generate_content_stream(
+                    model=config.gemini.model,
+                    contents=contents,
+                    config=gen_config,
+                )
+                async for chunk in stream:
+                    token = chunk.text or ""
+                    if not token:
+                        continue
 
-                buffer += token
-                fragment, buffer = VoiceLLMClient._split_fragment(buffer)
-                if fragment:
-                    logger.debug(
-                        "Gemini fragment [%s]: %s",
-                        self._language_display,
-                        fragment[:50],
+                    buffer += token
+                    fragment, buffer = VoiceLLMClient._split_fragment(buffer)
+                    if fragment:
+                        logger.debug(
+                            "Gemini fragment [%s]: %s",
+                            self._language_display,
+                            fragment[:50],
+                            extra={"session_id": session_id},
+                        )
+                        yield fragment
+                        fragments_yielded += 1
+
+                if buffer.strip():
+                    yield buffer.strip()
+                return  # success — stop retry loop
+
+            except Exception as exc:
+                if fragments_yielded > 0:
+                    # Already streamed partial audio — can't retry cleanly, just stop
+                    logger.error(
+                        "Gemini error mid-stream (attempt %d): %s", attempt + 1, exc,
                         extra={"session_id": session_id},
                     )
-                    yield fragment
-
-            if buffer.strip():
-                yield buffer.strip()
-
-        except Exception as exc:
-            logger.error(
-                "Gemini error: %s", exc,
-                extra={"session_id": session_id},
-            )
-            import random
-            yield random.choice(self._neutral_stubs)
+                    return
+                if attempt < max_retries:
+                    wait_s = 2 ** attempt  # 1s, then 2s
+                    logger.warning(
+                        "Gemini error (attempt %d/%d), retrying in %ds: %s",
+                        attempt + 1, max_retries + 1, wait_s, exc,
+                        extra={"session_id": session_id},
+                    )
+                    await asyncio.sleep(wait_s)
+                else:
+                    logger.error(
+                        "Gemini error after %d attempts: %s", max_retries + 1, exc,
+                        extra={"session_id": session_id},
+                    )
+                    yield random.choice(self._neutral_stubs)
 
     async def close(self) -> None:
         pass
