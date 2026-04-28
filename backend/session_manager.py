@@ -424,15 +424,19 @@ class SessionManager:
             # - Short utterance → moderate window for general split-final protection.
             # - Long utterance → narrow window (ASR likely already complete).
             first_word_count = len(user_text.split())
-            _is_numeric_fragment = bool(re.search(r'\d', user_text)) or first_word_count <= 3
-            if user_text and user_text[-1] in ".!?।":
-                merge_timeout = 0.0
-            elif _is_numeric_fragment:
-                merge_timeout = 1.2   # wide window: lets slow digit dictation coalesce
+            # Strip trailing ASR punctuation before deciding window — Azure often
+            # appends a period to numeric-only finals ("1234.") which would
+            # otherwise trigger immediate processing before the user finishes.
+            _text_stripped = user_text.rstrip(".!?।").strip()
+            _is_numeric_fragment = bool(re.search(r'\d', _text_stripped)) or first_word_count <= 3
+            if _is_numeric_fragment:
+                merge_timeout = 1.2   # digits take priority — ignore trailing ASR punctuation
+            elif user_text[-1] in ".!?।":
+                merge_timeout = 0.0   # clear sentence boundary — process immediately
             elif first_word_count <= 5:
                 merge_timeout = 0.40
             else:
-                merge_timeout = 0.12
+                merge_timeout = 0.25  # wider than before to catch split finals on long sentences
             while True:
                 try:
                     more: TranscriptResult = await asyncio.wait_for(

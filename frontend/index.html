@@ -473,8 +473,10 @@
 // ---------------------------------------------------------------------------
 const WS_BASE           = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
 const SEND_INTERVAL_MS  = 100;
-const VAD_THRESHOLD     = 0.018;
-const VAD_HOLD_FRAMES   = 2;
+const VAD_THRESHOLD        = 0.030;  // raised: rejects background noise in call-centre environments
+const VAD_HOLD_FRAMES      = 4;      // frames to confirm user started speaking (4 × 100ms = 400ms)
+const VAD_INTERRUPT_FRAMES = 10;     // frames of sustained speech required to interrupt the bot (1 second)
+const TTS_GRACE_FRAMES     = 6;      // frames after tts_start where VAD is ignored (600ms echo guard)
 const PLAYBACK_SAMPLE_RATE = 24000;
 const PREBUFFER_MS      = 100;
 
@@ -510,6 +512,7 @@ let botSpeaking       = false;
 let userSpeaking      = false;
 let vadFrameCount     = 0;
 let interruptSent     = false;
+let ttsGraceFrames    = 0;    // counts down after tts_start; VAD interrupt blocked during this window
 
 // TTS playback queue
 let ttsAudioCtx       = null;
@@ -686,7 +689,7 @@ function stopSession() {
 
   ttsQueue = []; ttsBufferedMs = 0; ttsPrebufferDone = false;
   ttsScheduledUntil = 0; botSpeaking = false; userSpeaking = false;
-  vadFrameCount = 0; interruptSent = false;
+  vadFrameCount = 0; interruptSent = false; ttsGraceFrames = 0;
   setOrb("idle", "Inactive");
   setStatus("Not connected");
 }
@@ -794,14 +797,25 @@ function updateEnergyMeter(rms) {
 }
 
 function checkVAD(rms) {
+  // Grace window: ignore VAD completely for the first TTS_GRACE_FRAMES frames
+  // after TTS starts. This prevents the bot's own audio or room echo from
+  // immediately triggering a false barge-in interrupt.
+  if (ttsGraceFrames > 0) {
+    ttsGraceFrames--;
+    vadFrameCount = 0;
+    return;
+  }
+
   if (rms > VAD_THRESHOLD) {
     vadFrameCount++;
 
-    // Require VAD_HOLD_FRAMES consecutive frames before acting.
-    // This prevents the mic picking up the bot's own TTS audio (echo)
-    // from triggering a false interrupt — echo may spike one frame but
-    // won't sustain for 4 × 100 ms = 400 ms.
-    if (vadFrameCount >= VAD_HOLD_FRAMES) {
+    // Use a higher frame count to interrupt the bot than to detect user speech.
+    // While the bot is speaking, require VAD_INTERRUPT_FRAMES (1 second) of
+    // sustained energy — background noise spikes won't sustain that long.
+    // When the bot is silent, VAD_HOLD_FRAMES (400ms) is enough to confirm speech.
+    const holdRequired = botSpeaking ? VAD_INTERRUPT_FRAMES : VAD_HOLD_FRAMES;
+
+    if (vadFrameCount >= holdRequired) {
       if (botSpeaking && !interruptSent) {
         interruptSent = true;
         sendJSON({ type: "interrupt" });
@@ -986,6 +1000,7 @@ function onJSONReceived(raw) {
     case "tts_start":
       stopTTSPlayback();
       botSpeaking = true;
+      ttsGraceFrames = TTS_GRACE_FRAMES;  // block VAD interrupt for first 600ms
       ttsPrebufferDone = false;
       ttsScheduledUntil = 0;
       ttsBufferedMs = 0;
