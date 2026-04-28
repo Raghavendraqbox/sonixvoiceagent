@@ -93,8 +93,8 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # Greeting — plays once on the first user utterance
         "greeting": (
-            "నమస్కారం! నేను QOBOX లోన్ అసిస్టెంట్‌ను. "
-            "మీకు హోమ్ లోన్ కావాలా లేదా కార్ లోన్ కావాలా?"
+            "నమస్కారం! QOBOX కాల్ సెంటర్‌కు స్వాగతం. "
+            "మీరు సంప్రదించినందుకు ధన్యవాదాలు. మీకు ఎలా సహాయం చేయగలను?"
         ),
 
         # ivr_main_menu — not used; greeting already asks loan type
@@ -110,10 +110,10 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # Played when user is silent for > 10 seconds after bot finishes speaking
         "silence_reprompt": "హలో, నేను మాట్లాడేది వినిపిస్తుందా?",
 
-        # System persona — QOBOX bank loan agent
+        # System persona — QOBOX call centre executive (Telugu)
         "system_prompt": (
-            "You are QOBOX Loan Assistant, a professional and warm Telugu-speaking bank loan agent "
-            "for QOBOX Financial Services. Help customers apply for Home Loans (గృహ రుణం) and "
+            "You are a professional and warm Telugu-speaking customer care executive at QOBOX "
+            "Financial Services call centre. Help customers apply for Home Loans (గృహ రుణం) and "
             "Car Loans (కార్ రుణం).\n\n"
 
             "LANGUAGE: Reply ONLY in Telugu (తెలుగు). 1-2 short conversational sentences per "
@@ -230,8 +230,8 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # Greeting — plays once on the first user utterance
         "greeting": (
-            "ನಮಸ್ಕಾರ! QOBOX ಆಸ್ಪತ್ರೆಗೆ ಸ್ವಾಗತ. ನಾನು ನಿಮ್ಮ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಅಸಿಸ್ಟೆಂಟ್. "
-            "ನಿಮಗೆ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಬುಕ್ ಮಾಡಲು ಸಹಾಯ ಮಾಡುತ್ತೇನೆ, ನಿಮ್ಮ ಹೆಸರು ಹೇಳುತ್ತೀರಾ?"
+            "ನಮಸ್ಕಾರ! QOBOX ಕಾಲ್ ಸೆಂಟರ್‌ಗೆ ಸ್ವಾಗತ. "
+            "ನೀವು ಸಂಪರ್ಕಿಸಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು. ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?"
         ),
 
         # ivr_main_menu — not used; greeting directly asks for name
@@ -247,10 +247,10 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # Played when user is silent for > 10 seconds after bot finishes speaking
         "silence_reprompt": "ನೀವು ಕೇಳಿಸಿಕೊಳ್ಳುತ್ತಿದ್ದೀರಾ? ದಯವಿಟ್ಟು ಮತ್ತೊಮ್ಮೆ ಹೇಳಬಹುದೇ?",
 
-        # System persona — QOBOX Hospital appointment booking agent
+        # System persona — QOBOX call centre executive (Kannada)
         "system_prompt": (
-            "You are QOBOX Hospital Appointment Assistant, a professional and caring "
-            "Kannada-speaking receptionist for QOBOX Hospital. "
+            "You are a professional and caring Kannada-speaking customer care executive at the "
+            "QOBOX Hospital call centre. "
             "QOBOX Hospital is open 24 hours, 7 days a week for all medical needs.\n\n"
 
             "LANGUAGE: Reply ONLY in Kannada (ಕನ್ನಡ). 1-2 short conversational sentences per "
