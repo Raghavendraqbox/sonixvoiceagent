@@ -479,6 +479,10 @@ const VAD_INTERRUPT_FRAMES = 10;     // frames of sustained speech required to i
 const TTS_GRACE_FRAMES     = 6;      // frames after tts_start where VAD is ignored (600ms echo guard)
 const PLAYBACK_SAMPLE_RATE = 24000;
 const PREBUFFER_MS      = 100;
+const HUMANIZER_BG_GAIN = 0.018;  // subtle office ambience while bot speaks
+const HUMANIZER_TYPING_GAIN = 0.05; // very soft keyboard ticks
+const HUMANIZER_TYPING_MIN_MS = 90;
+const HUMANIZER_TYPING_MAX_MS = 190;
 
 // Language display data
 const LANG_INFO = {
@@ -521,6 +525,10 @@ let ttsQueue          = [];
 let ttsBufferedMs     = 0;
 let ttsScheduledUntil = 0;
 let ttsPrebufferDone  = false;
+let ttsMasterGainNode = null;
+let ambienceGainNode  = null;
+let ambienceSource    = null;
+let typingTimer       = null;
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -638,6 +646,7 @@ async function startSession() {
     sampleRate: PLAYBACK_SAMPLE_RATE,
     latencyHint: "playback",
   });
+  setupPlaybackHumanizer();
 
   await setupAudioPipeline();
   connectWebSocket();
@@ -683,6 +692,10 @@ function stopSession() {
 
   ttsSourceNodes.forEach(s => { try { s.stop(0); } catch (_) {} });
   ttsSourceNodes = [];
+  stopBackgroundAmbience();
+  stopTypingLayer();
+  if (ambienceGainNode) { try { ambienceGainNode.disconnect(); } catch (_) {} ambienceGainNode = null; }
+  if (ttsMasterGainNode) { try { ttsMasterGainNode.disconnect(); } catch (_) {} ttsMasterGainNode = null; }
   if (ttsAudioCtx)  { ttsAudioCtx.close(); ttsAudioCtx = null; }
   if (ws && ws.readyState === WebSocket.OPEN) ws.close();
   ws = null;
@@ -766,6 +779,123 @@ function int16ToFloat32(int16Array) {
     float32[i] = int16Array[i] / 32768.0;
   }
   return float32;
+}
+
+function setupPlaybackHumanizer() {
+  if (!ttsAudioCtx) return;
+  if (ttsMasterGainNode) return;
+
+  ttsMasterGainNode = ttsAudioCtx.createGain();
+  ttsMasterGainNode.gain.value = 1.0;
+  ttsMasterGainNode.connect(ttsAudioCtx.destination);
+
+  ambienceGainNode = ttsAudioCtx.createGain();
+  ambienceGainNode.gain.value = 0.0;
+  ambienceGainNode.connect(ttsMasterGainNode);
+}
+
+function ensureAmbienceSource() {
+  if (!ttsAudioCtx || !ambienceGainNode || ambienceSource) return;
+  const durationSec = 2.0;
+  const frameCount = Math.floor(PLAYBACK_SAMPLE_RATE * durationSec);
+  const noiseBuffer = ttsAudioCtx.createBuffer(1, frameCount, PLAYBACK_SAMPLE_RATE);
+  const data = noiseBuffer.getChannelData(0);
+
+  // Colored-noise style shaping to feel like distant office/line ambience.
+  let prev = 0;
+  for (let i = 0; i < data.length; i++) {
+    const white = (Math.random() * 2 - 1) * 0.12;
+    prev = 0.985 * prev + white;
+    data[i] = prev;
+  }
+
+  ambienceSource = ttsAudioCtx.createBufferSource();
+  ambienceSource.buffer = noiseBuffer;
+  ambienceSource.loop = true;
+  ambienceSource.connect(ambienceGainNode);
+  ambienceSource.start();
+}
+
+function startBackgroundAmbience() {
+  if (!ttsAudioCtx || !ambienceGainNode) return;
+  ensureAmbienceSource();
+  const now = ttsAudioCtx.currentTime;
+  ambienceGainNode.gain.cancelScheduledValues(now);
+  ambienceGainNode.gain.setValueAtTime(ambienceGainNode.gain.value, now);
+  ambienceGainNode.gain.linearRampToValueAtTime(HUMANIZER_BG_GAIN, now + 0.18);
+}
+
+function stopBackgroundAmbience() {
+  if (!ttsAudioCtx || !ambienceGainNode) return;
+  const now = ttsAudioCtx.currentTime;
+  ambienceGainNode.gain.cancelScheduledValues(now);
+  ambienceGainNode.gain.setValueAtTime(ambienceGainNode.gain.value, now);
+  ambienceGainNode.gain.linearRampToValueAtTime(0.0, now + 0.12);
+}
+
+function scheduleTypingLayer() {
+  if (!sessionActive || !botSpeaking || !ttsAudioCtx || !ttsMasterGainNode) return;
+  if (typingTimer) clearTimeout(typingTimer);
+  const delay = HUMANIZER_TYPING_MIN_MS + Math.random() * (HUMANIZER_TYPING_MAX_MS - HUMANIZER_TYPING_MIN_MS);
+  typingTimer = setTimeout(() => {
+    playTypingTick();
+    scheduleTypingLayer();
+  }, delay);
+}
+
+function playTypingTick() {
+  if (!ttsAudioCtx || !ttsMasterGainNode || !botSpeaking) return;
+  const now = ttsAudioCtx.currentTime;
+  const peak = HUMANIZER_TYPING_GAIN * (0.75 + Math.random() * 0.4);
+
+  const triggerClick = (startAt) => {
+    const durationMs = 8 + Math.random() * 8; // short, percussive key tap
+    const frameCount = Math.max(64, Math.floor((PLAYBACK_SAMPLE_RATE * durationMs) / 1000));
+    const clickBuffer = ttsAudioCtx.createBuffer(1, frameCount, PLAYBACK_SAMPLE_RATE);
+    const data = clickBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    }
+
+    const src = ttsAudioCtx.createBufferSource();
+    const hp = ttsAudioCtx.createBiquadFilter();
+    const bp = ttsAudioCtx.createBiquadFilter();
+    const gain = ttsAudioCtx.createGain();
+
+    hp.type = "highpass";
+    hp.frequency.value = 700;
+    bp.type = "bandpass";
+    bp.frequency.value = 2200 + Math.random() * 1100;
+    bp.Q.value = 1.2;
+
+    gain.gain.value = 0.0;
+    src.buffer = clickBuffer;
+    src.connect(hp);
+    hp.connect(bp);
+    bp.connect(gain);
+    gain.connect(ttsMasterGainNode);
+
+    const attack = 0.0015;
+    const release = 0.02;
+    gain.gain.setValueAtTime(0.0, startAt);
+    gain.gain.linearRampToValueAtTime(peak, startAt + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + attack + release);
+
+    src.start(startAt);
+    src.stop(startAt + attack + release + 0.01);
+  };
+
+  triggerClick(now);
+  if (Math.random() < 0.35) {
+    triggerClick(now + (0.02 + Math.random() * 0.03)); // occasional double key hit
+  }
+}
+
+function stopTypingLayer() {
+  if (typingTimer) {
+    clearTimeout(typingTimer);
+    typingTimer = null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1007,6 +1137,8 @@ function onJSONReceived(raw) {
       // Only open a new bubble if bot_text_fragment hasn't already created one
       if (!currentBotMsgEl) startBotBubble();
       if (ttsAudioCtx && ttsAudioCtx.state !== "running") ttsAudioCtx.resume();
+      startBackgroundAmbience();
+      scheduleTypingLayer();
       setOrb("bot-speaking", "Assistant speaking…");
       break;
 
@@ -1015,6 +1147,8 @@ function onJSONReceived(raw) {
       finalizeBotBubble();
       botSpeaking = false;
       interruptSent = false;
+      stopBackgroundAmbience();
+      stopTypingLayer();
       if (!userSpeaking) setOrb("idle", "Listening");
       break;
 
@@ -1072,7 +1206,7 @@ function drainTTSQueue() {
 
     const source = ttsAudioCtx.createBufferSource();
     source.buffer = buffer;
-    source.connect(ttsAudioCtx.destination);
+    source.connect(ttsMasterGainNode || ttsAudioCtx.destination);
     source.start(ttsScheduledUntil);
     ttsSourceNodes.push(source);
     source.addEventListener("ended", () => {
