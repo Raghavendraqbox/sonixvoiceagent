@@ -177,6 +177,21 @@ async def languages():
     }
 
 
+@app.get("/client-config")
+async def client_config():
+    """Return non-secret browser runtime settings derived from .env."""
+    return {
+        "audio": {
+            "office_background_noise_enabled": config.audio.office_background_noise_enabled,
+            "keyboard_typing_sound_enabled": config.audio.keyboard_typing_sound_enabled,
+            "office_background_noise_gain": config.audio.office_background_noise_gain,
+            "keyboard_typing_sound_gain": config.audio.keyboard_typing_sound_gain,
+            "keyboard_typing_min_ms": config.audio.keyboard_typing_min_ms,
+            "keyboard_typing_max_ms": config.audio.keyboard_typing_max_ms,
+        }
+    }
+
+
 # ---------------------------------------------------------------------------
 # WebSocket endpoint
 # ---------------------------------------------------------------------------

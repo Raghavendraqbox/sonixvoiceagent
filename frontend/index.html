@@ -479,10 +479,13 @@ const VAD_INTERRUPT_FRAMES = 10;     // frames of sustained speech required to i
 const TTS_GRACE_FRAMES     = 6;      // frames after tts_start where VAD is ignored (600ms echo guard)
 const PLAYBACK_SAMPLE_RATE = 24000;
 const PREBUFFER_MS      = 100;
-const HUMANIZER_BG_GAIN = 0.018;  // subtle office ambience while bot speaks
-const HUMANIZER_TYPING_GAIN = 0.05; // very soft keyboard ticks
-const HUMANIZER_TYPING_MIN_MS = 90;
-const HUMANIZER_TYPING_MAX_MS = 190;
+let humanizerOfficeEnabled = true;
+let humanizerTypingEnabled = true;
+let humanizerOfficeGain = 0.018;  // subtle office ambience while bot speaks
+let humanizerTypingGain = 0.05;   // very soft keyboard ticks
+let humanizerTypingMinMs = 90;
+let humanizerTypingMaxMs = 190;
+let clientConfigLoaded = false;
 
 // Language display data
 const LANG_INFO = {
@@ -529,6 +532,36 @@ let ttsMasterGainNode = null;
 let ambienceGainNode  = null;
 let ambienceSource    = null;
 let typingTimer       = null;
+
+async function loadClientConfig() {
+  if (clientConfigLoaded) return;
+  try {
+    const resp = await fetch("/client-config", { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const cfg = await resp.json();
+    const audio = cfg.audio || {};
+
+    humanizerOfficeEnabled = audio.office_background_noise_enabled !== false;
+    humanizerTypingEnabled = audio.keyboard_typing_sound_enabled !== false;
+    humanizerOfficeGain = parseFiniteNumber(audio.office_background_noise_gain, humanizerOfficeGain, 0, 0.2);
+    humanizerTypingGain = parseFiniteNumber(audio.keyboard_typing_sound_gain, humanizerTypingGain, 0, 0.2);
+    humanizerTypingMinMs = parseFiniteNumber(audio.keyboard_typing_min_ms, humanizerTypingMinMs, 25, 2000);
+    humanizerTypingMaxMs = parseFiniteNumber(audio.keyboard_typing_max_ms, humanizerTypingMaxMs, humanizerTypingMinMs, 3000);
+    if (humanizerTypingMaxMs < humanizerTypingMinMs) {
+      humanizerTypingMaxMs = humanizerTypingMinMs;
+    }
+  } catch (err) {
+    console.warn("Using default client config:", err);
+  } finally {
+    clientConfigLoaded = true;
+  }
+}
+
+function parseFiniteNumber(value, fallback, min, max) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, num));
+}
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -592,6 +625,8 @@ async function toggleSession() {
 }
 
 async function startSession() {
+  await loadClientConfig();
+
   // Clear previous conversation log and history for a fresh session
   conversationLog.innerHTML = "";
   conversationHistory = [];
@@ -817,12 +852,13 @@ function ensureAmbienceSource() {
 }
 
 function startBackgroundAmbience() {
+  if (!humanizerOfficeEnabled) return;
   if (!ttsAudioCtx || !ambienceGainNode) return;
   ensureAmbienceSource();
   const now = ttsAudioCtx.currentTime;
   ambienceGainNode.gain.cancelScheduledValues(now);
   ambienceGainNode.gain.setValueAtTime(ambienceGainNode.gain.value, now);
-  ambienceGainNode.gain.linearRampToValueAtTime(HUMANIZER_BG_GAIN, now + 0.18);
+  ambienceGainNode.gain.linearRampToValueAtTime(humanizerOfficeGain, now + 0.18);
 }
 
 function stopBackgroundAmbience() {
@@ -834,9 +870,10 @@ function stopBackgroundAmbience() {
 }
 
 function scheduleTypingLayer() {
+  if (!humanizerTypingEnabled) return;
   if (!sessionActive || !botSpeaking || !ttsAudioCtx || !ttsMasterGainNode) return;
   if (typingTimer) clearTimeout(typingTimer);
-  const delay = HUMANIZER_TYPING_MIN_MS + Math.random() * (HUMANIZER_TYPING_MAX_MS - HUMANIZER_TYPING_MIN_MS);
+  const delay = humanizerTypingMinMs + Math.random() * (humanizerTypingMaxMs - humanizerTypingMinMs);
   typingTimer = setTimeout(() => {
     playTypingTick();
     scheduleTypingLayer();
@@ -844,9 +881,10 @@ function scheduleTypingLayer() {
 }
 
 function playTypingTick() {
+  if (!humanizerTypingEnabled) return;
   if (!ttsAudioCtx || !ttsMasterGainNode || !botSpeaking) return;
   const now = ttsAudioCtx.currentTime;
-  const peak = HUMANIZER_TYPING_GAIN * (0.75 + Math.random() * 0.4);
+  const peak = humanizerTypingGain * (0.75 + Math.random() * 0.4);
 
   const triggerClick = (startAt) => {
     const durationMs = 8 + Math.random() * 8; // short, percussive key tap

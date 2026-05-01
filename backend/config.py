@@ -11,6 +11,14 @@ from dataclasses import dataclass, field
 from typing import Dict, Any, Tuple
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    """Parse a boolean environment variable with a safe default."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 # ---------------------------------------------------------------------------
 # Language-specific configurations
 # ---------------------------------------------------------------------------
@@ -494,6 +502,23 @@ class AudioConfig:
 
     # Pre-buffer before playback starts (ms)
     playback_prebuffer_ms: int = 200
+
+    # Browser playback humanizer. Defaults preserve existing behavior; disable
+    # either layer in .env when a clean TTS-only output is required.
+    office_background_noise_enabled: bool = _env_bool(
+        "OFFICE_BACKGROUND_NOISE_ENABLED", True
+    )
+    keyboard_typing_sound_enabled: bool = _env_bool(
+        "KEYBOARD_TYPING_SOUND_ENABLED", True
+    )
+    office_background_noise_gain: float = float(
+        os.getenv("OFFICE_BACKGROUND_NOISE_GAIN", "0.018")
+    )
+    keyboard_typing_sound_gain: float = float(
+        os.getenv("KEYBOARD_TYPING_SOUND_GAIN", "0.05")
+    )
+    keyboard_typing_min_ms: int = int(os.getenv("KEYBOARD_TYPING_MIN_MS", "90"))
+    keyboard_typing_max_ms: int = int(os.getenv("KEYBOARD_TYPING_MAX_MS", "190"))
 
 
 # ---------------------------------------------------------------------------
