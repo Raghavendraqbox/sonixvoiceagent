@@ -31,7 +31,9 @@ WebSocket message protocol:
 import asyncio
 import json
 import logging
+import math
 import os
+import struct
 import sys
 from contextlib import asynccontextmanager
 
@@ -59,6 +61,17 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def _pcm_rms(pcm_bytes: bytes) -> float:
+    """Return normalized RMS for 16-bit little-endian mono PCM."""
+    sample_count = len(pcm_bytes) // 2
+    if sample_count <= 0:
+        return 0.0
+    total = 0
+    for (sample,) in struct.iter_unpack("<h", pcm_bytes[: sample_count * 2]):
+        total += sample * sample
+    return math.sqrt(total / sample_count) / 32768.0
 
 
 # ---------------------------------------------------------------------------
@@ -247,6 +260,8 @@ async def websocket_endpoint(
     try:
         while True:
             message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                raise WebSocketDisconnect
 
             # Binary frame — raw PCM audio from microphone
             if "bytes" in message and message["bytes"]:
@@ -256,6 +271,16 @@ async def websocket_endpoint(
                         {"type": "error", "message": "PCM chunk has odd byte count"}
                     )
                     continue
+                speech_threshold = min(config.audio.vad_rms_threshold, 0.01)
+                if _pcm_rms(pcm_chunk) > speech_threshold:
+                    session.user_speaking_event.set()
+                    session.input_silence_frames = 0
+                elif session.user_speaking_event.is_set():
+                    session.input_silence_frames += 1
+                    # Browser sends ~100 ms chunks; wait for sustained silence
+                    # before allowing the LLM to answer.
+                    if session.input_silence_frames >= 5:
+                        session.user_speaking_event.clear()
                 await session.audio_queue.put(pcm_chunk)
 
             # Text frame — JSON control message

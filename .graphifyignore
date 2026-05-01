@@ -1,0 +1,98 @@
+# .graphifyignore — same syntax as .gitignore
+# Files matching these patterns are skipped by graphify during detection
+# and never sent to the LLM extraction pipeline.
+#
+# Note: graphify already auto-skips secret-looking files (.env, *.pem,
+# *.key, id_rsa, files matching credential/secret/password/token, etc.)
+# via graphify/graphify/detect.py — these are belt-and-braces.
+
+# --- The graphify tool itself (don't graph the tool you're using) ---
+graphify/
+graphify-out/
+
+# --- Secrets / env (also auto-skipped, but be explicit) ---
+.env
+.env.*
+*.env
+.env.example
+
+# --- Generated / binary indexes (no value in the knowledge graph) ---
+faiss_index/
+*.faiss
+*.pkl
+*.bin
+*.npy
+*.npz
+*.index
+
+# --- Audio / response artifacts ---
+response.mp3
+*.mp3
+*.wav
+*.m4a
+*.ogg
+
+# --- Python build / cache ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+*.egg
+.Python
+dist/
+build/
+
+# --- Virtual envs ---
+venv/
+.venv/
+env/
+
+# --- Node / frontend deps and build output ---
+node_modules/
+.next/
+.nuxt/
+.svelte-kit/
+.turbo/
+.vite/
+out/
+coverage/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# --- Logs ---
+*.log
+logs/
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Git internals ---
+.git/
+.github/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*.ipynb
+
+# --- Cloned reference repos (not part of this project) ---
+voiceagentcloud/
+
+# --- graphify install artifacts (don't extract your own instructions) ---
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.gemini/
+.opencode/
+.claude/
+
+# --- Translations / generated docs (if any) ---
+docs/translations/

@@ -249,8 +249,8 @@ STT_ENGINE=auto
 # Comma-separated — first engine that succeeds wins
 # Options: azure_tts | sarvam | google_tts | amazon_polly | elevenlabs |
 #          gnani | ttsmaker | edge | gtts
-TELUGU_TTS_ENGINE_PRIORITY=azure_tts,sarvam,edge,gtts
-KANNADA_TTS_ENGINE_PRIORITY=azure_tts,sarvam,edge,gtts
+TELUGU_TTS_ENGINE_PRIORITY=google_tts,edge,sarvam,gtts
+KANNADA_TTS_ENGINE_PRIORITY=google_tts,edge,sarvam,gtts
 ```
 
 ### API keys summary
@@ -262,13 +262,17 @@ KANNADA_TTS_ENGINE_PRIORITY=azure_tts,sarvam,edge,gtts
 | Azure | `AZURE_STT_KEY` + `AZURE_STT_REGION` | STT |
 | Azure | `AZURE_TTS_KEY` + `AZURE_TTS_REGION` | TTS |
 | Google | `GOOGLE_STT_API_KEY` | STT |
-| Google | `GOOGLE_TTS_API_KEY` | TTS |
+| Google | `GOOGLE_APPLICATION_CREDENTIALS` | TTS |
 | Amazon | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | STT (Transcribe) + TTS (Polly) |
 | Soniox | `SONIOX_API_KEY` | STT (real-time streaming) |
 | ElevenLabs | `ELEVENLABS_API_KEY` | TTS |
 | Gnani | `GNANI_API_KEY` + `GNANI_CLIENT_ID` | TTS |
 | edge-tts | — | TTS (free, no key) |
 | gTTS | — | TTS (free, no key) |
+
+For Google Cloud TTS, create a service account JSON key and point
+`GOOGLE_APPLICATION_CREDENTIALS` at that file. The app uses the official
+`google-cloud-texttospeech` SDK and does not use a Google TTS API key.
 
 ---
 
@@ -341,7 +345,7 @@ ws://host/ws?language=telugu&stt_engine=azure
 |--------|-------|-----------|
 | Azure TTS | te-IN-ShrutiNeural (F) / te-IN-MohanNeural (M) | `AZURE_TTS_KEY` |
 | Sarvam AI | anushka (F) / abhilash (M) — `bulbul:v2` | `SARVAM_API_KEY` |
-| Google TTS | te-IN-Standard-A (F) / te-IN-Standard-B (M) | `GOOGLE_TTS_API_KEY` |
+| Google TTS | te-IN-Standard-A (F) / te-IN-Standard-B (M) | `GOOGLE_APPLICATION_CREDENTIALS` |
 | ElevenLabs | multilingual v2 | `ELEVENLABS_API_KEY` |
 | edge-tts | te-IN-ShrutiNeural (F) / te-IN-MohanNeural (M) | Free |
 | gTTS | Telugu `te` | Free |
@@ -352,10 +356,18 @@ ws://host/ws?language=telugu&stt_engine=azure
 |--------|-------|-----------|
 | Azure TTS | kn-IN-SapnaNeural (F) / kn-IN-GaganNeural (M) | `AZURE_TTS_KEY` |
 | Sarvam AI | anushka (F) / abhilash (M) — `bulbul:v2` | `SARVAM_API_KEY` |
-| Google TTS | kn-IN-Standard-A (F) / kn-IN-Standard-B (M) | `GOOGLE_TTS_API_KEY` |
+| Google TTS | kn-IN-Standard-A (F) / kn-IN-Standard-B (M) | `GOOGLE_APPLICATION_CREDENTIALS` |
 | ElevenLabs | multilingual v2 | `ELEVENLABS_API_KEY` |
 | edge-tts | kn-IN-SapnaNeural (F) / kn-IN-GaganNeural (M) | Free |
 | gTTS | Kannada `kn` | Free |
+
+Standalone Google Cloud TTS MP3 test:
+```powershell
+$env:GOOGLE_APPLICATION_CREDENTIALS="A:\mememates sonix\voiceagent-494306-7082398093e1.json"
+python google_tts_mp3.py "Hello world"
+```
+
+This writes `output.mp3`.
 
 ### Sarvam AI speaker list
 

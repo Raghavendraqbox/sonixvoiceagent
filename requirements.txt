@@ -91,6 +91,12 @@ av==17.0.0      # PyAV: MP3 decode + PCM resample for edge-tts output
 gtts>=2.5.1
 
 # ---------------------------------------------------------------------------
+# TTS — Google Cloud Text-to-Speech SDK
+# Uses service account credentials from GOOGLE_APPLICATION_CREDENTIALS.
+# ---------------------------------------------------------------------------
+google-cloud-texttospeech>=2.36.0
+
+# ---------------------------------------------------------------------------
 # LLM — Google Gemini (cloud, best natural Telugu/Kannada quality)
 # Get free API key: https://aistudio.google.com
 # Set GEMINI_API_KEY in .env — falls back to Ollama without it

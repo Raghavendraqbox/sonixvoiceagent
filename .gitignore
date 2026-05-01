@@ -1,6 +1,7 @@
 # Environment — never commit secrets
 .env
 *.env
+voiceagent-*.json
 
 # Python
 __pycache__/
@@ -32,6 +33,7 @@ logs/
 # IDE
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 
@@ -41,7 +43,10 @@ Thumbs.db
 
 # The cloned English agent (reference only, not part of this project)
 voiceagentcloud/
+graphify-out/
 
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb
+voiceagent-494306-7082398093e1.json
+GRAPHIFY_REUSE_GUIDE.md

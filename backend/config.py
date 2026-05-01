@@ -354,11 +354,11 @@ class GoogleSTTConfig:
     Accepts:  LINEAR16 WAV, 16 kHz mono
     Docs:     https://cloud.google.com/speech-to-text/docs/reference/rest/v1/speech/recognize
 
-    Uses GOOGLE_STT_API_KEY (or GOOGLE_TTS_API_KEY as fallback — same GCP project key works).
+    Uses GOOGLE_STT_API_KEY.
     """
     @property
     def api_key(self) -> str:
-        return os.getenv("GOOGLE_STT_API_KEY") or os.getenv("GOOGLE_TTS_API_KEY", "")
+        return os.getenv("GOOGLE_STT_API_KEY", "")
 
 
 # ---------------------------------------------------------------------------
@@ -516,7 +516,7 @@ class TTSConfig:
     # Default: sarvam,google_tts,gnani,ttsmaker,edge,gtts
     # ---------------------------------------------------------------------------
     telugu_engine_priority: str = os.getenv(
-        "TELUGU_TTS_ENGINE_PRIORITY", "edge,sarvam,gtts"
+        "TELUGU_TTS_ENGINE_PRIORITY", "google_tts,edge,sarvam,gtts"
     )
 
     # ---------------------------------------------------------------------------
@@ -526,11 +526,11 @@ class TTSConfig:
     #          amazon_polly | mms | narakeet | micmonster | speakatoo | edge | gtts
     # ---------------------------------------------------------------------------
     kannada_engine_priority: str = os.getenv(
-        "KANNADA_TTS_ENGINE_PRIORITY", "edge,sarvam,gtts"
+        "KANNADA_TTS_ENGINE_PRIORITY", "google_tts,edge,sarvam,gtts"
     )
 
     # ---------------------------------------------------------------------------
-    # Third-party TTS API keys
+    # Third-party TTS credentials and API keys
     # ---------------------------------------------------------------------------
     # Sarvam AI  (https://sarvam.ai — best for Indian languages including Telugu)
     sarvam_api_key:     str   = field(default_factory=lambda: os.getenv("SARVAM_API_KEY", ""))
@@ -538,7 +538,7 @@ class TTSConfig:
     sarvam_pace:        float = float(os.getenv("SARVAM_PACE", "1.0"))
 
     # Google Cloud TTS  (https://cloud.google.com/text-to-speech)
-    google_tts_api_key: str = field(default_factory=lambda: os.getenv("GOOGLE_TTS_API_KEY", ""))
+    # Auth uses Application Default Credentials from GOOGLE_APPLICATION_CREDENTIALS.
 
     # Gnani.ai  (https://gnani.ai — Indian language specialist)
     gnani_api_key:      str = field(default_factory=lambda: os.getenv("GNANI_API_KEY",      ""))

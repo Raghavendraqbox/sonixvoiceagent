@@ -5,7 +5,7 @@ Priority chain per language:
   Telugu (configurable via TELUGU_TTS_ENGINE_PRIORITY):
     Engines available:
       sarvam     — Sarvam AI REST API    (requires SARVAM_API_KEY, best Telugu quality)
-      google_tts — Google Cloud TTS      (requires GOOGLE_TTS_API_KEY)
+      google_tts — Google Cloud TTS      (requires GOOGLE_APPLICATION_CREDENTIALS)
       gnani      — Gnani.ai REST API     (requires GNANI_API_KEY + GNANI_CLIENT_ID)
       ttsmaker   — TTSMaker REST API     (requires TTSMAKER_TOKEN + TTSMAKER_VOICE_ID_TELUGU)
       elevenlabs — ElevenLabs REST API   (requires ELEVENLABS_API_KEY)
@@ -18,7 +18,7 @@ Priority chain per language:
   Kannada (configurable via KANNADA_TTS_ENGINE_PRIORITY):
     Engines available:
       sarvam       — Sarvam AI REST API    (requires SARVAM_API_KEY, best Indian language quality)
-      google_tts   — Google Cloud TTS      (requires GOOGLE_TTS_API_KEY)
+      google_tts   — Google Cloud TTS      (requires GOOGLE_APPLICATION_CREDENTIALS)
       gnani        — Gnani.ai REST API     (requires GNANI_API_KEY + GNANI_CLIENT_ID)
       ttsmaker     — TTSMaker REST API     (requires TTSMAKER_TOKEN + TTSMAKER_VOICE_ID_KANNADA)
       elevenlabs   — ElevenLabs REST API   (requires ELEVENLABS_API_KEY)
@@ -64,6 +64,8 @@ logger = logging.getLogger(__name__)
 # Persistent HTTP client reused across all cloud TTS calls — eliminates
 # ~150-200ms TCP+TLS reconnection overhead per sentence synthesis.
 _cloud_http: Optional[httpx.AsyncClient] = None
+_google_tts_client = None
+_google_tts_lock = threading.Lock()
 
 
 def _get_cloud_client() -> httpx.AsyncClient:
@@ -75,6 +77,26 @@ def _get_cloud_client() -> httpx.AsyncClient:
             limits=httpx.Limits(max_keepalive_connections=5, keepalive_expiry=120),
         )
     return _cloud_http
+
+
+def _get_google_tts_client():
+    """Return the Google Cloud TTS SDK client, using ADC from the environment."""
+    global _google_tts_client
+    if _google_tts_client is not None:
+        return _google_tts_client
+
+    credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+    if not credentials_path:
+        raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS is not set")
+    if not Path(credentials_path).expanduser().is_file():
+        raise RuntimeError(f"GOOGLE_APPLICATION_CREDENTIALS file not found: {credentials_path}")
+
+    with _google_tts_lock:
+        if _google_tts_client is None:
+            from google.cloud import texttospeech
+
+            _google_tts_client = texttospeech.TextToSpeechClient()
+    return _google_tts_client
 
 
 TTS_RATE = config.tts.sample_rate      # 24 000 Hz — browser playback rate
@@ -819,7 +841,7 @@ class VoiceTTSHandler:
 
     async def _synthesize_google_tts(self, text: str) -> bool:
         """
-        Google Cloud TTS — requires GOOGLE_TTS_API_KEY.
+        Google Cloud TTS — uses the official SDK with GOOGLE_APPLICATION_CREDENTIALS.
         Voice overrides: GOOGLE_TTS_VOICE_TELUGU / GOOGLE_TTS_VOICE_TELUGU_MALE
         Telugu voices: te-IN-Standard-A (female), te-IN-Standard-B (male)
                        te-IN-Wavenet-A  (female), te-IN-Wavenet-B  (male)
@@ -827,10 +849,17 @@ class VoiceTTSHandler:
         if self._cancel_event.is_set():
             return False
 
-        api_key = config.tts.google_tts_api_key
-        if not api_key:
+        credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+        if not credentials_path:
             logger.warning(
-                "Google TTS: GOOGLE_TTS_API_KEY not set, skipping",
+                "Google TTS: GOOGLE_APPLICATION_CREDENTIALS not set, skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+        if not Path(credentials_path).expanduser().is_file():
+            logger.error(
+                "Google TTS: GOOGLE_APPLICATION_CREDENTIALS file not found: %s",
+                credentials_path,
                 extra={"session_id": self.session_id},
             )
             return False
@@ -842,56 +871,33 @@ class VoiceTTSHandler:
         )
         language_code = self._lang_cfg.get("google_tts_language", "te-IN")
 
-        url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}"
-        payload = {
-            "input": {"text": text},
-            "voice": {
-                "languageCode": language_code,
-                "name":         voice_name,
-            },
-            "audioConfig": {
-                "audioEncoding": "MP3",
-                "sampleRateHertz": TTS_RATE,
-            },
-        }
-
         try:
-            client = _get_cloud_client()
-            resp = await client.post(url, json=payload)
-            if resp.status_code == 400:
-                logger.error(
-                    "Google TTS: bad request (400): %s", resp.text[:300],
-                    extra={"session_id": self.session_id},
-                )
-                return False
-            if resp.status_code == 403:
-                logger.error(
-                    "Google TTS: permission denied (403) — check GOOGLE_TTS_API_KEY and "
-                    "ensure the Cloud Text-to-Speech API is enabled in your GCP project",
-                    extra={"session_id": self.session_id},
-                )
-                return False
-            if resp.status_code != 200:
-                logger.error(
-                    "Google TTS API error %d: %s",
-                    resp.status_code, resp.text[:200],
-                    extra={"session_id": self.session_id},
-                )
-                return False
-            data = resp.json()
-
-            import base64
-            audio_content = data.get("audioContent", "")
-            if not audio_content:
-                logger.error("Google TTS: empty audioContent in response",
-                             extra={"session_id": self.session_id})
-                return False
-
-            mp3_bytes = base64.b64decode(audio_content)
-            if not mp3_bytes:
-                return False
+            from google.cloud import texttospeech
 
             loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: _get_google_tts_client().synthesize_speech(
+                    input=texttospeech.SynthesisInput(text=text),
+                    voice=texttospeech.VoiceSelectionParams(
+                        language_code=language_code,
+                        name=voice_name,
+                    ),
+                    audio_config=texttospeech.AudioConfig(
+                        audio_encoding=texttospeech.AudioEncoding.MP3,
+                        sample_rate_hertz=TTS_RATE,
+                    ),
+                ),
+            )
+
+            mp3_bytes = response.audio_content
+            if not mp3_bytes:
+                logger.error(
+                    "Google TTS: empty audio_content in response",
+                    extra={"session_id": self.session_id},
+                )
+                return False
+
             pcm_bytes = await loop.run_in_executor(
                 None, lambda: _mp3_bytes_to_pcm(mp3_bytes, denoise=False)
             )

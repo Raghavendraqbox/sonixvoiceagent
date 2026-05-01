@@ -50,6 +50,8 @@ class Session:
     tts_orch_task: Optional[asyncio.Task] = field(default=None, init=False)
     llm_client: Optional[VoiceLLMClient] = field(default=None, init=False)
     bot_audio_active: bool = field(default=False, init=False)
+    user_speaking_event: asyncio.Event = field(default_factory=asyncio.Event)
+    input_silence_frames: int = field(default=0, init=False)
 
     def cancel_tts(self) -> None:
         """Signal TTS to stop immediately."""
@@ -269,6 +271,46 @@ class SessionManager:
     # Helpers
     # ------------------------------------------------------------------
 
+    _MOBILE_PROMPT_RE = re.compile(
+        r"(mobile|phone|మొబైల్|ఫోన్|నంబర్|నెంబర్|ನಂಬರ್|ನಂಬರ|ಮೊಬೈಲ್|ಫೋನ್)",
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _digits_only(text: str) -> str:
+        """Return only decimal digits from an ASR transcript."""
+        return "".join(ch for ch in text if ch.isdigit())
+
+    def _expects_mobile_number(self, last_bot_text: str) -> bool:
+        """Best-effort check for the active slot without adding a state machine."""
+        return bool(last_bot_text and self._MOBILE_PROMPT_RE.search(last_bot_text))
+
+    def _normalize_mobile_turn(self, user_text: str, language: str) -> str:
+        """
+        Make phone-number turns unambiguous for the LLM.
+
+        ASR often returns digits with spaces, punctuation, or short filler words.
+        Passing a clean "exactly 10 digits" statement prevents the model from
+        miscounting and incorrectly asking the caller to repeat a valid number.
+        """
+        digits = self._digits_only(user_text)
+        if len(digits) != 10:
+            return user_text
+        if language == "kannada":
+            return f"ಮೊಬೈಲ್ ನಂಬರ್: {digits} (ಇದು ನಿಖರವಾಗಿ 10 ಅಂಕೆಗಳು)."
+        return f"మొబైల్ నంబర్: {digits} (ఇది ఖచ్చితంగా 10 అంకెలు)."
+
+    def _should_normalize_mobile_turn(self, user_text: str, last_bot_text: str) -> bool:
+        """
+        Only collapse a turn to "mobile number: <digits>" when the bot is
+        actively asking for it and the user's turn is mostly just that number.
+        """
+        if not self._expects_mobile_number(last_bot_text):
+            return False
+        if len(self._digits_only(user_text)) != 10:
+            return False
+        return len(user_text.split()) <= 10
+
     def _drain_echo_transcripts(self, session: Session) -> None:
         """
         Discard any transcripts queued while the bot was speaking.
@@ -293,6 +335,35 @@ class SessionManager:
                 drained,
                 extra={"session_id": session.session_id},
             )
+
+    async def _wait_for_user_speech_idle(
+        self,
+        session: Session,
+        max_wait: float = 8.0,
+        post_silence_grace: float = 0.35,
+    ) -> bool:
+        """
+        Wait for live microphone speech to settle before starting the LLM.
+
+        Batch STT engines can emit a final transcript for a short pause while the
+        caller has already resumed speaking. The WebSocket receive loop updates
+        user_speaking_event from raw PCM chunks, so this catches that race before
+        we start synthesizing a bot response over the caller.
+        """
+        if not session.user_speaking_event.is_set():
+            return False
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max_wait
+        logger.info(
+            "Delaying LLM start while user speech is still active",
+            extra={"session_id": session.session_id},
+        )
+        while session.user_speaking_event.is_set() and loop.time() < deadline:
+            await asyncio.sleep(0.05)
+
+        await asyncio.sleep(post_silence_grace)
+        return True
 
     async def _play_hardcoded(
         self,
@@ -389,6 +460,18 @@ class SessionManager:
                     session.transcript_queue.get(), timeout=_silence_timeout
                 )
             except asyncio.TimeoutError:
+                if session.user_speaking_event.is_set():
+                    logger.info(
+                        "Silence reprompt deferred because user speech is active",
+                        extra={"session_id": session.session_id},
+                    )
+                    await self._wait_for_user_speech_idle(
+                        session,
+                        max_wait=12.0,
+                        post_silence_grace=0.5,
+                    )
+                    _silence_timeout = 2.0
+                    continue
                 if _silence_reprompt_count < 2:
                     reprompt = silence_reprompt or last_bot_text
                     if reprompt:
@@ -417,6 +500,7 @@ class SessionManager:
             # separated by very short pauses. Coalesce contiguous finals so the
             # LLM sees the full sentence and frontend transcript is complete.
             merged_parts = [user_text]
+            expecting_mobile_number = self._expects_mobile_number(last_bot_text)
             # Adaptive merge window:
             # - Sentence-ending punctuation → process immediately (lowest latency).
             # - Numeric/very short input (digits, phone numbers, DOB) → wide window
@@ -428,11 +512,22 @@ class SessionManager:
             # appends a period to numeric-only finals ("1234.") which would
             # otherwise trigger immediate processing before the user finishes.
             _text_stripped = user_text.rstrip(".!?।").strip()
-            _is_numeric_fragment = bool(re.search(r'\d', _text_stripped)) or first_word_count <= 3
+            _digits_seen = self._digits_only(_text_stripped)
+            _is_numeric_fragment = bool(_digits_seen) or first_word_count <= 3
             if _is_numeric_fragment:
-                merge_timeout = 1.2   # digits take priority — ignore trailing ASR punctuation
+                # Phone numbers are commonly spoken in groups with pauses
+                # ("8106" ... "89115"). Hold longer while fewer than 10 digits
+                # are present so the bot does not answer mid-number.
+                if expecting_mobile_number and 0 < len(_digits_seen) < 10:
+                    merge_timeout = 2.6
+                elif expecting_mobile_number and len(_digits_seen) >= 10:
+                    merge_timeout = 0.35
+                else:
+                    merge_timeout = 1.2   # digits take priority — ignore trailing ASR punctuation
             elif user_text[-1] in ".!?।":
-                merge_timeout = 0.0   # clear sentence boundary — process immediately
+                # Cloud batch STT often inserts punctuation at short pauses.
+                # Hold briefly so a continuing caller is not interrupted.
+                merge_timeout = 0.65
             elif first_word_count <= 5:
                 merge_timeout = 0.40
             else:
@@ -448,9 +543,33 @@ class SessionManager:
                     break
                 if more.is_final and more.text.strip():
                     merged_parts.append(more.text.strip())
-                    merge_timeout = 0.80  # keep collecting if more digits keep arriving
+                    merged_text = " ".join(merged_parts)
+                    digit_count = len(self._digits_only(merged_text))
+                    if expecting_mobile_number and 0 < digit_count < 10:
+                        merge_timeout = 2.6
+                    elif expecting_mobile_number and digit_count >= 10:
+                        merge_timeout = 0.35
+                    else:
+                        merge_timeout = 0.80  # keep collecting if more digits keep arriving
                 # Ignore partial/empty here; they belong to ASR streaming state.
+            if await self._wait_for_user_speech_idle(session):
+                while True:
+                    try:
+                        more: TranscriptResult = await asyncio.wait_for(
+                            session.transcript_queue.get(), timeout=0.8
+                        )
+                    except asyncio.TimeoutError:
+                        break
+                    except asyncio.CancelledError:
+                        break
+                    if more.is_final and more.text.strip():
+                        merged_parts.append(more.text.strip())
+                        if await self._wait_for_user_speech_idle(session):
+                            continue
+
             user_text = " ".join(merged_parts).strip()
+            if self._should_normalize_mobile_turn(user_text, last_bot_text):
+                user_text = self._normalize_mobile_turn(user_text, session.language)
 
             logger.info(
                 "Processing [%s]: %s",
