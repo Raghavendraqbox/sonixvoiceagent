@@ -181,6 +181,7 @@ class SessionManager:
         language: str = "telugu",
         voice: str = "male",
         tts_engine: str = "auto",
+        sarvam_speaker: str = "",
         stt_engine: str = "auto",
         llm_backend: str = "ollama",
     ) -> Session:
@@ -221,6 +222,7 @@ class SessionManager:
             language=language,
             voice=voice,
             tts_engine=tts_engine,
+            sarvam_speaker=sarvam_speaker,
         )
         session.tts_orchestrator = TTSOrchestrator(
             session_id=session_id,
@@ -249,11 +251,12 @@ class SessionManager:
 
         self._sessions[session_id] = session
         logger.info(
-            "Session created [%s / %s] stt=%s tts=%s",
+            "Session created [%s / %s] stt=%s tts=%s sarvam_speaker=%s",
             lang_cfg["display_name"],
             lang_cfg["display_name_native"],
             stt_engine,
             tts_engine,
+            sarvam_speaker or "default",
             extra={"session_id": session_id},
         )
         return session

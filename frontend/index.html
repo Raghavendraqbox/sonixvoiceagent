@@ -400,9 +400,34 @@
       <!-- Voice selector — Male / Female -->
       <div class="selector-card" id="voice-selector">
         <label for="voice-select">Voice</label>
-        <select id="voice-select">
+        <select id="voice-select" onchange="onVoiceChange(this.value)">
           <option value="male"   selected>Male</option>
           <option value="female"         >Female</option>
+        </select>
+      </div>
+
+      <!-- Sarvam female speaker selector — used only when TTS is Sarvam + Voice is Female -->
+      <div class="selector-card" id="sarvam-speaker-selector" style="display: none;">
+        <label for="sarvam-speaker-select">Sarvam Female Voice</label>
+        <select id="sarvam-speaker-select">
+          <option value="anushka" selected>Anushka</option>
+          <option value="manisha">Manisha</option>
+          <option value="vidya">Vidya</option>
+          <option value="arya">Arya</option>
+          <option value="ritu">Ritu</option>
+          <option value="priya">Priya</option>
+          <option value="neha">Neha</option>
+          <option value="pooja">Pooja</option>
+          <option value="simra">Simra</option>
+          <option value="kavya">Kavya</option>
+          <option value="ishita">Ishita</option>
+          <option value="shreya">Shreya</option>
+          <option value="roopa">Roopa</option>
+          <option value="tanya">Tanya</option>
+          <option value="sunny">Sunny</option>
+          <option value="suhani">Suhani</option>
+          <option value="kavitha">Kavitha</option>
+          <option value="rupal">Rupal</option>
         </select>
       </div>
 
@@ -423,7 +448,7 @@
       <!-- TTS Engine selector — locked once session starts -->
       <div class="selector-card">
         <label for="tts-select">TTS</label>
-        <select id="tts-select">
+        <select id="tts-select" onchange="onTTSEngineChange(this.value)">
           <option value="auto"         selected>Auto</option>
           <option value="sarvam"               >Sarvam</option>
           <option value="google_tts"           >Google Cloud</option>
@@ -493,11 +518,18 @@ const LANG_INFO = {
   kannada: { native: "ಕನ್ನಡ",  name: "Kannada" },
 };
 
+const DEFAULT_SARVAM_FEMALE_SPEAKERS = [
+  "anushka", "manisha", "vidya", "arya", "ritu", "priya", "neha", "pooja",
+  "simra", "kavya", "ishita", "shreya", "roopa", "tanya", "sunny",
+  "suhani", "kavitha", "rupal",
+];
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 let selectedLanguage   = "telugu";
 let selectedVoice      = "male";
+let selectedSarvamSpeaker = "anushka";
 let selectedSTTEngine  = "auto";
 let selectedTTSEngine  = "auto";
 let selectedLLMBackend = "ollama";
@@ -550,6 +582,12 @@ async function loadClientConfig() {
     if (humanizerTypingMaxMs < humanizerTypingMinMs) {
       humanizerTypingMaxMs = humanizerTypingMinMs;
     }
+
+    const sarvam = cfg.sarvam || {};
+    const speakers = Array.isArray(sarvam.female_speakers)
+      ? sarvam.female_speakers
+      : DEFAULT_SARVAM_FEMALE_SPEAKERS;
+    populateSarvamSpeakerOptions(speakers);
   } catch (err) {
     console.warn("Using default client config:", err);
   } finally {
@@ -576,6 +614,8 @@ const langSelect        = document.getElementById("lang-select");
 const langNative        = document.getElementById("lang-native");
 const voiceSelector     = document.getElementById("voice-selector");
 const voiceSelect       = document.getElementById("voice-select");
+const sarvamSpeakerSelector = document.getElementById("sarvam-speaker-selector");
+const sarvamSpeakerSelect   = document.getElementById("sarvam-speaker-select");
 const sttSelect         = document.getElementById("stt-select");
 const ttsSelect         = document.getElementById("tts-select");
 const llmSelect         = document.getElementById("llm-select");
@@ -592,6 +632,44 @@ function onLanguageChange(lang) {
   voiceSelector.style.display = "flex";
   const info = LANG_INFO[lang] || LANG_INFO.telugu;
   langNative.textContent = info.native;
+}
+
+function onVoiceChange(voice) {
+  selectedVoice = voice;
+  updateSarvamSpeakerVisibility();
+}
+
+function onTTSEngineChange(engine) {
+  selectedTTSEngine = engine;
+  updateSarvamSpeakerVisibility();
+}
+
+function populateSarvamSpeakerOptions(speakers) {
+  const cleanSpeakers = speakers
+    .map(speaker => String(speaker).trim().toLowerCase())
+    .filter(Boolean);
+  const uniqueSpeakers = [...new Set(cleanSpeakers)];
+  if (uniqueSpeakers.length === 0) return;
+
+  const currentSpeaker = sarvamSpeakerSelect.value || selectedSarvamSpeaker;
+  sarvamSpeakerSelect.innerHTML = "";
+  uniqueSpeakers.forEach(speaker => {
+    const option = document.createElement("option");
+    option.value = speaker;
+    option.textContent = speaker.charAt(0).toUpperCase() + speaker.slice(1);
+    sarvamSpeakerSelect.appendChild(option);
+  });
+  sarvamSpeakerSelect.value = uniqueSpeakers.includes(currentSpeaker)
+    ? currentSpeaker
+    : uniqueSpeakers[0];
+  selectedSarvamSpeaker = sarvamSpeakerSelect.value;
+  updateSarvamSpeakerVisibility();
+}
+
+function updateSarvamSpeakerVisibility() {
+  const show = voiceSelect.value === "female" && ttsSelect.value === "sarvam";
+  sarvamSpeakerSelector.style.display = show ? "flex" : "none";
+  sarvamSpeakerSelect.disabled = sessionActive || !show;
 }
 
 // ---------------------------------------------------------------------------
@@ -642,11 +720,13 @@ async function startSession() {
 
   selectedTTSEngine  = ttsSelect.value;
   selectedLLMBackend = llmSelect.value;
+  selectedSarvamSpeaker = sarvamSpeakerSelect.value;
 
   setStatus("Requesting microphone permission…");
   btnStart.disabled = true;
   langSelect.disabled = true;
   voiceSelect.disabled = true;
+  sarvamSpeakerSelect.disabled = true;
   ttsSelect.disabled = true;
   llmSelect.disabled = true;
 
@@ -665,6 +745,7 @@ async function startSession() {
     btnStart.disabled = false;
     langSelect.disabled = false;
     voiceSelect.disabled = false;
+    updateSarvamSpeakerVisibility();
     ttsSelect.disabled = false;
     llmSelect.disabled = false;
     return;
@@ -702,6 +783,7 @@ function stopSession() {
   btnStart.classList.remove("active");
   langSelect.disabled = false;
   voiceSelect.disabled = false;
+  updateSarvamSpeakerVisibility();
   ttsSelect.disabled = false;
   llmSelect.disabled = false;
   finalizeBotBubble();
@@ -1014,12 +1096,13 @@ function checkVAD(rms) {
 // ---------------------------------------------------------------------------
 function connectWebSocket() {
   selectedVoice = voiceSelect.value;
+  selectedSarvamSpeaker = selectedVoice === "female" ? sarvamSpeakerSelect.value : "";
   // Always reconnect with the language that was active when the session
   // started (sessionLanguage), not the current dropdown value — prevents
   // a language-switch + reconnect from spawning a second session in a
   // different language and playing two voices simultaneously.
   const lang = sessionLanguage;
-  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&voice=${encodeURIComponent(selectedVoice)}&stt_engine=${encodeURIComponent(selectedSTTEngine)}&tts_engine=${encodeURIComponent(selectedTTSEngine)}&llm_backend=${encodeURIComponent(selectedLLMBackend)}`;
+  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&voice=${encodeURIComponent(selectedVoice)}&sarvam_speaker=${encodeURIComponent(selectedSarvamSpeaker)}&stt_engine=${encodeURIComponent(selectedSTTEngine)}&tts_engine=${encodeURIComponent(selectedTTSEngine)}&llm_backend=${encodeURIComponent(selectedLLMBackend)}`;
   setStatus("Connecting to server…");
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";

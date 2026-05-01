@@ -57,7 +57,7 @@ import numpy as np
 
 import httpx
 
-from config import config, get_language_config
+from config import SARVAM_FEMALE_SPEAKERS, config, get_language_config
 
 logger = logging.getLogger(__name__)
 
@@ -470,13 +470,26 @@ class VoiceTTSHandler:
         language: str = "telugu",
         voice: str = "male",
         tts_engine: str = "auto",
+        sarvam_speaker: str = "",
     ) -> None:
         self.session_id    = session_id
         self._send_audio   = send_audio_cb
         self._cancel_event = cancel_event
         self._language     = language.lower()
         self._voice        = voice.lower()
+        self._sarvam_speaker_override = sarvam_speaker.strip().lower()
         self.last_pcm_bytes_sent: int = 0  # tracks bytes sent in last synthesis
+
+        if (
+            self._sarvam_speaker_override
+            and self._sarvam_speaker_override not in SARVAM_FEMALE_SPEAKERS
+        ):
+            logger.warning(
+                "Ignoring unsupported Sarvam female speaker '%s'",
+                self._sarvam_speaker_override,
+                extra={"session_id": session_id},
+            )
+            self._sarvam_speaker_override = ""
 
         lang_cfg = get_language_config(language)
         self._mms_model_id: str     = lang_cfg["mms_tts_model"]
@@ -755,11 +768,12 @@ class VoiceTTSHandler:
             )
             return False
 
-        speaker = (
-            self._lang_cfg.get("sarvam_speaker", "ananya")
-            if self._voice == "female"
-            else self._lang_cfg.get("sarvam_speaker_male", "arvind")
-        )
+        if self._voice == "female":
+            speaker = self._sarvam_speaker_override or self._lang_cfg.get(
+                "sarvam_speaker", "anushka"
+            )
+        else:
+            speaker = self._lang_cfg.get("sarvam_speaker_male", "abhilash")
         language_code = self._lang_cfg.get("sarvam_language_code", "te-IN")
         model         = self._lang_cfg.get("sarvam_model", "bulbul:v2")
 

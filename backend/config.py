@@ -19,6 +19,28 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
+SARVAM_FEMALE_SPEAKERS: Tuple[str, ...] = (
+    "anushka",
+    "manisha",
+    "vidya",
+    "arya",
+    "ritu",
+    "priya",
+    "neha",
+    "pooja",
+    "simra",
+    "kavya",
+    "ishita",
+    "shreya",
+    "roopa",
+    "tanya",
+    "sunny",
+    "suhani",
+    "kavitha",
+    "rupal",
+)
+
+
 # ---------------------------------------------------------------------------
 # Language-specific configurations
 # ---------------------------------------------------------------------------
