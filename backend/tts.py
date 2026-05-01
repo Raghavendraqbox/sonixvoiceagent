@@ -755,7 +755,7 @@ class VoiceTTSHandler:
         Sarvam AI TTS — best quality for Telugu.
         Requires SARVAM_API_KEY.
         Speaker overrides: SARVAM_SPEAKER_TELUGU / SARVAM_SPEAKER_TELUGU_MALE
-        Model override: SARVAM_MODEL (default: bulbul:v2)
+        Model override: SARVAM_MODEL (default: bulbul:v3)
         """
         if self._cancel_event.is_set():
             return False
@@ -775,7 +775,7 @@ class VoiceTTSHandler:
         else:
             speaker = self._lang_cfg.get("sarvam_speaker_male", "abhilash")
         language_code = self._lang_cfg.get("sarvam_language_code", "te-IN")
-        model         = self._lang_cfg.get("sarvam_model", "bulbul:v2")
+        model         = self._lang_cfg.get("sarvam_model", "bulbul:v3")
 
         url = "https://api.sarvam.ai/text-to-speech"
         headers = {
@@ -787,17 +787,34 @@ class VoiceTTSHandler:
             "inputs":               [text],
             "target_language_code": language_code,
             "speaker":              speaker,
-            "pitch":                0,
             "pace":                 config.tts.sarvam_pace,
-            "loudness":             1.5,
             "speech_sample_rate":   22050,
             "enable_preprocessing": True,
             "model":                model,
         }
+        # Bulbul v3 currently rejects pitch/loudness parameters.
+        if not str(model).lower().startswith("bulbul:v3"):
+            payload["pitch"] = 0
+            payload["loudness"] = 1.5
 
         try:
             client = _get_cloud_client()
             resp = await client.post(url, headers=headers, json=payload)
+            if (
+                resp.status_code == 400
+                and str(model).lower().startswith("bulbul:v3")
+                and "not compatible with model bulbul:v3" in resp.text
+            ):
+                fallback_speaker = "priya" if self._voice == "female" else "aditya"
+                if payload.get("speaker") != fallback_speaker:
+                    logger.warning(
+                        "Sarvam AI: speaker '%s' incompatible with bulbul:v3, retrying with '%s'",
+                        payload.get("speaker"),
+                        fallback_speaker,
+                        extra={"session_id": self.session_id},
+                    )
+                    payload["speaker"] = fallback_speaker
+                    resp = await client.post(url, headers=headers, json=payload)
             if resp.status_code == 401:
                 logger.error("Sarvam AI: invalid API key (401)",
                              extra={"session_id": self.session_id})

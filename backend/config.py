@@ -73,7 +73,7 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "sarvam_speaker":        os.getenv("SARVAM_SPEAKER_TELUGU",        "anushka"),
         "sarvam_speaker_male":   os.getenv("SARVAM_SPEAKER_TELUGU_MALE",   "abhilash"),
         "sarvam_language_code":  "te-IN",
-        "sarvam_model":          os.getenv("SARVAM_MODEL", "bulbul:v2"),
+        "sarvam_model":          os.getenv("SARVAM_MODEL", "bulbul:v3"),
 
         # TTS — Google Cloud TTS (https://cloud.google.com/text-to-speech)
         # Telugu voices: te-IN-Standard-A (female), te-IN-Standard-B (male)
@@ -200,11 +200,11 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "mms_tts_sample_rate": 16_000,
 
         # TTS — Sarvam AI (https://sarvam.ai — best for Indian languages including Kannada)
-        # Same speaker pool as Telugu; bulbul:v2 supports kn-IN
+        # Same speaker pool as Telugu; bulbul:v3 supports kn-IN
         "sarvam_speaker":        os.getenv("SARVAM_SPEAKER_KANNADA",        "anushka"),
         "sarvam_speaker_male":   os.getenv("SARVAM_SPEAKER_KANNADA_MALE",   "abhilash"),
         "sarvam_language_code":  "kn-IN",
-        "sarvam_model":          os.getenv("SARVAM_MODEL", "bulbul:v2"),
+        "sarvam_model":          os.getenv("SARVAM_MODEL", "bulbul:v3"),
 
         # TTS — Google Cloud TTS (https://cloud.google.com/text-to-speech)
         # Kannada voices: kn-IN-Standard-A (female), kn-IN-Standard-B (male)
