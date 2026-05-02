@@ -40,6 +40,58 @@ _SENTENCE_BOUNDARY = re.compile(r"([.!?؟۔])\s*(?=\S|$)")
 _DEFAULT_WORD_DISPATCH_THRESHOLD = 6
 
 
+# Hesitation / thinking tokens that some LLMs emit at the start of a reply.
+# Each one of these arrives as its own sentence-terminated fragment ("ఉమ్...",
+# "umm...", "ఆ..."), which forces an extra Sarvam TTS round-trip per turn —
+# ~600 ms of synthesis + the user has to listen to the filler before hearing
+# the real answer. The system prompt asks the LLM not to emit them, but we
+# also drop any that slip through here so latency is bounded regardless of
+# model behaviour.
+_FILLER_TOKENS = frozenset({
+    # Telugu
+    "ఉమ్", "ఉం", "ఉమ్మ్", "హ్మ్", "హ్మ్మ్", "ఆ",
+    # Kannada
+    "ಉಮ್", "ಉಂ", "ಆ",
+    # English / latin transliterations
+    "um", "umm", "ummm", "hmm", "hmmm", "uh", "uhh",
+    "ah", "ahh", "mm", "mmm", "oh", "ohh", "err",
+})
+
+# Trailing characters we strip when checking whether a fragment is "just" a
+# filler. Includes ASCII punctuation, Telugu/Devanagari danda (।), the unicode
+# horizontal ellipsis (…), whitespace, and standard quotes.
+_FILLER_TRAILING_CHARS = " \t\r\n.,!?;:'\"…।"
+
+
+def _is_filler_only(fragment: str) -> bool:
+    """
+    Return True iff `fragment` carries no informational content — only a
+    hesitation marker followed by an explicit ellipsis ("..." or "…").
+
+    Examples that match: "ఉమ్...", "  umm… ", "Hmm…", "ఆ ...".
+    Examples that do NOT match:
+      - "ఉమ్, టమాటా price..."   (fragment continues with real content)
+      - "ఆ."                    (one-word real reply, no ellipsis)
+      - "Hello, ఏ kavali?"      (real sentence)
+
+    The check is intentionally conservative on two axes:
+      1. The cleaned token must equal one known filler exactly — longer
+         fragments that merely start with a filler word still flow through
+         unchanged so we never swallow real content.
+      2. The original fragment must contain ellipsis (the canonical
+         hesitation marker). A bare "ఆ." is treated as a real reply.
+    """
+    if not fragment:
+        return False
+    raw = fragment.strip()
+    if "..." not in raw and "…" not in raw:
+        return False
+    cleaned = raw.strip(_FILLER_TRAILING_CHARS).strip().lower()
+    if not cleaned:
+        return False
+    return cleaned in _FILLER_TOKENS
+
+
 def _format_mock_price_data(price_data: dict) -> str:
     """Render mock market data compactly for the system prompt."""
     lines = []
@@ -70,7 +122,10 @@ def _build_business_system_prompt(language: str, business: str) -> str:
         "For low-latency voice, keep every response to exactly one very short "
         "conversational sentence, ideally under 12 words. "
         "Do not use lists, bullets, or markdown in spoken replies. "
-        "You may begin naturally with a brief thinking sound such as 'hmm' or 'umm'.\n\n"
+        "Begin every reply with the actual answer — never with hesitation "
+        "sounds, fillers, or thinking noises like 'hmm', 'umm', 'uh', "
+        "'ఉమ్', 'ఆ', or 'ఉం'. Skip them entirely so the customer hears the "
+        "answer immediately.\n\n"
         f"{business_prompt}"
     )
 
@@ -220,20 +275,29 @@ class VoiceLLMClient:
 
                     fragment, buffer = self._split_fragment(buffer)
                     if fragment:
-                        logger.debug(
-                            "LLM fragment [%s]: %s",
-                            self._language_display,
-                            fragment[:50],
-                            extra={"session_id": session_id},
-                        )
-                        yield fragment
+                        if _is_filler_only(fragment):
+                            logger.debug(
+                                "Skipping filler fragment from Ollama: %r",
+                                fragment,
+                                extra={"session_id": session_id},
+                            )
+                        else:
+                            logger.debug(
+                                "LLM fragment [%s]: %s",
+                                self._language_display,
+                                fragment[:50],
+                                extra={"session_id": session_id},
+                            )
+                            yield fragment
 
                     if done:
                         break
 
-            # Flush any remaining text that didn't end with punctuation
-            if buffer.strip():
-                yield buffer.strip()
+            # Flush any remaining text that didn't end with punctuation,
+            # unless the only thing left is a hesitation marker.
+            tail = buffer.strip()
+            if tail and not _is_filler_only(tail):
+                yield tail
 
             logger.info(
                 "Ollama response complete (%d chars): %s",
@@ -409,17 +473,25 @@ class GeminiLLMClient:
                     buffer += token
                     fragment, buffer = VoiceLLMClient._split_fragment(buffer)
                     if fragment:
-                        logger.debug(
-                            "Gemini fragment [%s]: %s",
-                            self._language_display,
-                            fragment[:50],
-                            extra={"session_id": session_id},
-                        )
-                        yield fragment
-                        fragments_yielded += 1
+                        if _is_filler_only(fragment):
+                            logger.debug(
+                                "Skipping filler fragment from Gemini: %r",
+                                fragment,
+                                extra={"session_id": session_id},
+                            )
+                        else:
+                            logger.debug(
+                                "Gemini fragment [%s]: %s",
+                                self._language_display,
+                                fragment[:50],
+                                extra={"session_id": session_id},
+                            )
+                            yield fragment
+                            fragments_yielded += 1
 
-                if buffer.strip():
-                    yield buffer.strip()
+                tail = buffer.strip()
+                if tail and not _is_filler_only(tail):
+                    yield tail
                 return  # success — stop retry loop
 
             except Exception as exc:
