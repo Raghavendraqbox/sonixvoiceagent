@@ -419,12 +419,12 @@
       <div class="selector-card" id="sarvam-speaker-selector" style="display: none;">
         <label for="sarvam-speaker-select">Sarvam Female Voice</label>
         <select id="sarvam-speaker-select">
-          <option value="anushka" selected>Anushka</option>
+          <option value="priya" selected>Priya</option>
+          <option value="anushka">Anushka</option>
           <option value="manisha">Manisha</option>
           <option value="vidya">Vidya</option>
           <option value="arya">Arya</option>
           <option value="ritu">Ritu</option>
-          <option value="priya">Priya</option>
           <option value="neha">Neha</option>
           <option value="pooja">Pooja</option>
           <option value="simra">Simra</option>
@@ -444,11 +444,11 @@
       <div class="selector-card">
         <label for="stt-select">STT</label>
         <select id="stt-select" onchange="onSTTEngineChange(this.value)">
-          <option value="auto"    selected>Auto</option>
+          <option value="auto"            >Auto</option>
           <option value="sarvam"          >Sarvam</option>
           <option value="soniox"          >Soniox</option>
           <option value="google"          >Google Cloud</option>
-          <option value="azure"           >Microsoft Azure</option>
+          <option value="azure"   selected>Microsoft Azure</option>
           <option value="amazon"          >Amazon Transcribe</option>
           <option value="whisper"         >Whisper (local)</option>
         </select>
@@ -458,8 +458,8 @@
       <div class="selector-card">
         <label for="tts-select">TTS</label>
         <select id="tts-select" onchange="onTTSEngineChange(this.value)">
-          <option value="auto"         selected>Auto</option>
-          <option value="sarvam"               >Sarvam</option>
+          <option value="auto"                 >Auto</option>
+          <option value="sarvam"       selected>Sarvam</option>
           <option value="google_tts"           >Google Cloud</option>
           <option value="azure_tts"            >Microsoft Azure</option>
           <option value="amazon_polly"         >Amazon Polly</option>
@@ -522,10 +522,10 @@
 // ---------------------------------------------------------------------------
 const WS_BASE           = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
 const SEND_INTERVAL_MS  = 100;
-const VAD_THRESHOLD        = 0.030;  // raised: rejects background noise in call-centre environments
-const VAD_HOLD_FRAMES      = 4;      // frames to confirm user started speaking (4 × 100ms = 400ms)
-const VAD_INTERRUPT_FRAMES = 10;     // frames of sustained speech required to interrupt the bot (1 second)
-const TTS_GRACE_FRAMES     = 6;      // frames after tts_start where VAD is ignored (600ms echo guard)
+const VAD_THRESHOLD        = 0.024;  // balances barge-in sensitivity with echo rejection
+const VAD_HOLD_FRAMES      = 3;      // frames to confirm user started speaking (3 × 100ms = 300ms)
+const VAD_INTERRUPT_FRAMES = 2;      // fast barge-in while bot speaks (2 × 100ms = 200ms)
+const TTS_GRACE_FRAMES     = 1;      // short echo guard; keeps full-duplex interruption responsive
 const PLAYBACK_SAMPLE_RATE = 24000;
 const PREBUFFER_MS      = 100;
 let humanizerOfficeEnabled = true;
@@ -558,7 +558,7 @@ const BUSINESS_INFO = {
 };
 
 const DEFAULT_SARVAM_FEMALE_SPEAKERS = [
-  "anushka", "manisha", "vidya", "arya", "ritu", "priya", "neha", "pooja",
+  "priya", "anushka", "manisha", "vidya", "arya", "ritu", "neha", "pooja",
   "simra", "kavya", "ishita", "shreya", "roopa", "tanya", "sunny",
   "suhani", "kavitha", "rupal",
 ];
@@ -571,10 +571,10 @@ const DEFAULT_SARVAM_EMOTIONS = [
 // ---------------------------------------------------------------------------
 let selectedLanguage   = "telugu";
 let selectedVoice      = "male";
-let selectedSarvamSpeaker = "anushka";
+let selectedSarvamSpeaker = "priya";
 let selectedSarvamEmotion = "neutral";
-let selectedSTTEngine  = "auto";
-let selectedTTSEngine  = "auto";
+let selectedSTTEngine  = "azure";
+let selectedTTSEngine  = "sarvam";
 let selectedLLMBackend = "ollama";
 let selectedBusiness   = "mercotrace";
 let sessionLanguage   = "telugu";   // locked at session start — used for all WS reconnects
@@ -1165,9 +1165,8 @@ function checkVAD(rms) {
   if (rms > VAD_THRESHOLD) {
     vadFrameCount++;
 
-    // Use a higher frame count to interrupt the bot than to detect user speech.
-    // While the bot is speaking, require VAD_INTERRUPT_FRAMES (1 second) of
-    // sustained energy — background noise spikes won't sustain that long.
+    // Use a fast, short hold for barge-in so users can interrupt naturally.
+    // Background noise still has to clear the RMS threshold for consecutive frames.
     // When the bot is silent, VAD_HOLD_FRAMES (400ms) is enough to confirm speech.
     const holdRequired = botSpeaking ? VAD_INTERRUPT_FRAMES : VAD_HOLD_FRAMES;
 
@@ -1362,7 +1361,7 @@ function onJSONReceived(raw) {
     case "tts_start":
       stopTTSPlayback();
       botSpeaking = true;
-      ttsGraceFrames = TTS_GRACE_FRAMES;  // block VAD interrupt for first 600ms
+      ttsGraceFrames = TTS_GRACE_FRAMES;  // brief echo guard before barge-in is allowed
       ttsPrebufferDone = false;
       ttsScheduledUntil = 0;
       ttsBufferedMs = 0;

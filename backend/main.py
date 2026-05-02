@@ -59,6 +59,14 @@ from config import (
 )
 from session_manager import session_manager
 
+# Windows terminals often default to cp1252, which cannot print Telugu/Kannada.
+# Reconfigure stdout so logging those transcripts does not block the event loop
+# with repeated UnicodeEncodeError tracebacks.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -328,10 +336,18 @@ async def websocket_endpoint(
                         {"type": "error", "message": "PCM chunk has odd byte count"}
                     )
                     continue
-                speech_threshold = min(config.audio.vad_rms_threshold, 0.01)
-                if _pcm_rms(pcm_chunk) > speech_threshold:
+                speech_threshold = config.audio.vad_rms_threshold
+                is_speech = _pcm_rms(pcm_chunk) > speech_threshold
+                if is_speech:
                     session.user_speaking_event.set()
                     session.input_silence_frames = 0
+                    if (
+                        session.tts_orchestrator
+                        and session.tts_orchestrator.is_active()
+                        and not session.tts_cancel_event.is_set()
+                    ):
+                        session.cancel_tts()
+                        await send_json_msg({"type": "tts_stopped"})
                 elif session.user_speaking_event.is_set():
                     session.input_silence_frames += 1
                     # Browser sends ~100 ms chunks; wait for sustained silence
@@ -351,14 +367,10 @@ async def websocket_endpoint(
                 msg_type = msg.get("type", "")
 
                 if msg_type == "interrupt":
-                    # Accept barge-in only if bot audio has actually started.
-                    # During long-user-utterance processing the frontend can
-                    # emit early interrupt messages; cancelling then causes
-                    # "LLM text but no audio" for that turn.
                     if (
                         session.tts_orchestrator
                         and session.tts_orchestrator.is_active()
-                        and session.bot_audio_active
+                        and not session.tts_cancel_event.is_set()
                     ):
                         session.cancel_tts()
                         await send_json_msg({"type": "tts_stopped"})

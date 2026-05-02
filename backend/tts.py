@@ -804,13 +804,23 @@ class VoiceTTSHandler:
 
         if self._voice == "female":
             speaker = self._sarvam_speaker_override or self._lang_cfg.get(
-                "sarvam_speaker", "anushka"
+                "sarvam_speaker", "priya"
             )
         else:
-            speaker = self._lang_cfg.get("sarvam_speaker_male", "abhilash")
+            speaker = self._lang_cfg.get("sarvam_speaker_male", "aditya")
         language_code = self._lang_cfg.get("sarvam_language_code", "te-IN")
         model         = self._lang_cfg.get("sarvam_model", "bulbul:v3")
         is_bulbul_v3  = str(model).lower().startswith("bulbul:v3")
+        if is_bulbul_v3:
+            compatible_speaker = "priya" if self._voice == "female" else "aditya"
+            if speaker != compatible_speaker:
+                logger.info(
+                    "Sarvam AI: using bulbul:v3-compatible speaker '%s' instead of '%s'",
+                    compatible_speaker,
+                    speaker,
+                    extra={"session_id": self.session_id},
+                )
+                speaker = compatible_speaker
 
         url = "https://api.sarvam.ai/text-to-speech"
         headers = {

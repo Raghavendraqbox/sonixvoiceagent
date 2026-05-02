@@ -92,8 +92,8 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # Male speakers:   abhilash, karun, hitesh, aditya, rahul, rohan, amit, dev, ratan, varun,
         #                  manan, sumit, kabir, aayan, shubh, ashutosh, advait, anand, tarun, mani,
         #                  gokul, vijay, mohit, rehan, soham
-        "sarvam_speaker":        os.getenv("SARVAM_SPEAKER_TELUGU",        "anushka"),
-        "sarvam_speaker_male":   os.getenv("SARVAM_SPEAKER_TELUGU_MALE",   "abhilash"),
+        "sarvam_speaker":        os.getenv("SARVAM_SPEAKER_TELUGU",        "priya"),
+        "sarvam_speaker_male":   os.getenv("SARVAM_SPEAKER_TELUGU_MALE",   "aditya"),
         "sarvam_language_code":  "te-IN",
         "sarvam_model":          os.getenv("SARVAM_MODEL", "bulbul:v3"),
 
@@ -232,8 +232,8 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # TTS — Sarvam AI (https://sarvam.ai — best for Indian languages including Kannada)
         # Same speaker pool as Telugu; bulbul:v3 supports kn-IN
-        "sarvam_speaker":        os.getenv("SARVAM_SPEAKER_KANNADA",        "anushka"),
-        "sarvam_speaker_male":   os.getenv("SARVAM_SPEAKER_KANNADA_MALE",   "abhilash"),
+        "sarvam_speaker":        os.getenv("SARVAM_SPEAKER_KANNADA",        "priya"),
+        "sarvam_speaker_male":   os.getenv("SARVAM_SPEAKER_KANNADA_MALE",   "aditya"),
         "sarvam_language_code":  "kn-IN",
         "sarvam_model":          os.getenv("SARVAM_MODEL", "bulbul:v3"),
 

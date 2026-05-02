@@ -228,10 +228,12 @@ class ASRHandler:
                 elif engine == "whisper":
                     await self._run_whisper_session()
                 else:  # "auto"
-                    if _sarvam_available:
-                        await self._run_sarvam_stt_session()
-                    elif _soniox_available:
+                    # Prefer streaming STT for full-duplex barge-in. Sarvam is
+                    # accurate but batch-style, so it adds turn-taking latency.
+                    if _soniox_available:
                         await self._run_soniox_streaming()
+                    elif _sarvam_available:
+                        await self._run_sarvam_stt_session()
                     else:
                         await self._run_whisper_session()
 
