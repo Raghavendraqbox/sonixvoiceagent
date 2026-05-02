@@ -64,6 +64,14 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # Display
         "display_name": "Telugu",
         "display_name_native": "తెలుగు",
+        "spoken_style": (
+            "Reply mostly in Telugu, but use common everyday English words that Telugu "
+            "speakers naturally use in calls, such as loan, home loan, car loan, "
+            "mobile number, details, confirm, amount, appointment, price, market, "
+            "available, specialist, safe, and thank you. Avoid overly formal or pure "
+            "Telugu words when a natural English word is commonly used. Keep Telugu "
+            "grammar and warmth, but write the English words in Latin script."
+        ),
 
         # ASR
         "soniox_language_code": "te",    # Telugu language code
@@ -137,8 +145,8 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # Greeting — plays once on the first user utterance
         "greeting": (
-            "నమస్కారం! QOBOX కాల్ సెంటర్‌కు స్వాగతం. "
-            "మీరు సంప్రదించినందుకు ధన్యవాదాలు. మీకు ఎలా సహాయం చేయగలను?"
+            "నమస్కారం! QOBOX call center కి welcome. "
+            "Contact చేసినందుకు thank you. మీకు ఎలా help చేయగలను?"
         ),
 
         # ivr_main_menu — not used; greeting already asks loan type
@@ -146,13 +154,13 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # Stubs when LLM is unreachable
         "neutral_stubs": [
-            "క్షమించండి, ఒక్క నిమిషం ఆగండి.",
-            "అర్థమైంది, మీ వివరాలు తీసుకుంటున్నాను.",
-            "చాలా ధన్యవాదాలు, ఒక్క క్షణం ఆగండి.",
+            "Sorry, ఒక్క minute wait చేయండి.",
+            "అర్థమైంది, మీ details తీసుకుంటున్నాను.",
+            "Thank you, ఒక్క second wait చేయండి.",
         ],
 
         # Played when user is silent for > 10 seconds after bot finishes speaking
-        "silence_reprompt": "హలో, నేను మాట్లాడేది వినిపిస్తుందా?",
+        "silence_reprompt": "Hello, నా voice వినిపిస్తుందా?",
 
         # System persona — QOBOX call centre executive (Telugu)
         "system_prompt": (
@@ -160,8 +168,9 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "Financial Services call centre. Help customers apply for Home Loans (గృహ రుణం) and "
             "Car Loans (కార్ రుణం).\n\n"
 
-            "LANGUAGE: Reply ONLY in Telugu (తెలుగు). 1-2 short conversational sentences per "
-            "response. No lists, bullets, or markdown.\n\n"
+            "LANGUAGE: Reply mostly in Telugu (తెలుగు), but use common English words that "
+            "Telugu speakers naturally use in calls. Avoid overly pure Telugu. 1-2 short "
+            "conversational sentences per response. No lists, bullets, or markdown.\n\n"
 
             "GOAL — collect these details one at a time in natural conversation:\n"
             "1. Loan type: Home Loan or Car Loan\n"
@@ -200,6 +209,14 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # Display
         "display_name": "Kannada",
         "display_name_native": "ಕನ್ನಡ",
+        "spoken_style": (
+            "Reply mostly in Kannada, but use common everyday English words that Kannada "
+            "speakers naturally use in calls, such as appointment, book, patient, "
+            "mobile number, details, confirm, doctor, specialist, emergency, price, "
+            "market, available, safe, and thank you. Avoid overly formal or pure Kannada "
+            "words when a natural English word is commonly used. Keep Kannada grammar "
+            "and warmth, but write the English words in Latin script."
+        ),
 
         # ASR
         "soniox_language_code": "kn",    # Kannada language code
@@ -274,8 +291,8 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # Greeting — plays once on the first user utterance
         "greeting": (
-            "ನಮಸ್ಕಾರ! QOBOX ಕಾಲ್ ಸೆಂಟರ್‌ಗೆ ಸ್ವಾಗತ. "
-            "ನೀವು ಸಂಪರ್ಕಿಸಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು. ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?"
+            "ನಮಸ್ಕಾರ! QOBOX call center ಗೆ welcome. "
+            "Contact ಮಾಡಿದಕ್ಕೆ thank you. ನಿಮಗೆ ಹೇಗೆ help ಮಾಡಬಹುದು?"
         ),
 
         # ivr_main_menu — not used; greeting directly asks for name
@@ -283,13 +300,13 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # Stubs when LLM is unreachable
         "neutral_stubs": [
-            "ಕ್ಷಮಿಸಿ, ಒಂದು ಕ್ಷಣ ಕಾಯಿರಿ.",
-            "ಅರ್ಥವಾಯಿತು, ನಿಮ್ಮ ವಿವರಗಳನ್ನು ತೆಗೆದುಕೊಳ್ಳುತ್ತಿದ್ದೇನೆ.",
-            "ತುಂಬಾ ಧನ್ಯವಾದಗಳು, ಒಂದು ಕ್ಷಣ ಕಾಯಿರಿ.",
+            "Sorry, ಒಂದು minute wait ಮಾಡಿ.",
+            "ಅರ್ಥವಾಯಿತು, ನಿಮ್ಮ details ತೆಗೆದುಕೊಳ್ಳುತ್ತಿದ್ದೇನೆ.",
+            "Thank you, ಒಂದು second wait ಮಾಡಿ.",
         ],
 
         # Played when user is silent for > 10 seconds after bot finishes speaking
-        "silence_reprompt": "ನೀವು ಕೇಳಿಸಿಕೊಳ್ಳುತ್ತಿದ್ದೀರಾ? ದಯವಿಟ್ಟು ಮತ್ತೊಮ್ಮೆ ಹೇಳಬಹುದೇ?",
+        "silence_reprompt": "Hello, ನನ್ನ voice ಕೇಳಿಸುತ್ತಿದೆಯಾ?",
 
         # System persona — QOBOX call centre executive (Kannada)
         "system_prompt": (
@@ -297,8 +314,9 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "QOBOX Hospital call centre. "
             "QOBOX Hospital is open 24 hours, 7 days a week for all medical needs.\n\n"
 
-            "LANGUAGE: Reply ONLY in Kannada (ಕನ್ನಡ). 1-2 short conversational sentences per "
-            "response. No lists, bullets, or markdown.\n\n"
+            "LANGUAGE: Reply mostly in Kannada (ಕನ್ನಡ), but use common English words that "
+            "Kannada speakers naturally use in calls. Avoid overly pure Kannada. 1-2 short "
+            "conversational sentences per response. No lists, bullets, or markdown.\n\n"
 
             "GOAL — collect these details one at a time to book an appointment:\n"
             "1. Patient full name (ರೋಗಿಯ ಪೂರ್ಣ ಹೆಸರು)\n"
@@ -339,17 +357,17 @@ BUSINESS_CONFIGS: Dict[str, Dict[str, Any]] = {
         "description": "Vegetable market customer care with mock daily prices.",
         "greeting": {
             "telugu": (
-                "నమస్కారం! Mercotrace కూరగాయల మార్కెట్ సహాయ కేంద్రానికి స్వాగతం. "
-                "ఈ రోజు కూరగాయల ధరల గురించి మీకు ఎలా సహాయం చేయగలను?"
+                "నమస్కారం! Mercotrace vegetable market help center కి welcome. "
+                "ఈ రోజు vegetable prices గురించి మీకు ఎలా help చేయగలను?"
             ),
             "kannada": (
-                "ನಮಸ್ಕಾರ! Mercotrace ತರಕಾರಿ ಮಾರುಕಟ್ಟೆ ಸಹಾಯ ಕೇಂದ್ರಕ್ಕೆ ಸ್ವಾಗತ. "
-                "ಇಂದಿನ ತರಕಾರಿ ಬೆಲೆಗಳ ಬಗ್ಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?"
+                "ನಮಸ್ಕಾರ! Mercotrace vegetable market help center ಗೆ welcome. "
+                "ಇವತ್ತಿನ vegetable prices ಬಗ್ಗೆ ಹೇಗೆ help ಮಾಡಬಹುದು?"
             ),
         },
         "silence_reprompt": {
-            "telugu": "హలో, ఏ కూరగాయ ధర కావాలో చెప్పగలరా?",
-            "kannada": "ಹಲೋ, ಯಾವ ತರಕಾರಿಯ ಬೆಲೆ ಬೇಕು ಎಂದು ಹೇಳಬಹುದೇ?",
+            "telugu": "Hello, ఏ vegetable price కావాలో చెప్పగలరా?",
+            "kannada": "Hello, ಯಾವ vegetable price ಬೇಕು ಅಂತ ಹೇಳುತ್ತೀರಾ?",
         },
         "mock_price_data": {
             "tomato": {"price": "₹32/kg", "telugu": "టమాటా", "kannada": "ಟೊಮೇಟೊ", "note": "fresh local stock"},
@@ -385,17 +403,17 @@ BUSINESS_CONFIGS: Dict[str, Dict[str, Any]] = {
         "description": "Hospital appointment booking customer care.",
         "greeting": {
             "telugu": (
-                "నమస్కారం! Davia Hospital అపాయింట్‌మెంట్ సహాయ కేంద్రానికి స్వాగతం. "
-                "అపాయింట్‌మెంట్ బుక్ చేయడానికి మీకు సహాయం చేస్తాను."
+                "నమస్కారం! Davia Hospital appointment help desk కి welcome. "
+                "Appointment book చేయడానికి నేను help చేస్తాను."
             ),
             "kannada": (
-                "ನಮಸ್ಕಾರ! Davia Hospital ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಸಹಾಯ ಕೇಂದ್ರಕ್ಕೆ ಸ್ವಾಗತ. "
-                "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಬುಕ್ ಮಾಡಲು ನಾನು ಸಹಾಯ ಮಾಡುತ್ತೇನೆ."
+                "ನಮಸ್ಕಾರ! Davia Hospital appointment help desk ಗೆ welcome. "
+                "Appointment book ಮಾಡಲು ನಾನು help ಮಾಡುತ್ತೇನೆ."
             ),
         },
         "silence_reprompt": {
-            "telugu": "హలో, అపాయింట్‌మెంట్ కోసం మీ వివరాలు చెప్పగలరా?",
-            "kannada": "ಹಲೋ, ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್‌ಗಾಗಿ ನಿಮ್ಮ ವಿವರಗಳನ್ನು ಹೇಳಬಹುದೇ?",
+            "telugu": "Hello, appointment కోసం మీ details చెప్పగలరా?",
+            "kannada": "Hello, appointment ಗಾಗಿ ನಿಮ್ಮ details ಹೇಳುತ್ತೀರಾ?",
         },
         "system_prompt": (
             "You are a professional and caring customer care executive at the Davia Hospital "

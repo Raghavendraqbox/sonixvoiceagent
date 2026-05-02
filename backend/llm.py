@@ -60,9 +60,13 @@ def _build_business_system_prompt(language: str, business: str) -> str:
     business_prompt = business_cfg["system_prompt"].format(
         mock_price_data=_format_mock_price_data(price_data)
     )
+    speaking_style = lang_cfg.get(
+        "spoken_style",
+        f"Speak mainly in {lang_cfg['display_name']} with natural everyday English words.",
+    )
     return (
         f"You are speaking to the customer in {lang_cfg['display_name']} "
-        f"({lang_cfg['display_name_native']}). Reply ONLY in this language. "
+        f"({lang_cfg['display_name_native']}). {speaking_style} "
         "Keep every response to 1-2 short conversational sentences. "
         "Do not use lists, bullets, or markdown in spoken replies. "
         "You may begin naturally with a brief thinking sound such as 'hmm' or 'umm'.\n\n"
