@@ -13,7 +13,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Callable, Awaitable, Dict, Optional
 
-from config import config, get_language_config
+from config import config, get_business_config, get_language_config
 from memory import ConversationMemory
 from rag import RAGRetriever
 from asr import ASRHandler, TranscriptResult
@@ -36,6 +36,7 @@ class Session:
     session_id: str
     memory: ConversationMemory
     language: str
+    business: str
     audio_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     transcript_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     interrupt_event: asyncio.Event = field(default_factory=asyncio.Event)
@@ -179,6 +180,7 @@ class SessionManager:
         send_audio_cb: AudioSendCallback,
         send_json_cb: JsonSendCallback,
         language: str = "telugu",
+        business: str = "mercotrace",
         voice: str = "male",
         tts_engine: str = "auto",
         sarvam_speaker: str = "",
@@ -191,19 +193,33 @@ class SessionManager:
         start async tasks.
         """
         # Validate and normalize language
-        from config import SUPPORTED_LANGUAGES
+        from config import SUPPORTED_BUSINESSES, SUPPORTED_LANGUAGES
         if language.lower() not in SUPPORTED_LANGUAGES:
             logger.warning(
                 "Unsupported language '%s', defaulting to 'telugu'", language
             )
             language = "telugu"
         language = language.lower()
+        if business.lower() not in SUPPORTED_BUSINESSES:
+            logger.warning(
+                "Unsupported business '%s', defaulting to '%s'",
+                business,
+                config.default_business,
+            )
+            business = config.default_business
+        business = business.lower()
 
         lang_cfg = get_language_config(language)
+        business_cfg = get_business_config(business)
 
         session_id = str(uuid.uuid4())
         memory = ConversationMemory(session_id=session_id)
-        session = Session(session_id=session_id, memory=memory, language=language)
+        session = Session(
+            session_id=session_id,
+            memory=memory,
+            language=language,
+            business=business,
+        )
 
         # Wire ASR
         session.asr_handler = ASRHandler(
@@ -239,6 +255,7 @@ class SessionManager:
             backend=llm_backend,
             retriever=None,
             language=language,
+            business=business,
         )
 
         # Start background tasks
@@ -253,9 +270,10 @@ class SessionManager:
 
         self._sessions[session_id] = session
         logger.info(
-            "Session created [%s / %s] stt=%s tts=%s sarvam_speaker=%s sarvam_emotion=%s",
+            "Session created [%s / %s | %s] stt=%s tts=%s sarvam_speaker=%s sarvam_emotion=%s",
             lang_cfg["display_name"],
             lang_cfg["display_name_native"],
+            business_cfg["display_name"],
             stt_engine,
             tts_engine,
             sarvam_speaker or "default",
@@ -429,9 +447,11 @@ class SessionManager:
         Phase 1+ — Every user utterance goes to the LLM for a response.
         """
         lang_cfg = get_language_config(session.language)
+        business_cfg = get_business_config(session.business)
         logger.info(
-            "LLM/TTS loop started [%s]",
+            "LLM/TTS loop started [%s | %s]",
             lang_cfg["display_name"],
+            business_cfg["display_name"],
             extra={"session_id": session.session_id},
         )
 
@@ -440,7 +460,8 @@ class SessionManager:
 
         # Play greeting immediately at session start — before waiting for user input.
         # This ensures every user utterance always gets an LLM response.
-        greeting = lang_cfg.get("greeting", "")
+        greeting_by_language = business_cfg.get("greeting", {})
+        greeting = greeting_by_language.get(session.language) or lang_cfg.get("greeting", "")
         if greeting:
             await self._play_hardcoded(session, send_json_cb, greeting)
         ivr_main_menu = lang_cfg.get("ivr_main_menu", "")
@@ -448,7 +469,11 @@ class SessionManager:
             await self._play_hardcoded(session, send_json_cb, ivr_main_menu)
         session.greeted = True
 
-        silence_reprompt = lang_cfg.get("silence_reprompt", "")
+        reprompt_by_language = business_cfg.get("silence_reprompt", {})
+        silence_reprompt = (
+            reprompt_by_language.get(session.language)
+            or lang_cfg.get("silence_reprompt", "")
+        )
         last_bot_text: str = ""
 
         # Silence reprompt state — reset after every real user utterance.

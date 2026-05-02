@@ -52,7 +52,9 @@ from fastapi.staticfiles import StaticFiles
 from config import (
     SARVAM_EMOTION_TEMPERATURES,
     SARVAM_FEMALE_SPEAKERS,
+    BUSINESS_CONFIGS,
     config,
+    SUPPORTED_BUSINESSES,
     SUPPORTED_LANGUAGES,
 )
 from session_manager import session_manager
@@ -199,6 +201,13 @@ async def client_config():
             "emotions": list(SARVAM_EMOTION_TEMPERATURES.keys()),
             "default_emotion": config.tts.sarvam_emotion,
         },
+        "businesses": {
+            business: {
+                "display_name": cfg["display_name"],
+                "description": cfg.get("description", ""),
+            }
+            for business, cfg in BUSINESS_CONFIGS.items()
+        },
     }
 
 
@@ -210,6 +219,7 @@ async def client_config():
 async def websocket_endpoint(
     websocket: WebSocket,
     language: str = "telugu",
+    business: str = "mercotrace",
     voice: str = "male",
     tts_engine: str = "auto",
     sarvam_speaker: str = "",
@@ -222,6 +232,7 @@ async def websocket_endpoint(
 
     Query parameters:
       language   — "telugu" or "kannada" (defaults to LANGUAGE env var → "telugu")
+      business   — "mercotrace" or "davia_hospital"
       voice      — "male" (default) or "female"
       sarvam_speaker — female Sarvam speaker override, e.g. "anushka"
       sarvam_emotion — Bulbul v3 emotion preset: neutral | calm | warm | empathetic |
@@ -236,6 +247,9 @@ async def websocket_endpoint(
     language = language.lower()
     if language not in SUPPORTED_LANGUAGES:
         language = config.default_language
+    business = business.lower().strip()
+    if business not in SUPPORTED_BUSINESSES:
+        business = config.default_business
     voice = voice.lower() if voice.lower() in ("male", "female") else "male"
     tts_engine = tts_engine.lower().strip()
     sarvam_speaker = sarvam_speaker.lower().strip()
@@ -253,9 +267,10 @@ async def websocket_endpoint(
 
     await websocket.accept()
     logger.info(
-        "WebSocket connected from %s (language=%s, voice=%s, tts=%s, sarvam_speaker=%s, sarvam_emotion=%s, stt=%s, llm=%s)",
+        "WebSocket connected from %s (language=%s, business=%s, voice=%s, tts=%s, sarvam_speaker=%s, sarvam_emotion=%s, stt=%s, llm=%s)",
         websocket.client,
         language,
+        business,
         voice,
         tts_engine,
         sarvam_speaker or "default",
@@ -283,6 +298,7 @@ async def websocket_endpoint(
         send_audio_cb=send_audio,
         send_json_cb=send_json_msg,
         language=language,
+        business=business,
         voice=voice,
         tts_engine=tts_engine,
         sarvam_speaker=sarvam_speaker,
@@ -294,6 +310,7 @@ async def websocket_endpoint(
         "type": "session_ready",
         "session_id": session.session_id,
         "language": language,
+        "business": business,
     })
     logger.info("Session %s ready [%s]", session.session_id, language)
 

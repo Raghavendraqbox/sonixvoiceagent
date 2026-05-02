@@ -328,16 +328,120 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+
+# ---------------------------------------------------------------------------
+# Business-specific conversation profiles
+# ---------------------------------------------------------------------------
+
+BUSINESS_CONFIGS: Dict[str, Dict[str, Any]] = {
+    "mercotrace": {
+        "display_name": "Mercotrace",
+        "description": "Vegetable market customer care with mock daily prices.",
+        "greeting": {
+            "telugu": (
+                "నమస్కారం! Mercotrace కూరగాయల మార్కెట్ సహాయ కేంద్రానికి స్వాగతం. "
+                "ఈ రోజు కూరగాయల ధరల గురించి మీకు ఎలా సహాయం చేయగలను?"
+            ),
+            "kannada": (
+                "ನಮಸ್ಕಾರ! Mercotrace ತರಕಾರಿ ಮಾರುಕಟ್ಟೆ ಸಹಾಯ ಕೇಂದ್ರಕ್ಕೆ ಸ್ವಾಗತ. "
+                "ಇಂದಿನ ತರಕಾರಿ ಬೆಲೆಗಳ ಬಗ್ಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?"
+            ),
+        },
+        "silence_reprompt": {
+            "telugu": "హలో, ఏ కూరగాయ ధర కావాలో చెప్పగలరా?",
+            "kannada": "ಹಲೋ, ಯಾವ ತರಕಾರಿಯ ಬೆಲೆ ಬೇಕು ಎಂದು ಹೇಳಬಹುದೇ?",
+        },
+        "mock_price_data": {
+            "tomato": {"price": "₹32/kg", "telugu": "టమాటా", "kannada": "ಟೊಮೇಟೊ", "note": "fresh local stock"},
+            "onion": {"price": "₹28/kg", "telugu": "ఉల్లిపాయ", "kannada": "ಈರುಳ್ಳಿ", "note": "good availability"},
+            "potato": {"price": "₹24/kg", "telugu": "బంగాళాదుంప", "kannada": "ಆಲೂಗಡ್ಡೆ", "note": "standard grade"},
+            "carrot": {"price": "₹54/kg", "telugu": "క్యారెట్", "kannada": "ಕ್ಯಾರೆಟ್", "note": "fresh Ooty stock"},
+            "beans": {"price": "₹72/kg", "telugu": "బీన్స్", "kannada": "ಬೀನ್ಸ್", "note": "limited stock"},
+            "brinjal": {"price": "₹38/kg", "telugu": "వంకాయ", "kannada": "ಬದನೆಕಾಯಿ", "note": "fresh stock"},
+            "cabbage": {"price": "₹30/kg", "telugu": "క్యాబేజీ", "kannada": "ಎಲೆಕೋಸು", "note": "good availability"},
+            "cauliflower": {"price": "₹46/piece", "telugu": "కాలీఫ్లవర్", "kannada": "ಹೂಕೋಸು", "note": "medium size"},
+            "green_chilli": {"price": "₹64/kg", "telugu": "పచ్చిమిర్చి", "kannada": "ಹಸಿಮೆಣಸಿನಕಾಯಿ", "note": "spicy variety"},
+            "coriander": {"price": "₹18/bunch", "telugu": "కొత్తిమీర", "kannada": "ಕೊತ್ತಂಬರಿ ಸೊಪ್ಪು", "note": "morning stock"},
+        },
+        "system_prompt": (
+            "You are a professional customer care executive for Mercotrace, a vegetable market "
+            "price support service.\n\n"
+            "TASK: Help customers with today's vegetable prices, availability, and simple buying "
+            "guidance using ONLY the mock price data below. If the requested vegetable is not in "
+            "the data, politely say the live price is not available in today's mock list and ask "
+            "if they want another vegetable price.\n\n"
+            "MOCK PRICE DATA:\n"
+            "{mock_price_data}\n\n"
+            "RULES:\n"
+            "- Answer price questions directly and conversationally.\n"
+            "- Mention the unit clearly, such as per kg, per piece, or per bunch.\n"
+            "- Do not invent prices, discounts, delivery promises, or real-time market updates.\n"
+            "- If the customer asks for multiple vegetables, answer briefly and ask if they need more.\n"
+            "- If goodbye, close warmly on behalf of Mercotrace."
+        ),
+    },
+    "davia_hospital": {
+        "display_name": "Davia Hospital",
+        "description": "Hospital appointment booking customer care.",
+        "greeting": {
+            "telugu": (
+                "నమస్కారం! Davia Hospital అపాయింట్‌మెంట్ సహాయ కేంద్రానికి స్వాగతం. "
+                "అపాయింట్‌మెంట్ బుక్ చేయడానికి మీకు సహాయం చేస్తాను."
+            ),
+            "kannada": (
+                "ನಮಸ್ಕಾರ! Davia Hospital ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಸಹಾಯ ಕೇಂದ್ರಕ್ಕೆ ಸ್ವಾಗತ. "
+                "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಬುಕ್ ಮಾಡಲು ನಾನು ಸಹಾಯ ಮಾಡುತ್ತೇನೆ."
+            ),
+        },
+        "silence_reprompt": {
+            "telugu": "హలో, అపాయింట్‌మెంట్ కోసం మీ వివరాలు చెప్పగలరా?",
+            "kannada": "ಹಲೋ, ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್‌ಗಾಗಿ ನಿಮ್ಮ ವಿವರಗಳನ್ನು ಹೇಳಬಹುದೇ?",
+        },
+        "system_prompt": (
+            "You are a professional and caring customer care executive at the Davia Hospital "
+            "appointment booking desk. Davia Hospital supports general medicine, pediatrics, "
+            "orthopedics, cardiology, dermatology, ENT, dental, and gynecology appointments.\n\n"
+            "GOAL: Collect these details one at a time to book an appointment:\n"
+            "1. Patient full name\n"
+            "2. Age\n"
+            "3. Mobile number\n"
+            "4. Health problem, symptoms, or preferred department\n"
+            "5. New patient or existing patient\n"
+            "6. Preferred appointment date and time\n\n"
+            "RULES:\n"
+            "- Ask only ONE question at a time and wait for the answer before moving on.\n"
+            "- Repeat back and confirm each answer before asking the next question.\n"
+            "- Be empathetic and calm because patients may be worried or unwell.\n"
+            "- If symptoms sound urgent, advise the patient to visit emergency care immediately.\n"
+            "- After collecting all details, summarize the appointment request and say Davia Hospital "
+            "will confirm the slot shortly.\n"
+            "- Do not claim the appointment is finally booked in a real hospital system.\n"
+            "- MOBILE NUMBER: A valid Indian mobile number has exactly 10 digits. If incomplete, ask "
+            "the patient to continue with the remaining digits.\n"
+            "- If goodbye, close warmly on behalf of Davia Hospital."
+        ),
+    },
+}
+
 SUPPORTED_LANGUAGES = list(LANGUAGE_CONFIGS.keys())
+SUPPORTED_BUSINESSES = list(BUSINESS_CONFIGS.keys())
 DEFAULT_LANGUAGE: str = os.getenv("LANGUAGE", "telugu").lower()
+DEFAULT_BUSINESS: str = os.getenv("BUSINESS", "mercotrace").lower()
 
 if DEFAULT_LANGUAGE not in SUPPORTED_LANGUAGES:
     DEFAULT_LANGUAGE = "telugu"
+if DEFAULT_BUSINESS not in SUPPORTED_BUSINESSES:
+    DEFAULT_BUSINESS = "mercotrace"
 
 
 def get_language_config(language: str) -> Dict[str, Any]:
     """Return the config dict for the given language (defaults to Telugu)."""
     return LANGUAGE_CONFIGS.get(language.lower(), LANGUAGE_CONFIGS["telugu"])
+
+
+def get_business_config(business: str) -> Dict[str, Any]:
+    """Return the business profile for the given id (defaults to Mercotrace)."""
+    return BUSINESS_CONFIGS.get(business.lower(), BUSINESS_CONFIGS["mercotrace"])
 
 
 # ---------------------------------------------------------------------------
@@ -701,6 +805,9 @@ class AppConfig:
 
     # Default language for the server
     default_language: str = DEFAULT_LANGUAGE
+
+    # Default business profile for conversations
+    default_business: str = DEFAULT_BUSINESS
 
     # Default STT engine (overridden per-session via ?stt_engine= query param)
     # Options: auto | sarvam | soniox | google | azure | amazon | whisper

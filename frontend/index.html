@@ -365,9 +365,9 @@
 <body>
 
   <header>
-    <h1>QOBOX Customer Care</h1>
-    <p>Telugu &amp; Kannada Customer Support</p>
-    <span class="badge">Telugu · Kannada · Customer Support</span>
+    <h1 id="app-title">Mercotrace Customer Care</h1>
+    <p id="app-subtitle">Telugu &amp; Kannada Vegetable Market Support</p>
+    <span class="badge" id="app-badge">Mercotrace · Telugu · Kannada</span>
   </header>
 
   <div class="main-layout">
@@ -394,6 +394,15 @@
         <select id="lang-select" onchange="onLanguageChange(this.value)">
           <option value="telugu" selected>Telugu — తెలుగు</option>
           <option value="kannada">Kannada — ಕನ್ನಡ</option>
+        </select>
+      </div>
+
+      <!-- Business selector — locked once session starts -->
+      <div class="selector-card">
+        <label for="business-select">Business</label>
+        <select id="business-select" onchange="onBusinessChange(this.value)">
+          <option value="mercotrace" selected>Mercotrace</option>
+          <option value="davia_hospital">Davia Hospital</option>
         </select>
       </div>
 
@@ -533,6 +542,21 @@ const LANG_INFO = {
   kannada: { native: "ಕನ್ನಡ",  name: "Kannada" },
 };
 
+const BUSINESS_INFO = {
+  mercotrace: {
+    name: "Mercotrace",
+    title: "Mercotrace Customer Care",
+    subtitle: "Telugu & Kannada Vegetable Market Support",
+    badge: "Mercotrace · Telugu · Kannada",
+  },
+  davia_hospital: {
+    name: "Davia Hospital",
+    title: "Davia Hospital Customer Care",
+    subtitle: "Telugu & Kannada Appointment Booking Support",
+    badge: "Davia Hospital · Telugu · Kannada",
+  },
+};
+
 const DEFAULT_SARVAM_FEMALE_SPEAKERS = [
   "anushka", "manisha", "vidya", "arya", "ritu", "priya", "neha", "pooja",
   "simra", "kavya", "ishita", "shreya", "roopa", "tanya", "sunny",
@@ -552,7 +576,9 @@ let selectedSarvamEmotion = "neutral";
 let selectedSTTEngine  = "auto";
 let selectedTTSEngine  = "auto";
 let selectedLLMBackend = "ollama";
+let selectedBusiness   = "mercotrace";
 let sessionLanguage   = "telugu";   // locked at session start — used for all WS reconnects
+let sessionBusiness   = "mercotrace"; // locked at session start — used for all WS reconnects
 // Conversation history: [{role:"user"|"bot", text:"...", ts: Date}]
 let conversationHistory = [];
 let currentBotMsgEl    = null;   // the streaming bot bubble currently being built
@@ -633,8 +659,12 @@ const btnStart          = document.getElementById("btn-start");
 const statusText        = document.getElementById("status-text");
 const transcriptPartial = document.getElementById("transcript-partial");
 const energyBar         = document.getElementById("energy-bar");
+const appTitle          = document.getElementById("app-title");
+const appSubtitle       = document.getElementById("app-subtitle");
+const appBadge          = document.getElementById("app-badge");
 const langSelect        = document.getElementById("lang-select");
 const langNative        = document.getElementById("lang-native");
+const businessSelect    = document.getElementById("business-select");
 const voiceSelector     = document.getElementById("voice-selector");
 const voiceSelect       = document.getElementById("voice-select");
 const sarvamSpeakerSelector = document.getElementById("sarvam-speaker-selector");
@@ -656,6 +686,22 @@ function onLanguageChange(lang) {
   voiceSelector.style.display = "flex";
   const info = LANG_INFO[lang] || LANG_INFO.telugu;
   langNative.textContent = info.native;
+}
+
+function onBusinessChange(business) {
+  if (sessionActive) return;   // cannot change business mid-session
+  selectedBusiness = BUSINESS_INFO[business] ? business : "mercotrace";
+  updateBusinessChrome();
+}
+
+function updateBusinessChrome() {
+  const info = BUSINESS_INFO[selectedBusiness] || BUSINESS_INFO.mercotrace;
+  appTitle.textContent = info.title;
+  appSubtitle.textContent = info.subtitle;
+  appBadge.textContent = info.badge;
+  conversationHeader.textContent = sessionActive
+    ? `${info.name} Conversation`
+    : "Conversation";
 }
 
 function onVoiceChange(voice) {
@@ -766,6 +812,7 @@ async function startSession() {
   // or a language-change mid-session could start a second session in a
   // different language and play two voices simultaneously.
   sessionLanguage = selectedLanguage;
+  sessionBusiness = selectedBusiness;
 
   selectedTTSEngine  = ttsSelect.value;
   selectedLLMBackend = llmSelect.value;
@@ -775,6 +822,7 @@ async function startSession() {
   setStatus("Requesting microphone permission…");
   btnStart.disabled = true;
   langSelect.disabled = true;
+  businessSelect.disabled = true;
   voiceSelect.disabled = true;
   sarvamSpeakerSelect.disabled = true;
   sarvamEmotionSelect.disabled = true;
@@ -795,6 +843,7 @@ async function startSession() {
     setStatus("Microphone permission denied: " + err.message);
     btnStart.disabled = false;
     langSelect.disabled = false;
+    businessSelect.disabled = false;
     voiceSelect.disabled = false;
     updateSarvamSpeakerVisibility();
     sarvamEmotionSelect.disabled = false;
@@ -825,8 +874,10 @@ async function startSession() {
   btnStart.disabled = false;
 
   const info = LANG_INFO[selectedLanguage] || LANG_INFO.telugu;
+  const businessInfo = BUSINESS_INFO[sessionBusiness] || BUSINESS_INFO.mercotrace;
   setOrb("idle", "Listening");
-  setStatus(`Connected — speak in ${info.name} (${info.native})`);
+  conversationHeader.textContent = `${businessInfo.name} Conversation`;
+  setStatus(`Connected to ${businessInfo.name} — speak in ${info.name} (${info.native})`);
 }
 
 function stopSession() {
@@ -834,6 +885,7 @@ function stopSession() {
   btnStart.textContent = "Start Conversation";
   btnStart.classList.remove("active");
   langSelect.disabled = false;
+  businessSelect.disabled = false;
   voiceSelect.disabled = false;
   updateSarvamSpeakerVisibility();
   sarvamEmotionSelect.disabled = false;
@@ -841,6 +893,7 @@ function stopSession() {
   llmSelect.disabled = false;
   finalizeBotBubble();
   conversationHeader.classList.remove("active");
+  updateBusinessChrome();
 
   // Show download button and session-end marker if there's content
   if (conversationHistory.length > 0) {
@@ -1156,7 +1209,8 @@ function connectWebSocket() {
   // a language-switch + reconnect from spawning a second session in a
   // different language and playing two voices simultaneously.
   const lang = sessionLanguage;
-  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&voice=${encodeURIComponent(selectedVoice)}&sarvam_speaker=${encodeURIComponent(selectedSarvamSpeaker)}&sarvam_emotion=${encodeURIComponent(selectedSarvamEmotion)}&stt_engine=${encodeURIComponent(selectedSTTEngine)}&tts_engine=${encodeURIComponent(selectedTTSEngine)}&llm_backend=${encodeURIComponent(selectedLLMBackend)}`;
+  const business = sessionBusiness;
+  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&business=${encodeURIComponent(business)}&voice=${encodeURIComponent(selectedVoice)}&sarvam_speaker=${encodeURIComponent(selectedSarvamSpeaker)}&sarvam_emotion=${encodeURIComponent(selectedSarvamEmotion)}&stt_engine=${encodeURIComponent(selectedSTTEngine)}&tts_engine=${encodeURIComponent(selectedTTSEngine)}&llm_backend=${encodeURIComponent(selectedLLMBackend)}`;
   setStatus("Connecting to server…");
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";
@@ -1239,6 +1293,7 @@ function escHtml(str) {
 function downloadTranscript() {
   if (!conversationHistory.length) return;
   const langInfo  = LANG_INFO[sessionLanguage] || LANG_INFO.telugu;
+  const businessInfo = BUSINESS_INFO[sessionBusiness] || BUSINESS_INFO.mercotrace;
   const now       = new Date();
   const dateStr   = now.toISOString().slice(0,19).replace("T"," ");
   const divider   = "─".repeat(52);
@@ -1246,6 +1301,7 @@ function downloadTranscript() {
   let lines = [
     "Telugu & Kannada Voice Agent — Conversation Transcript",
     divider,
+    `Business : ${businessInfo.name}`,
     `Language : ${langInfo.name} (${langInfo.native})`,
     `Date     : ${dateStr}`,
     `Turns    : ${Math.floor(conversationHistory.length / 2)}`,
@@ -1268,7 +1324,7 @@ function downloadTranscript() {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
   a.href     = url;
-  a.download = `telugu-kannada-transcript-${dateStr.replace(/[ :]/g,"-")}.txt`;
+  a.download = `${sessionBusiness}-transcript-${dateStr.replace(/[ :]/g,"-")}.txt`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -1281,10 +1337,11 @@ function onJSONReceived(raw) {
   try { msg = JSON.parse(raw); } catch { return; }
 
   const info = LANG_INFO[selectedLanguage] || LANG_INFO.telugu;
+  const businessInfo = BUSINESS_INFO[sessionBusiness] || BUSINESS_INFO.mercotrace;
 
   switch (msg.type) {
     case "session_ready":
-      setStatus(`Ready — speak in ${info.name} (${info.native})`);
+      setStatus(`Ready for ${businessInfo.name} — speak in ${info.name} (${info.native})`);
       break;
 
     case "transcript_partial":

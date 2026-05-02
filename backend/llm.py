@@ -24,7 +24,7 @@ from typing import AsyncIterator, Optional
 
 import httpx
 
-from config import config, get_language_config
+from config import config, get_business_config, get_language_config
 from memory import ConversationMemory
 from rag import RAGRetriever
 
@@ -38,6 +38,36 @@ _SENTENCE_BOUNDARY = re.compile(r"([.!?؟۔])\s*(?=\S|$)")
 # Word-count dispatch: yield after this many words even without punctuation.
 # Value comes from config so deployments can tune latency without code changes.
 _DEFAULT_WORD_DISPATCH_THRESHOLD = 6
+
+
+def _format_mock_price_data(price_data: dict) -> str:
+    """Render mock market data compactly for the system prompt."""
+    lines = []
+    for item_id, item in price_data.items():
+        names = f'{item.get("telugu", item_id)} / {item.get("kannada", item_id)}'
+        lines.append(
+            f'- {item_id}: {names} - {item.get("price", "price unavailable")} '
+            f'({item.get("note", "no note")})'
+        )
+    return "\n".join(lines)
+
+
+def _build_business_system_prompt(language: str, business: str) -> str:
+    """Combine language rules with the selected business persona."""
+    lang_cfg = get_language_config(language)
+    business_cfg = get_business_config(business)
+    price_data = business_cfg.get("mock_price_data", {})
+    business_prompt = business_cfg["system_prompt"].format(
+        mock_price_data=_format_mock_price_data(price_data)
+    )
+    return (
+        f"You are speaking to the customer in {lang_cfg['display_name']} "
+        f"({lang_cfg['display_name_native']}). Reply ONLY in this language. "
+        "Keep every response to 1-2 short conversational sentences. "
+        "Do not use lists, bullets, or markdown in spoken replies. "
+        "You may begin naturally with a brief thinking sound such as 'hmm' or 'umm'.\n\n"
+        f"{business_prompt}"
+    )
 
 
 class VoiceLLMClient:
@@ -54,14 +84,18 @@ class VoiceLLMClient:
         self,
         retriever: Optional[RAGRetriever] = None,
         language: str = "telugu",
+        business: str = "mercotrace",
     ) -> None:
         self._retriever = retriever
         self._language  = language
+        self._business = business
 
         lang_cfg = get_language_config(language)
-        self._system_prompt: str = lang_cfg["system_prompt"]
+        business_cfg = get_business_config(business)
+        self._system_prompt: str = _build_business_system_prompt(language, business)
         self._neutral_stubs: list = lang_cfg["neutral_stubs"]
         self._language_display: str = lang_cfg["display_name"]
+        self._business_display: str = business_cfg["display_name"]
 
         self._http = httpx.AsyncClient(
             base_url=config.ollama.base_url,
@@ -303,14 +337,18 @@ class GeminiLLMClient:
         self,
         retriever: Optional[RAGRetriever] = None,
         language: str = "telugu",
+        business: str = "mercotrace",
     ) -> None:
         self._retriever = retriever
         self._language  = language
+        self._business = business
 
         lang_cfg = get_language_config(language)
-        self._system_prompt: str = lang_cfg["system_prompt"]
+        business_cfg = get_business_config(business)
+        self._system_prompt: str = _build_business_system_prompt(language, business)
         self._neutral_stubs: list = lang_cfg["neutral_stubs"]
         self._language_display: str = lang_cfg["display_name"]
+        self._business_display: str = business_cfg["display_name"]
 
         try:
             from google import genai
@@ -318,9 +356,10 @@ class GeminiLLMClient:
             self._client = genai.Client(api_key=config.gemini.api_key)
             self._genai_types = genai_types
             logger.info(
-                "GeminiLLMClient ready: model=%s language=%s",
+                "GeminiLLMClient ready: model=%s language=%s business=%s",
                 config.gemini.model,
                 self._language_display,
+                self._business_display,
             )
         except ImportError:
             raise RuntimeError(
@@ -429,6 +468,7 @@ def create_llm_client(
     backend: str = "ollama",
     retriever: Optional[RAGRetriever] = None,
     language: str = "telugu",
+    business: str = "mercotrace",
 ) -> "VoiceLLMClient | GeminiLLMClient":
     """
     Return an LLM client for the requested backend.
@@ -437,6 +477,7 @@ def create_llm_client(
         backend:   "ollama" (local) or "gemini" (cloud).
         retriever: Optional RAG retriever (passed through to client).
         language:  "telugu" or "kannada".
+        business:  "mercotrace" or "davia_hospital".
     """
     backend = backend.lower().strip()
     if backend == "gemini":
@@ -445,6 +486,18 @@ def create_llm_client(
                 "GEMINI_API_KEY not set — falling back to Ollama. "
                 "Get a free key at https://aistudio.google.com"
             )
-            return VoiceLLMClient(retriever=retriever, language=language)
-        return GeminiLLMClient(retriever=retriever, language=language)
-    return VoiceLLMClient(retriever=retriever, language=language)
+            return VoiceLLMClient(
+                retriever=retriever,
+                language=language,
+                business=business,
+            )
+        return GeminiLLMClient(
+            retriever=retriever,
+            language=language,
+            business=business,
+        )
+    return VoiceLLMClient(
+        retriever=retriever,
+        language=language,
+        business=business,
+    )
