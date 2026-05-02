@@ -341,19 +341,28 @@ async def websocket_endpoint(
                 if is_speech:
                     session.user_speaking_event.set()
                     session.input_silence_frames = 0
+                    if session.bot_audio_active:
+                        session.bot_bargein_speech_frames += 1
+                    else:
+                        session.bot_bargein_speech_frames = 0
                     if (
                         session.tts_orchestrator
                         and session.tts_orchestrator.is_active()
+                        and session.bot_audio_active
+                        and session.bot_bargein_speech_frames >= 2
                         and not session.tts_cancel_event.is_set()
                     ):
                         session.cancel_tts()
                         await send_json_msg({"type": "tts_stopped"})
                 elif session.user_speaking_event.is_set():
                     session.input_silence_frames += 1
+                    session.bot_bargein_speech_frames = 0
                     # Browser sends ~100 ms chunks; wait for sustained silence
                     # before allowing the LLM to answer.
-                    if session.input_silence_frames >= 5:
+                    if session.input_silence_frames >= 3:
                         session.user_speaking_event.clear()
+                else:
+                    session.bot_bargein_speech_frames = 0
                 await session.audio_queue.put(pcm_chunk)
 
             # Text frame — JSON control message
@@ -370,6 +379,7 @@ async def websocket_endpoint(
                     if (
                         session.tts_orchestrator
                         and session.tts_orchestrator.is_active()
+                        and session.bot_audio_active
                         and not session.tts_cancel_event.is_set()
                     ):
                         session.cancel_tts()

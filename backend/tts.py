@@ -1933,9 +1933,10 @@ class TTSOrchestrator:
     # cloud TTS round-trips (higher latency, choppier playback).
     _SENTENCE_END = frozenset(".!?।")
     _MIN_FLUSH_CHARS = 1
-    # Safety net: force-flush when buffer exceeds this length even with no punctuation.
-    # Prevents >2s buffering when LLM generates unpunctuated text.
-    _MAX_BUFFER_CHARS = 75
+    # Safety net: force-flush quickly for non-streaming cloud TTS providers.
+    # Sarvam returns a complete audio file, so smaller first chunks reduce
+    # time-to-first-audio while the next chunk synthesizes in parallel.
+    _MAX_BUFFER_CHARS = 45
 
     async def run(self) -> None:
         """3-stage pipelined TTS loop.

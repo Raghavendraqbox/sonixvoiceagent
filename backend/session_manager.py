@@ -51,6 +51,7 @@ class Session:
     tts_orch_task: Optional[asyncio.Task] = field(default=None, init=False)
     llm_client: Optional[VoiceLLMClient] = field(default=None, init=False)
     bot_audio_active: bool = field(default=False, init=False)
+    bot_bargein_speech_frames: int = field(default=0, init=False)
     user_speaking_event: asyncio.Event = field(default_factory=asyncio.Event)
     input_silence_frames: int = field(default=0, init=False)
 
@@ -554,15 +555,15 @@ class SessionManager:
                 elif expecting_mobile_number and len(_digits_seen) >= 10:
                     merge_timeout = 0.35
                 else:
-                    merge_timeout = 1.2   # digits take priority — ignore trailing ASR punctuation
+                    merge_timeout = 0.45  # digits take priority — ignore trailing ASR punctuation
             elif user_text[-1] in ".!?।":
                 # Cloud batch STT often inserts punctuation at short pauses.
                 # Hold briefly so a continuing caller is not interrupted.
-                merge_timeout = 0.65
+                merge_timeout = 0.25
             elif first_word_count <= 5:
-                merge_timeout = 0.40
+                merge_timeout = 0.25
             else:
-                merge_timeout = 0.25  # wider than before to catch split finals on long sentences
+                merge_timeout = 0.18
             while True:
                 try:
                     more: TranscriptResult = await asyncio.wait_for(
@@ -581,13 +582,13 @@ class SessionManager:
                     elif expecting_mobile_number and digit_count >= 10:
                         merge_timeout = 0.35
                     else:
-                        merge_timeout = 0.80  # keep collecting if more digits keep arriving
+                        merge_timeout = 0.35  # keep collecting if more digits keep arriving
                 # Ignore partial/empty here; they belong to ASR streaming state.
             if await self._wait_for_user_speech_idle(session):
                 while True:
                     try:
                         more: TranscriptResult = await asyncio.wait_for(
-                            session.transcript_queue.get(), timeout=0.8
+                            session.transcript_queue.get(), timeout=0.35
                         )
                     except asyncio.TimeoutError:
                         break

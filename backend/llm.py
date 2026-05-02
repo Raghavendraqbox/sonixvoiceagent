@@ -67,7 +67,8 @@ def _build_business_system_prompt(language: str, business: str) -> str:
     return (
         f"You are speaking to the customer in {lang_cfg['display_name']} "
         f"({lang_cfg['display_name_native']}). {speaking_style} "
-        "Keep every response to 1-2 short conversational sentences. "
+        "For low-latency voice, keep every response to exactly one very short "
+        "conversational sentence, ideally under 12 words. "
         "Do not use lists, bullets, or markdown in spoken replies. "
         "You may begin naturally with a brief thinking sound such as 'hmm' or 'umm'.\n\n"
         f"{business_prompt}"

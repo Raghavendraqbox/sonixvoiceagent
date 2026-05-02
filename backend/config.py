@@ -357,12 +357,10 @@ BUSINESS_CONFIGS: Dict[str, Dict[str, Any]] = {
         "description": "Vegetable market customer care with mock daily prices.",
         "greeting": {
             "telugu": (
-                "నమస్కారం! Mercotrace vegetable market help center కి welcome. "
-                "ఈ రోజు vegetable prices గురించి మీకు ఎలా help చేయగలను?"
+                "నమస్కారం! Mercotrace కి welcome, ఏ vegetable price కావాలి?"
             ),
             "kannada": (
-                "ನಮಸ್ಕಾರ! Mercotrace vegetable market help center ಗೆ welcome. "
-                "ಇವತ್ತಿನ vegetable prices ಬಗ್ಗೆ ಹೇಗೆ help ಮಾಡಬಹುದು?"
+                "ನಮಸ್ಕಾರ! Mercotrace ಗೆ welcome, ಯಾವ vegetable price ಬೇಕು?"
             ),
         },
         "silence_reprompt": {
@@ -391,10 +389,10 @@ BUSINESS_CONFIGS: Dict[str, Dict[str, Any]] = {
             "MOCK PRICE DATA:\n"
             "{mock_price_data}\n\n"
             "RULES:\n"
-            "- Answer price questions directly and conversationally.\n"
+            "- Answer price questions in one very short sentence.\n"
             "- Mention the unit clearly, such as per kg, per piece, or per bunch.\n"
             "- Do not invent prices, discounts, delivery promises, or real-time market updates.\n"
-            "- If the customer asks for multiple vegetables, answer briefly and ask if they need more.\n"
+            "- If the customer asks for multiple vegetables, answer only the prices, no extra question.\n"
             "- If goodbye, close warmly on behalf of Mercotrace."
         ),
     },
