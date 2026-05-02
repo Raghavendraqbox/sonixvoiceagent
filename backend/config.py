@@ -392,7 +392,7 @@ BUSINESS_CONFIGS: Dict[str, Dict[str, Any]] = {
             "- Answer price questions in one very short sentence.\n"
             "- Mention the unit clearly, such as per kg, per piece, or per bunch.\n"
             "- Do not invent prices, discounts, delivery promises, or real-time market updates.\n"
-            "- If the customer asks for multiple vegetables, answer only the prices, no extra question.\n"
+            "- If the customer asks for many vegetables, mention at most 3 items in one reply.\n"
             "- If goodbye, close warmly on behalf of Mercotrace."
         ),
     },

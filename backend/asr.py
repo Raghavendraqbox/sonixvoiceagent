@@ -302,8 +302,8 @@ class ASRHandler:
 
         # VAD parameters — same as Whisper fallback
         SILENCE_RMS_THRESHOLD  = 0.008
-        # 0.3s commit balances latency and long-utterance stability.
-        SILENCE_FRAMES_TO_COMMIT = 3
+        # 0.2s commit improves full-duplex responsiveness with Azure batch STT.
+        SILENCE_FRAMES_TO_COMMIT = 2
         MIN_SPEECH_FRAMES       = 1
         MAX_SILENCE_FRAMES      = 30   # 3s hard reset
 

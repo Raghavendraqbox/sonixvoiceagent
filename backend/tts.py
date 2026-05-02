@@ -1936,7 +1936,7 @@ class TTSOrchestrator:
     # Safety net: force-flush quickly for non-streaming cloud TTS providers.
     # Sarvam returns a complete audio file, so smaller first chunks reduce
     # time-to-first-audio while the next chunk synthesizes in parallel.
-    _MAX_BUFFER_CHARS = 45
+    _MAX_BUFFER_CHARS = 30
 
     async def run(self) -> None:
         """3-stage pipelined TTS loop.
