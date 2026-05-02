@@ -31,13 +31,31 @@ import queue as _queue
 import threading
 import wave
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 import httpx
 
 from config import config, get_language_config
 
 logger = logging.getLogger(__name__)
+
+
+def _unpack_audio_item(item) -> Tuple[bytes, Optional[bool]]:
+    """Normalize an audio queue item.
+
+    main.py now pushes ``(pcm_bytes, is_speech)`` so each STT engine can use
+    the VAD verdict directly. Older callers that still push raw bytes keep
+    working — `is_speech` becomes `None` and the engine falls back to its
+    original RMS check.
+    """
+    if isinstance(item, tuple) and len(item) == 2:
+        pcm, flag = item
+        if isinstance(pcm, (bytes, bytearray)):
+            return bytes(pcm), bool(flag) if flag is not None else None
+    if isinstance(item, (bytes, bytearray)):
+        return bytes(item), None
+    # Defensive: unknown shapes are dropped silently to avoid a crash loop.
+    return b"", None
 
 # ---------------------------------------------------------------------------
 # Internal exceptions
@@ -300,11 +318,13 @@ class ASRHandler:
             extra={"session_id": self.session_id},
         )
 
-        # VAD parameters — same as Whisper fallback
+        # VAD parameters — same as Whisper fallback. The actual classification
+        # is now done upstream by Silero VAD in main.py; the RMS check below
+        # is a backwards-compatible fallback when older callers push raw bytes.
         SILENCE_RMS_THRESHOLD  = 0.008
         # 0.2s commit improves full-duplex responsiveness with Azure batch STT.
         SILENCE_FRAMES_TO_COMMIT = 2
-        MIN_SPEECH_FRAMES       = 1
+        MIN_SPEECH_FRAMES       = max(1, config.audio.min_speech_frames_before_stt)
         MAX_SILENCE_FRAMES      = 30   # 3s hard reset
 
         audio_buf: list = []
@@ -315,7 +335,7 @@ class ASRHandler:
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
             while not self._stopped:
                 try:
-                    chunk: bytes = await asyncio.wait_for(
+                    item = await asyncio.wait_for(
                         self.audio_queue.get(), timeout=0.5
                     )
                 except asyncio.TimeoutError:
@@ -332,10 +352,18 @@ class ASRHandler:
                         speech_frame_count = 0
                     continue
 
-                samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
-                rms = float(np.sqrt(np.mean(samples ** 2)))
+                chunk, is_speech_tag = _unpack_audio_item(item)
+                if not chunk:
+                    continue
 
-                if rms > SILENCE_RMS_THRESHOLD:
+                samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
+                if is_speech_tag is None:
+                    rms = float(np.sqrt(np.mean(samples ** 2)))
+                    is_speech = rms > SILENCE_RMS_THRESHOLD
+                else:
+                    is_speech = is_speech_tag
+
+                if is_speech:
                     speech_started = True
                     silence_frames = 0
                     speech_frame_count += 1
@@ -506,8 +534,10 @@ class ASRHandler:
             """Pump async audio queue → sync queue for the send thread."""
             while not self._stopped:
                 try:
-                    chunk = await asyncio.wait_for(self.audio_queue.get(), timeout=1.0)
-                    sync_audio_q.put(chunk)
+                    item = await asyncio.wait_for(self.audio_queue.get(), timeout=1.0)
+                    chunk, _is_speech_tag = _unpack_audio_item(item)
+                    if chunk:
+                        sync_audio_q.put(chunk)
                 except asyncio.TimeoutError:
                     continue
                 except asyncio.CancelledError:
@@ -599,7 +629,7 @@ class ASRHandler:
         SILENCE_RMS_THRESHOLD    = 0.008
         # 0.3s commit balances latency and long-utterance stability.
         SILENCE_FRAMES_TO_COMMIT = 3
-        MIN_SPEECH_FRAMES        = 1
+        MIN_SPEECH_FRAMES        = max(1, config.audio.min_speech_frames_before_stt)
         MAX_SILENCE_FRAMES       = 30
 
         audio_buf: list = []
@@ -610,7 +640,7 @@ class ASRHandler:
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
             while not self._stopped:
                 try:
-                    chunk: bytes = await asyncio.wait_for(self.audio_queue.get(), timeout=0.5)
+                    item = await asyncio.wait_for(self.audio_queue.get(), timeout=0.5)
                 except asyncio.TimeoutError:
                     if (speech_started and silence_frames >= SILENCE_FRAMES_TO_COMMIT
                             and speech_frame_count >= MIN_SPEECH_FRAMES):
@@ -619,10 +649,18 @@ class ASRHandler:
                         silence_frames = 0; speech_frame_count = 0
                     continue
 
-                samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
-                rms = float(np.sqrt(np.mean(samples ** 2)))
+                chunk, is_speech_tag = _unpack_audio_item(item)
+                if not chunk:
+                    continue
 
-                if rms > SILENCE_RMS_THRESHOLD:
+                samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
+                if is_speech_tag is None:
+                    rms = float(np.sqrt(np.mean(samples ** 2)))
+                    is_speech = rms > SILENCE_RMS_THRESHOLD
+                else:
+                    is_speech = is_speech_tag
+
+                if is_speech:
                     speech_started = True; silence_frames = 0
                     speech_frame_count += 1; audio_buf.append(samples)
                 elif speech_started:
@@ -699,7 +737,7 @@ class ASRHandler:
         SILENCE_RMS_THRESHOLD    = 0.008
         # 0.3s commit balances latency and long-utterance stability.
         SILENCE_FRAMES_TO_COMMIT = 3
-        MIN_SPEECH_FRAMES        = 1
+        MIN_SPEECH_FRAMES        = max(1, config.audio.min_speech_frames_before_stt)
         MAX_SILENCE_FRAMES       = 30
 
         audio_buf: list = []
@@ -710,7 +748,7 @@ class ASRHandler:
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
             while not self._stopped:
                 try:
-                    chunk: bytes = await asyncio.wait_for(self.audio_queue.get(), timeout=0.5)
+                    item = await asyncio.wait_for(self.audio_queue.get(), timeout=0.5)
                 except asyncio.TimeoutError:
                     if (speech_started and silence_frames >= SILENCE_FRAMES_TO_COMMIT
                             and speech_frame_count >= MIN_SPEECH_FRAMES):
@@ -719,10 +757,18 @@ class ASRHandler:
                         silence_frames = 0; speech_frame_count = 0
                     continue
 
-                samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
-                rms = float(np.sqrt(np.mean(samples ** 2)))
+                chunk, is_speech_tag = _unpack_audio_item(item)
+                if not chunk:
+                    continue
 
-                if rms > SILENCE_RMS_THRESHOLD:
+                samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
+                if is_speech_tag is None:
+                    rms = float(np.sqrt(np.mean(samples ** 2)))
+                    is_speech = rms > SILENCE_RMS_THRESHOLD
+                else:
+                    is_speech = is_speech_tag
+
+                if is_speech:
                     speech_started = True; silence_frames = 0
                     speech_frame_count += 1; audio_buf.append(samples)
                 elif speech_started:
@@ -818,7 +864,7 @@ class ASRHandler:
         SILENCE_RMS_THRESHOLD    = 0.008
         # 0.3s commit balances latency and long-utterance stability.
         SILENCE_FRAMES_TO_COMMIT = 3
-        MIN_SPEECH_FRAMES        = 1
+        MIN_SPEECH_FRAMES        = max(1, config.audio.min_speech_frames_before_stt)
         MAX_SILENCE_FRAMES       = 30
 
         audio_buf: list = []
@@ -828,7 +874,7 @@ class ASRHandler:
 
         while not self._stopped:
             try:
-                chunk: bytes = await asyncio.wait_for(self.audio_queue.get(), timeout=0.5)
+                item = await asyncio.wait_for(self.audio_queue.get(), timeout=0.5)
             except asyncio.TimeoutError:
                 if (speech_started and silence_frames >= SILENCE_FRAMES_TO_COMMIT
                         and speech_frame_count >= MIN_SPEECH_FRAMES):
@@ -837,10 +883,18 @@ class ASRHandler:
                     silence_frames = 0; speech_frame_count = 0
                 continue
 
-            samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
-            rms = float(np.sqrt(np.mean(samples ** 2)))
+            chunk, is_speech_tag = _unpack_audio_item(item)
+            if not chunk:
+                continue
 
-            if rms > SILENCE_RMS_THRESHOLD:
+            samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
+            if is_speech_tag is None:
+                rms = float(np.sqrt(np.mean(samples ** 2)))
+                is_speech = rms > SILENCE_RMS_THRESHOLD
+            else:
+                is_speech = is_speech_tag
+
+            if is_speech:
                 speech_started = True; silence_frames = 0
                 speech_frame_count += 1; audio_buf.append(samples)
             elif speech_started:
@@ -973,7 +1027,7 @@ class ASRHandler:
         SILENCE_RMS_THRESHOLD = 0.008
         # 0.3s commit balances latency and long-utterance stability.
         SILENCE_FRAMES_TO_COMMIT = 3
-        MIN_SPEECH_FRAMES = 1
+        MIN_SPEECH_FRAMES = max(1, config.audio.min_speech_frames_before_stt)
         MAX_SILENCE_FRAMES = 30         # 3 s hard reset
 
         audio_buf: list = []
@@ -983,7 +1037,7 @@ class ASRHandler:
 
         while not self._stopped:
             try:
-                chunk: bytes = await asyncio.wait_for(
+                item = await asyncio.wait_for(
                     self.audio_queue.get(), timeout=0.5
                 )
             except asyncio.TimeoutError:
@@ -999,10 +1053,18 @@ class ASRHandler:
                     speech_frame_count = 0
                 continue
 
-            samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
-            rms = float(np.sqrt(np.mean(samples ** 2)))
+            chunk, is_speech_tag = _unpack_audio_item(item)
+            if not chunk:
+                continue
 
-            if rms > SILENCE_RMS_THRESHOLD:
+            samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
+            if is_speech_tag is None:
+                rms = float(np.sqrt(np.mean(samples ** 2)))
+                is_speech = rms > SILENCE_RMS_THRESHOLD
+            else:
+                is_speech = is_speech_tag
+
+            if is_speech:
                 speech_started = True
                 silence_frames = 0
                 speech_frame_count += 1

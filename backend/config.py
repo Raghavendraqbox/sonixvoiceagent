@@ -19,39 +19,56 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
+# Sarvam Bulbul v3 female speaker catalogue.
+#
+# This list is taken directly from the Sarvam API error response (and confirmed
+# in the public Bulbul docs) — these are the 14 female voices that the v3 model
+# accepts. Names outside this list (e.g. "anushka", "manisha", "vidya", "arya")
+# return HTTP 400 from /text-to-speech and must NOT be exposed in the UI.
+#
+# Keep this tuple synced with tts.py::BULBUL_V3_FEMALE_SPEAKERS.
 SARVAM_FEMALE_SPEAKERS: Tuple[str, ...] = (
-    "anushka",
-    "manisha",
-    "vidya",
-    "arya",
-    "ritu",
     "priya",
+    "ritu",
     "neha",
     "pooja",
-    "simra",
+    "simran",
     "kavya",
     "ishita",
     "shreya",
     "roopa",
     "tanya",
-    "sunny",
+    "shruti",
     "suhani",
     "kavitha",
-    "rupal",
+    "rupali",
 )
 
 
+# Per-emotion synthesis presets for Sarvam Bulbul v3.
+#
+# Bulbul v3 exposes expressiveness only through `temperature`, so to make the
+# eight presets audibly distinct we widen the temperature spread (0.20 → 1.25)
+# and couple a small `pace_offset` (-0.10 → +0.15) into each emotion. The
+# offset is added to the user-selected speed slider value at synthesis time,
+# clamped to the [0.5, 2.0] range Sarvam accepts.
+#
+# Adjust here only — `SARVAM_EMOTION_TEMPERATURES` below is derived from this
+# table and kept as a backwards-compatible alias for legacy callers.
+SARVAM_EMOTION_PRESETS: Dict[str, Dict[str, float]] = {
+    "neutral":    {"temperature": 0.55, "pace_offset":  0.00},
+    "calm":       {"temperature": 0.20, "pace_offset": -0.10},
+    "warm":       {"temperature": 0.75, "pace_offset":  0.00},
+    "empathetic": {"temperature": 0.45, "pace_offset": -0.05},
+    "happy":      {"temperature": 0.95, "pace_offset":  0.05},
+    "cheerful":   {"temperature": 0.85, "pace_offset":  0.10},
+    "excited":    {"temperature": 1.25, "pace_offset":  0.15},
+    "serious":    {"temperature": 0.30, "pace_offset": -0.05},
+}
+
+
 SARVAM_EMOTION_TEMPERATURES: Dict[str, float] = {
-    # Bulbul v3 exposes expressiveness through temperature rather than a
-    # separate emotion field. Keep presets conservative to avoid artifacts.
-    "neutral": 0.60,
-    "calm": 0.35,
-    "warm": 0.70,
-    "empathetic": 0.70,
-    "happy": 0.85,
-    "cheerful": 0.85,
-    "excited": 1.00,
-    "serious": 0.45,
+    name: preset["temperature"] for name, preset in SARVAM_EMOTION_PRESETS.items()
 }
 
 
@@ -87,11 +104,15 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "mms_tts_sample_rate": 16_000,
 
         # TTS — Sarvam AI (https://sarvam.ai)
-        # Female speakers: anushka, manisha, vidya, arya, ritu, priya, neha, pooja, simra, kavya,
-        #                  ishita, shreya, roopa, tanya, sunny, suhani, kavitha, rupal
-        # Male speakers:   abhilash, karun, hitesh, aditya, rahul, rohan, amit, dev, ratan, varun,
-        #                  manan, sumit, kabir, aayan, shubh, ashutosh, advait, anand, tarun, mani,
-        #                  gokul, vijay, mohit, rehan, soham
+        # Bulbul v3 supported speakers (verified against the public API):
+        #   Female (14): priya, ritu, neha, pooja, simran, kavya, ishita,
+        #                shreya, roopa, tanya, shruti, suhani, kavitha, rupali
+        #   Male   (23): aditya, rahul, rohan, amit, dev, ratan, varun, manan,
+        #                sumit, kabir, aayan, ashutosh, advait, anand, tarun,
+        #                sunny, mani, gokul, vijay, mohit, rehan, soham, shubh
+        # Older Bulbul v1/v2 supported a different list, but v3 strictly
+        # rejects unknown speakers — see tts.py for the runtime whitelist.
+        # Defaults pick the highest-quality voices per Sarvam's CER ratings.
         "sarvam_speaker":        os.getenv("SARVAM_SPEAKER_TELUGU",        "priya"),
         "sarvam_speaker_male":   os.getenv("SARVAM_SPEAKER_TELUGU_MALE",   "aditya"),
         "sarvam_language_code":  "te-IN",
@@ -231,7 +252,8 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "mms_tts_sample_rate": 16_000,
 
         # TTS — Sarvam AI (https://sarvam.ai — best for Indian languages including Kannada)
-        # Same speaker pool as Telugu; bulbul:v3 supports kn-IN
+        # Bulbul v3 supports kn-IN with the same speaker catalogue as Telugu —
+        # see the Telugu block above for the full Female (14) / Male (23) list.
         "sarvam_speaker":        os.getenv("SARVAM_SPEAKER_KANNADA",        "priya"),
         "sarvam_speaker_male":   os.getenv("SARVAM_SPEAKER_KANNADA_MALE",   "aditya"),
         "sarvam_language_code":  "kn-IN",
@@ -649,8 +671,21 @@ class AudioConfig:
     input_channels: int = 1
     input_bit_depth: int = 16
 
-    # VAD: RMS energy threshold for speech vs. silence
+    # VAD: RMS energy threshold for speech vs. silence (used by the RMS
+    # fallback gate, and as the cheap pre-filter inside Silero VAD).
     vad_rms_threshold: float = float(os.getenv("VAD_RMS_THRESHOLD", "0.01"))
+
+    # Silero VAD — neural speech detector that filters out background TV /
+    # chatter / fans before the audio reaches a cloud STT API. Requires the
+    # silero-vad PyPI package. Disable to revert to the pure RMS gate.
+    use_silero_vad: bool = _env_bool("USE_SILERO_VAD", True)
+    silero_vad_threshold: float = float(os.getenv("SILERO_VAD_THRESHOLD", "0.6"))
+    # Minimum sustained speech (in 100 ms frames) before STT engines are
+    # allowed to commit an utterance. Suppresses very short blips that VAD
+    # occasionally lets through (door bumps, brief coughs, etc.).
+    min_speech_frames_before_stt: int = int(
+        os.getenv("MIN_SPEECH_FRAMES_BEFORE_STT", "2")
+    )
 
     # TTS output: resampled to 24kHz for browser playback
     # MUST match PLAYBACK_SAMPLE_RATE in frontend/index.html
@@ -715,8 +750,14 @@ class TTSConfig:
     # ---------------------------------------------------------------------------
     # Sarvam AI  (https://sarvam.ai — best for Indian languages including Telugu)
     sarvam_api_key:     str   = field(default_factory=lambda: os.getenv("SARVAM_API_KEY", ""))
-    # Speech pace: 0.5 (slow) → 1.0 (normal) → 2.0 (fast). Default 1.0.
+    # Speech pace: Sarvam accepts 0.5 (slow) → 1.0 (normal) → 2.0 (fast).
+    # Defaults below back the slider exposed via /client-config — keep them
+    # within Sarvam's API limits (0.5–2.0). Per-session value comes from the
+    # ?sarvam_pace= query param and falls back to `sarvam_pace` here.
     sarvam_pace:        float = float(os.getenv("SARVAM_PACE", "1.0"))
+    sarvam_pace_min:    float = float(os.getenv("SARVAM_PACE_MIN", "0.7"))
+    sarvam_pace_max:    float = float(os.getenv("SARVAM_PACE_MAX", "1.4"))
+    sarvam_pace_step:   float = float(os.getenv("SARVAM_PACE_STEP", "0.05"))
     # Emotion preset for Bulbul v3. Maps to Sarvam's supported temperature control.
     sarvam_emotion:     str   = field(default_factory=lambda: os.getenv("SARVAM_EMOTION", "neutral"))
     # Optional direct Bulbul v3 temperature override. Range is clamped in tts.py.

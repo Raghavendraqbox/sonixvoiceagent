@@ -19,11 +19,19 @@ from rag import RAGRetriever
 from asr import ASRHandler, TranscriptResult
 from tts import VoiceTTSHandler, TTSOrchestrator, schedule_tts_warmup
 from llm import VoiceLLMClient, create_llm_client
+from vad import make_session_vad
 
 logger = logging.getLogger(__name__)
 
 AudioSendCallback = Callable[[bytes], Awaitable[None]]
 JsonSendCallback  = Callable[[dict], Awaitable[None]]
+
+
+# Output PCM format used by every TTS engine in tts.py:
+# 24 kHz · 16-bit signed · mono → 48 000 bytes per second of playback.
+# Dividing the cumulative bytes-sent counter by this constant gives the
+# real-time duration of audio queued on the client.
+_TTS_BYTES_PER_SEC = 48_000
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +62,9 @@ class Session:
     bot_bargein_speech_frames: int = field(default=0, init=False)
     user_speaking_event: asyncio.Event = field(default_factory=asyncio.Event)
     input_silence_frames: int = field(default=0, init=False)
+    # Per-session VAD instance (Silero or RMS fallback). Stateful — never share
+    # across sessions. Lazily attached by SessionManager.create_session().
+    vad: object = field(default=None, init=False)
 
     def cancel_tts(self) -> None:
         """Signal TTS to stop immediately."""
@@ -186,6 +197,7 @@ class SessionManager:
         tts_engine: str = "auto",
         sarvam_speaker: str = "",
         sarvam_emotion: str = "",
+        sarvam_pace: float = 0.0,
         stt_engine: str = "auto",
         llm_backend: str = "ollama",
     ) -> Session:
@@ -222,6 +234,10 @@ class SessionManager:
             business=business,
         )
 
+        # Per-session VAD — used both for barge-in detection in main.py and
+        # utterance segmentation in asr.py via the speech-tagged audio queue.
+        session.vad = make_session_vad()
+
         # Wire ASR
         session.asr_handler = ASRHandler(
             session_id=session_id,
@@ -242,6 +258,7 @@ class SessionManager:
             tts_engine=tts_engine,
             sarvam_speaker=sarvam_speaker,
             sarvam_emotion=sarvam_emotion,
+            sarvam_pace=sarvam_pace,
         )
         session.tts_orchestrator = TTSOrchestrator(
             session_id=session_id,
@@ -271,7 +288,8 @@ class SessionManager:
 
         self._sessions[session_id] = session
         logger.info(
-            "Session created [%s / %s | %s] stt=%s tts=%s sarvam_speaker=%s sarvam_emotion=%s",
+            "Session created [%s / %s | %s] stt=%s tts=%s sarvam_speaker=%s "
+            "sarvam_emotion=%s sarvam_pace=%s vad=%s",
             lang_cfg["display_name"],
             lang_cfg["display_name_native"],
             business_cfg["display_name"],
@@ -279,6 +297,9 @@ class SessionManager:
             tts_engine,
             sarvam_speaker or "default",
             sarvam_emotion or config.tts.sarvam_emotion,
+            f"{sarvam_pace:.2f}" if sarvam_pace and sarvam_pace > 0
+            else f"{config.tts.sarvam_pace:.2f}",
+            getattr(session.vad, "kind", "rms"),
             extra={"session_id": session_id},
         )
         return session
@@ -419,17 +440,31 @@ class SessionManager:
             await asyncio.wait_for(orch_task, timeout=30.0)
         except asyncio.TimeoutError:
             orch_task.cancel()
-        session.bot_audio_active = False
+        # IMPORTANT: do NOT clear bot_audio_active yet. The orch task ends
+        # the moment the last PCM chunk is flushed to the WebSocket, but the
+        # client's speakers keep playing for the full audio duration.
+        # main.py's echo guard (is_speech_for_stt = is_speech_raw AND NOT
+        # bot_audio_active) relies on this flag to suppress mic echo while
+        # the bot is audibly playing. We send tts_end now (UX signal) but
+        # keep the flag asserted until playback truly ends below.
         await send_json_cb({"type": "tts_end"})
         session.memory.add_bot_turn(text)
 
-        # Wait briefly for ASR to transcribe any microphone echo from TTS playback,
-        # then drain it. 400ms is enough for Sarvam STT round-trip without
-        # blocking the loop for the full playback duration.
-        await asyncio.sleep(0.4)
+        # Estimated client-side playback duration (24 kHz mono int16 = 48 000
+        # bytes/sec). Add a small tail buffer to cover network jitter and the
+        # browser's small playback queue. cancel_tts() always clears
+        # bot_audio_active early if the user genuinely barges in, so this
+        # sleep never blocks a real user interruption.
+        _playback_secs = max(
+            0.4,
+            session.tts_handler.last_pcm_bytes_sent / _TTS_BYTES_PER_SEC + 0.3,
+        )
+        await asyncio.sleep(_playback_secs)
+        session.bot_audio_active = False
 
-        # Drain any transcripts that arrived while the bot was speaking —
-        # these are almost always microphone echo of the TTS output itself.
+        # Final safety net — drop any transcripts that slipped through despite
+        # the echo guard (e.g. the very first frames of playback before the
+        # flag was asserted).
         self._drain_echo_transcripts(session)
 
     # ------------------------------------------------------------------
@@ -455,9 +490,6 @@ class SessionManager:
             business_cfg["display_name"],
             extra={"session_id": session.session_id},
         )
-
-        # 24 kHz · 16-bit · mono — used to convert byte count → playback seconds
-        _TTS_BYTES_PER_SEC = 48_000
 
         # Play greeting immediately at session start — before waiting for user input.
         # This ensures every user utterance always gets an LLM response.
@@ -725,7 +757,11 @@ class SessionManager:
                         extra={"session_id": session.session_id},
                     )
 
-            session.bot_audio_active = False
+            # IMPORTANT: do NOT clear bot_audio_active yet — see the matching
+            # comment in _play_hardcoded(). The flag must stay asserted until
+            # the client-side playback finishes so main.py's echo guard
+            # suppresses mic echo for the entire audible window. cancel_tts()
+            # clears it early on a real barge-in.
             await send_json_cb({"type": "tts_end"})
             logger.info(
                 "Turn complete [%s]: %s",
@@ -734,9 +770,9 @@ class SessionManager:
                 extra={"session_id": session.session_id},
             )
 
-            # Set silence timeout = 10s + estimated playback duration of this turn.
-            # This prevents the reprompt from firing while the bot audio is still
-            # playing on the client (bytes sent ÷ 48000 = playback seconds).
+            # Estimated playback duration of this turn (bytes ÷ 48 000).
+            # Used both for the silence-reprompt timer and for keeping
+            # bot_audio_active=True until the audio actually finishes.
             _turn_play_secs = max(
                 0.0,
                 (session.tts_handler.last_pcm_bytes_sent - bytes_before_turn) / _TTS_BYTES_PER_SEC,
@@ -744,9 +780,10 @@ class SessionManager:
             _silence_reprompt_count = 0
             _silence_timeout = 10.0 + _turn_play_secs
 
-            # Drain transcripts that accumulated while the bot was speaking.
-            # Prevents TTS audio echo from triggering a false barge-in on the
-            # next loop iteration.
+            # Hold the echo guard until playback truly ends, then release the
+            # flag and drain any transcripts that slipped through.
+            await asyncio.sleep(max(0.4, _turn_play_secs + 0.3))
+            session.bot_audio_active = False
             self._drain_echo_transcripts(session)
 
         logger.info("LLM/TTS loop exiting", extra={"session_id": session.session_id})

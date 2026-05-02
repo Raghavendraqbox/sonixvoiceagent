@@ -249,6 +249,22 @@
     }
     .selector-card select:focus  { border-color: var(--accent); }
     .selector-card select:disabled { opacity: 0.5; cursor: not-allowed; }
+    .selector-card input[type="range"] {
+      flex: 1;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .selector-card input[type="range"]:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .selector-card .slider-readout {
+      min-width: 44px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
     .lang-native {
       font-size: 1rem;
       min-width: 32px;
@@ -420,23 +436,19 @@
         <label for="sarvam-speaker-select">Sarvam Female Voice</label>
         <select id="sarvam-speaker-select">
           <option value="priya" selected>Priya</option>
-          <option value="anushka">Anushka</option>
-          <option value="manisha">Manisha</option>
-          <option value="vidya">Vidya</option>
-          <option value="arya">Arya</option>
           <option value="ritu">Ritu</option>
           <option value="neha">Neha</option>
           <option value="pooja">Pooja</option>
-          <option value="simra">Simra</option>
+          <option value="simran">Simran</option>
           <option value="kavya">Kavya</option>
           <option value="ishita">Ishita</option>
           <option value="shreya">Shreya</option>
           <option value="roopa">Roopa</option>
           <option value="tanya">Tanya</option>
-          <option value="sunny">Sunny</option>
+          <option value="shruti">Shruti</option>
           <option value="suhani">Suhani</option>
           <option value="kavitha">Kavitha</option>
-          <option value="rupal">Rupal</option>
+          <option value="rupali">Rupali</option>
         </select>
       </div>
 
@@ -484,6 +496,18 @@
         </select>
       </div>
 
+      <!-- Sarvam speech-rate slider — visible only when TTS is Sarvam -->
+      <div class="selector-card" id="sarvam-pace-selector" style="display: none;">
+        <label for="sarvam-pace-input">Speed</label>
+        <input
+          type="range"
+          id="sarvam-pace-input"
+          min="0.7" max="1.4" step="0.05" value="1.0"
+          oninput="onSarvamPaceChange(this.value)"
+        />
+        <span class="slider-readout" id="sarvam-pace-readout">1.00x</span>
+      </div>
+
       <!-- LLM Backend selector — locked once session starts -->
       <div class="selector-card">
         <label for="llm-select">LLM</label>
@@ -522,7 +546,9 @@
 // ---------------------------------------------------------------------------
 const WS_BASE           = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
 const SEND_INTERVAL_MS  = 100;
-const VAD_THRESHOLD        = 0.024;  // balances barge-in sensitivity with echo rejection
+const VAD_THRESHOLD_BASE   = 0.024;  // floor for the client-side mute layer
+const VAD_THRESHOLD_MARGIN = 0.012;  // added on top of the calibrated noise floor
+let   VAD_THRESHOLD        = VAD_THRESHOLD_BASE;  // re-tuned per session via ambient calibration
 const VAD_HOLD_FRAMES      = 3;      // frames to confirm user started speaking (3 × 100ms = 300ms)
 const VAD_INTERRUPT_FRAMES = 2;      // fast barge-in while bot speaks (2 × 100ms = 200ms)
 const TTS_GRACE_FRAMES     = 1;      // short echo guard; keeps full-duplex interruption responsive
@@ -557,14 +583,24 @@ const BUSINESS_INFO = {
   },
 };
 
+// Sarvam Bulbul v3 female speaker catalogue (14 voices). Server-side rejects
+// any speaker outside this list with HTTP 400, so we keep the dropdown
+// strictly aligned with the actual API. The /client-config endpoint can
+// override this at runtime if Sarvam adds more voices later.
 const DEFAULT_SARVAM_FEMALE_SPEAKERS = [
-  "priya", "anushka", "manisha", "vidya", "arya", "ritu", "neha", "pooja",
-  "simra", "kavya", "ishita", "shreya", "roopa", "tanya", "sunny",
-  "suhani", "kavitha", "rupal",
+  "priya", "ritu", "neha", "pooja", "simran", "kavya",
+  "ishita", "shreya", "roopa", "tanya", "shruti", "suhani",
+  "kavitha", "rupali",
 ];
 const DEFAULT_SARVAM_EMOTIONS = [
   "neutral", "calm", "warm", "empathetic", "happy", "cheerful", "excited", "serious",
 ];
+
+// Sarvam pace slider defaults — overridden by /client-config at startup.
+const DEFAULT_SARVAM_PACE     = 1.0;
+const DEFAULT_SARVAM_PACE_MIN = 0.7;
+const DEFAULT_SARVAM_PACE_MAX = 1.4;
+const DEFAULT_SARVAM_PACE_STEP = 0.05;
 
 // ---------------------------------------------------------------------------
 // State
@@ -573,6 +609,10 @@ let selectedLanguage   = "telugu";
 let selectedVoice      = "male";
 let selectedSarvamSpeaker = "priya";
 let selectedSarvamEmotion = "neutral";
+let selectedSarvamPace = DEFAULT_SARVAM_PACE;
+let sarvamPaceMin      = DEFAULT_SARVAM_PACE_MIN;
+let sarvamPaceMax      = DEFAULT_SARVAM_PACE_MAX;
+let sarvamPaceStep     = DEFAULT_SARVAM_PACE_STEP;
 let selectedSTTEngine  = "azure";
 let selectedTTSEngine  = "sarvam";
 let selectedLLMBackend = "ollama";
@@ -637,6 +677,13 @@ async function loadClientConfig() {
       ? sarvam.emotions
       : DEFAULT_SARVAM_EMOTIONS;
     populateSarvamEmotionOptions(emotions, sarvam.default_emotion);
+    applySarvamPaceBounds(
+      parseFiniteNumber(sarvam.min_pace, DEFAULT_SARVAM_PACE_MIN, 0.5, 2.0),
+      parseFiniteNumber(sarvam.max_pace, DEFAULT_SARVAM_PACE_MAX, 0.5, 2.0),
+      parseFiniteNumber(sarvam.pace_step, DEFAULT_SARVAM_PACE_STEP, 0.01, 0.5),
+      parseFiniteNumber(sarvam.default_pace, DEFAULT_SARVAM_PACE, 0.5, 2.0),
+    );
+    updateSarvamPaceVisibility();
   } catch (err) {
     console.warn("Using default client config:", err);
   } finally {
@@ -670,6 +717,9 @@ const voiceSelect       = document.getElementById("voice-select");
 const sarvamSpeakerSelector = document.getElementById("sarvam-speaker-selector");
 const sarvamSpeakerSelect   = document.getElementById("sarvam-speaker-select");
 const sarvamEmotionSelect   = document.getElementById("sarvam-emotion-select");
+const sarvamPaceSelector    = document.getElementById("sarvam-pace-selector");
+const sarvamPaceInput       = document.getElementById("sarvam-pace-input");
+const sarvamPaceReadout     = document.getElementById("sarvam-pace-readout");
 const sttSelect         = document.getElementById("stt-select");
 const ttsSelect         = document.getElementById("tts-select");
 const llmSelect         = document.getElementById("llm-select");
@@ -712,10 +762,19 @@ function onVoiceChange(voice) {
 function onTTSEngineChange(engine) {
   selectedTTSEngine = engine;
   updateSarvamSpeakerVisibility();
+  updateSarvamPaceVisibility();
 }
 
 function onSarvamEmotionChange(emotion) {
   selectedSarvamEmotion = emotion;
+}
+
+function onSarvamPaceChange(value) {
+  const num = Number(value);
+  selectedSarvamPace = Number.isFinite(num) ? num : DEFAULT_SARVAM_PACE;
+  if (sarvamPaceReadout) {
+    sarvamPaceReadout.textContent = `${selectedSarvamPace.toFixed(2)}x`;
+  }
 }
 
 function populateSarvamSpeakerOptions(speakers) {
@@ -765,6 +824,35 @@ function updateSarvamSpeakerVisibility() {
   const show = voiceSelect.value === "female" && ttsSelect.value === "sarvam";
   sarvamSpeakerSelector.style.display = show ? "flex" : "none";
   sarvamSpeakerSelect.disabled = sessionActive || !show;
+}
+
+function updateSarvamPaceVisibility() {
+  if (!sarvamPaceSelector || !sarvamPaceInput) return;
+  const show = ttsSelect.value === "sarvam";
+  sarvamPaceSelector.style.display = show ? "flex" : "none";
+  sarvamPaceInput.disabled = sessionActive || !show;
+}
+
+function applySarvamPaceBounds(min, max, step, defaultValue) {
+  if (!sarvamPaceInput) return;
+  const safeMin = Number.isFinite(min) ? Math.max(0.5, Math.min(2.0, min)) : DEFAULT_SARVAM_PACE_MIN;
+  const safeMax = Number.isFinite(max) ? Math.max(safeMin, Math.min(2.0, max)) : DEFAULT_SARVAM_PACE_MAX;
+  const safeStep = Number.isFinite(step) && step > 0 ? step : DEFAULT_SARVAM_PACE_STEP;
+  const safeDefault = Number.isFinite(defaultValue)
+    ? Math.max(safeMin, Math.min(safeMax, defaultValue))
+    : DEFAULT_SARVAM_PACE;
+
+  sarvamPaceMin = safeMin;
+  sarvamPaceMax = safeMax;
+  sarvamPaceStep = safeStep;
+  sarvamPaceInput.min = String(safeMin);
+  sarvamPaceInput.max = String(safeMax);
+  sarvamPaceInput.step = String(safeStep);
+  sarvamPaceInput.value = String(safeDefault);
+  selectedSarvamPace = safeDefault;
+  if (sarvamPaceReadout) {
+    sarvamPaceReadout.textContent = `${safeDefault.toFixed(2)}x`;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -818,6 +906,9 @@ async function startSession() {
   selectedLLMBackend = llmSelect.value;
   selectedSarvamSpeaker = sarvamSpeakerSelect.value;
   selectedSarvamEmotion = sarvamEmotionSelect.value;
+  if (sarvamPaceInput) {
+    onSarvamPaceChange(sarvamPaceInput.value);
+  }
 
   setStatus("Requesting microphone permission…");
   btnStart.disabled = true;
@@ -826,6 +917,7 @@ async function startSession() {
   voiceSelect.disabled = true;
   sarvamSpeakerSelect.disabled = true;
   sarvamEmotionSelect.disabled = true;
+  if (sarvamPaceInput) sarvamPaceInput.disabled = true;
   ttsSelect.disabled = true;
   llmSelect.disabled = true;
 
@@ -847,6 +939,7 @@ async function startSession() {
     voiceSelect.disabled = false;
     updateSarvamSpeakerVisibility();
     sarvamEmotionSelect.disabled = false;
+    updateSarvamPaceVisibility();
     ttsSelect.disabled = false;
     llmSelect.disabled = false;
     return;
@@ -857,6 +950,17 @@ async function startSession() {
     sampleRate: 16000,
     latencyHint: "interactive",
   });
+
+  // Sample ~500 ms of ambient audio to lift the client-side VAD threshold
+  // above the room's actual noise floor. The server's Silero VAD also gates
+  // STT, but tightening the client cuts barge-in false-positives on TVs and
+  // chatter, so the user's own speech still wins the duplex race.
+  try {
+    await calibrateAmbientNoise(mediaStream);
+  } catch (calibErr) {
+    console.warn("Ambient noise calibration skipped:", calibErr);
+    VAD_THRESHOLD = VAD_THRESHOLD_BASE;
+  }
 
   // Playback context — 24kHz for TTS
   ttsAudioCtx = new (window.AudioContext || window.webkitAudioContext)({
@@ -889,6 +993,7 @@ function stopSession() {
   voiceSelect.disabled = false;
   updateSarvamSpeakerVisibility();
   sarvamEmotionSelect.disabled = false;
+  updateSarvamPaceVisibility();
   ttsSelect.disabled = false;
   llmSelect.disabled = false;
   finalizeBotBubble();
@@ -1146,6 +1251,50 @@ function computeRMS(arr) {
   return Math.sqrt(s / arr.length);
 }
 
+// Records ~500ms of ambient audio from the live mic stream and lifts
+// VAD_THRESHOLD above the measured noise floor (with a fixed margin), so
+// rooms with constant low-level chatter / fans don't trigger barge-in on
+// every frame. We sample short windows and use the median to ignore brief
+// spikes (a cough, the user clearing their throat etc.) during calibration.
+async function calibrateAmbientNoise(stream) {
+  if (!stream || !window.AudioContext) return;
+  const calibCtx = new (window.AudioContext || window.webkitAudioContext)({
+    sampleRate: 16000,
+    latencyHint: "interactive",
+  });
+  try {
+    const source = calibCtx.createMediaStreamSource(stream);
+    const analyser = calibCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+
+    const buffer = new Float32Array(analyser.fftSize);
+    const samples = [];
+    const SAMPLE_INTERVAL_MS = 50;
+    const SAMPLE_COUNT = 10;  // ~500ms total
+
+    for (let i = 0; i < SAMPLE_COUNT; i++) {
+      analyser.getFloatTimeDomainData(buffer);
+      samples.push(computeRMS(buffer));
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise(r => setTimeout(r, SAMPLE_INTERVAL_MS));
+    }
+
+    samples.sort((a, b) => a - b);
+    const median = samples[Math.floor(samples.length / 2)] || 0;
+    const newThreshold = Math.max(VAD_THRESHOLD_BASE, median + VAD_THRESHOLD_MARGIN);
+    VAD_THRESHOLD = newThreshold;
+    console.info(
+      `Ambient calibration: noise_floor=${median.toFixed(4)} → VAD_THRESHOLD=${newThreshold.toFixed(4)}`,
+    );
+
+    try { source.disconnect(); } catch (_) {}
+    try { analyser.disconnect(); } catch (_) {}
+  } finally {
+    try { await calibCtx.close(); } catch (_) {}
+  }
+}
+
 function updateEnergyMeter(rms) {
   const pct = Math.min(100, rms * 1000);
   energyBar.style.width = pct + "%";
@@ -1203,13 +1352,22 @@ function connectWebSocket() {
   selectedVoice = voiceSelect.value;
   selectedSarvamSpeaker = selectedVoice === "female" ? sarvamSpeakerSelect.value : "";
   selectedSarvamEmotion = sarvamEmotionSelect.value;
+  if (sarvamPaceInput) {
+    const paceNum = Number(sarvamPaceInput.value);
+    if (Number.isFinite(paceNum)) selectedSarvamPace = paceNum;
+  }
   // Always reconnect with the language that was active when the session
   // started (sessionLanguage), not the current dropdown value — prevents
   // a language-switch + reconnect from spawning a second session in a
   // different language and playing two voices simultaneously.
   const lang = sessionLanguage;
   const business = sessionBusiness;
-  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&business=${encodeURIComponent(business)}&voice=${encodeURIComponent(selectedVoice)}&sarvam_speaker=${encodeURIComponent(selectedSarvamSpeaker)}&sarvam_emotion=${encodeURIComponent(selectedSarvamEmotion)}&stt_engine=${encodeURIComponent(selectedSTTEngine)}&tts_engine=${encodeURIComponent(selectedTTSEngine)}&llm_backend=${encodeURIComponent(selectedLLMBackend)}`;
+  // Only forward sarvam_pace when Sarvam is the active TTS engine — keeps the
+  // query string short and avoids confusing engines that don't accept it.
+  const paceParam = selectedTTSEngine === "sarvam"
+    ? `&sarvam_pace=${encodeURIComponent(selectedSarvamPace.toFixed(2))}`
+    : "";
+  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&business=${encodeURIComponent(business)}&voice=${encodeURIComponent(selectedVoice)}&sarvam_speaker=${encodeURIComponent(selectedSarvamSpeaker)}&sarvam_emotion=${encodeURIComponent(selectedSarvamEmotion)}${paceParam}&stt_engine=${encodeURIComponent(selectedSTTEngine)}&tts_engine=${encodeURIComponent(selectedTTSEngine)}&llm_backend=${encodeURIComponent(selectedLLMBackend)}`;
   setStatus("Connecting to server…");
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";

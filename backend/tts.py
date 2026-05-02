@@ -58,11 +58,33 @@ import numpy as np
 import httpx
 
 from config import (
+    SARVAM_EMOTION_PRESETS,
     SARVAM_EMOTION_TEMPERATURES,
     SARVAM_FEMALE_SPEAKERS,
     config,
     get_language_config,
 )
+
+# Sarvam Bulbul v3 strict speaker whitelist. The lists below are taken from
+# the API's own 400-error response and the public Bulbul v3 docs — anything
+# outside these sets is rejected by /text-to-speech and is remapped to the
+# default v3 speaker for the requested gender at synthesis time.
+BULBUL_V3_FEMALE_SPEAKERS = {
+    "priya", "ritu", "neha", "pooja", "simran", "kavya",
+    "ishita", "shreya", "roopa", "tanya", "shruti", "suhani",
+    "kavitha", "rupali",
+}
+BULBUL_V3_MALE_SPEAKERS = {
+    "shubh", "aditya", "rahul", "rohan", "amit", "dev", "ratan",
+    "varun", "manan", "sumit", "kabir", "aayan", "ashutosh",
+    "advait", "anand", "tarun", "sunny", "mani", "gokul", "vijay",
+    "mohit", "rehan", "soham",
+}
+# "priya" / "aditya" have the lowest CER in Sarvam's published quality
+# rankings, making them the safest defaults when the requested speaker is
+# not v3-compatible.
+_BULBUL_V3_DEFAULT_FEMALE = "priya"
+_BULBUL_V3_DEFAULT_MALE = "aditya"
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +133,7 @@ AudioSendCallback = Callable[[bytes], Awaitable[None]]
 
 def _normalize_sarvam_emotion(emotion: str) -> str:
     normalized = (emotion or "neutral").strip().lower().replace("-", "_")
-    return normalized if normalized in SARVAM_EMOTION_TEMPERATURES else "neutral"
+    return normalized if normalized in SARVAM_EMOTION_PRESETS else "neutral"
 
 
 def _parse_sarvam_temperature(raw: str) -> Optional[float]:
@@ -123,6 +145,15 @@ def _parse_sarvam_temperature(raw: str) -> Optional[float]:
     except ValueError:
         return None
     return min(2.0, max(0.01, value))
+
+
+def _clamp_sarvam_pace(value: float) -> float:
+    """Clamp a pace value to Sarvam's supported [0.5, 2.0] range."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return config.tts.sarvam_pace
+    return max(0.5, min(2.0, v))
 
 # Task-local capture buffer: when set, _stream_pcm appends bytes here instead
 # of sending to the client. Used by synthesize_to_pcm for pipeline pre-synthesis.
@@ -493,6 +524,7 @@ class VoiceTTSHandler:
         tts_engine: str = "auto",
         sarvam_speaker: str = "",
         sarvam_emotion: str = "",
+        sarvam_pace: float = 0.0,
     ) -> None:
         self.session_id    = session_id
         self._send_audio   = send_audio_cb
@@ -508,10 +540,16 @@ class VoiceTTSHandler:
                 requested_emotion,
                 extra={"session_id": session_id},
             )
-        self._sarvam_temperature = SARVAM_EMOTION_TEMPERATURES[self._sarvam_emotion]
+        emotion_preset = SARVAM_EMOTION_PRESETS[self._sarvam_emotion]
+        self._sarvam_temperature = float(emotion_preset["temperature"])
+        self._sarvam_emotion_pace_offset = float(emotion_preset["pace_offset"])
         temperature_override = _parse_sarvam_temperature(config.tts.sarvam_temperature)
         if temperature_override is not None:
             self._sarvam_temperature = temperature_override
+        # Per-session base pace from the frontend slider; falls back to the
+        # SARVAM_PACE env default when the client did not pass one.
+        base_pace = sarvam_pace if sarvam_pace and sarvam_pace > 0 else config.tts.sarvam_pace
+        self._sarvam_base_pace = _clamp_sarvam_pace(base_pace)
         self.last_pcm_bytes_sent: int = 0  # tracks bytes sent in last synthesis
 
         if (
@@ -804,23 +842,39 @@ class VoiceTTSHandler:
 
         if self._voice == "female":
             speaker = self._sarvam_speaker_override or self._lang_cfg.get(
-                "sarvam_speaker", "priya"
+                "sarvam_speaker", _BULBUL_V3_DEFAULT_FEMALE
             )
         else:
-            speaker = self._lang_cfg.get("sarvam_speaker_male", "aditya")
+            speaker = self._lang_cfg.get("sarvam_speaker_male", _BULBUL_V3_DEFAULT_MALE)
         language_code = self._lang_cfg.get("sarvam_language_code", "te-IN")
         model         = self._lang_cfg.get("sarvam_model", "bulbul:v3")
         is_bulbul_v3  = str(model).lower().startswith("bulbul:v3")
         if is_bulbul_v3:
-            compatible_speaker = "priya" if self._voice == "female" else "aditya"
-            if speaker != compatible_speaker:
+            valid_speakers = (
+                BULBUL_V3_FEMALE_SPEAKERS
+                if self._voice == "female"
+                else BULBUL_V3_MALE_SPEAKERS
+            )
+            default_speaker = (
+                _BULBUL_V3_DEFAULT_FEMALE
+                if self._voice == "female"
+                else _BULBUL_V3_DEFAULT_MALE
+            )
+            if speaker not in valid_speakers:
                 logger.info(
-                    "Sarvam AI: using bulbul:v3-compatible speaker '%s' instead of '%s'",
-                    compatible_speaker,
+                    "Sarvam AI: speaker '%s' is not in the bulbul:v3 whitelist — "
+                    "using '%s' instead",
                     speaker,
+                    default_speaker,
                     extra={"session_id": self.session_id},
                 )
-                speaker = compatible_speaker
+                speaker = default_speaker
+
+        # Per-emotion pace offset is added to the user-selected slider value
+        # so calm vs excited differ in both temperature and speed.
+        effective_pace = _clamp_sarvam_pace(
+            self._sarvam_base_pace + self._sarvam_emotion_pace_offset
+        )
 
         url = "https://api.sarvam.ai/text-to-speech"
         headers = {
@@ -832,7 +886,7 @@ class VoiceTTSHandler:
             "inputs":               [text],
             "target_language_code": language_code,
             "speaker":              speaker,
-            "pace":                 config.tts.sarvam_pace,
+            "pace":                 effective_pace,
             "speech_sample_rate":   22050,
             "model":                model,
         }
@@ -851,7 +905,11 @@ class VoiceTTSHandler:
                 and is_bulbul_v3
                 and "not compatible with model bulbul:v3" in resp.text
             ):
-                fallback_speaker = "priya" if self._voice == "female" else "aditya"
+                fallback_speaker = (
+                    _BULBUL_V3_DEFAULT_FEMALE
+                    if self._voice == "female"
+                    else _BULBUL_V3_DEFAULT_MALE
+                )
                 if payload.get("speaker") != fallback_speaker:
                     logger.warning(
                         "Sarvam AI: speaker '%s' incompatible with bulbul:v3, retrying with '%s'",
@@ -914,12 +972,16 @@ class VoiceTTSHandler:
                 decoded_pcm=pcm_bytes,
             )
             logger.info(
-                "Sarvam AI TTS success: speaker=%s language=%s model=%s emotion=%s temperature=%.2f (%d bytes)",
+                "Sarvam AI TTS success: speaker=%s language=%s model=%s emotion=%s "
+                "temperature=%.2f pace=%.2f (base=%.2f + offset=%+.2f) (%d bytes)",
                 effective_speaker,
                 language_code,
                 model,
                 self._sarvam_emotion,
                 self._sarvam_temperature,
+                effective_pace,
+                self._sarvam_base_pace,
+                self._sarvam_emotion_pace_offset,
                 len(wav_bytes),
                 extra={"session_id": self.session_id},
             )

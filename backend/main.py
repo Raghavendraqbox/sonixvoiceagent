@@ -208,6 +208,10 @@ async def client_config():
             "female_speakers": list(SARVAM_FEMALE_SPEAKERS),
             "emotions": list(SARVAM_EMOTION_TEMPERATURES.keys()),
             "default_emotion": config.tts.sarvam_emotion,
+            "default_pace": config.tts.sarvam_pace,
+            "min_pace": config.tts.sarvam_pace_min,
+            "max_pace": config.tts.sarvam_pace_max,
+            "pace_step": config.tts.sarvam_pace_step,
         },
         "businesses": {
             business: {
@@ -232,6 +236,7 @@ async def websocket_endpoint(
     tts_engine: str = "auto",
     sarvam_speaker: str = "",
     sarvam_emotion: str = "",
+    sarvam_pace: float = 0.0,
     stt_engine: str = "",
     llm_backend: str = "",
 ):
@@ -266,6 +271,16 @@ async def websocket_endpoint(
     sarvam_emotion = sarvam_emotion.lower().strip() or config.tts.sarvam_emotion
     if sarvam_emotion not in SARVAM_EMOTION_TEMPERATURES:
         sarvam_emotion = "neutral"
+    # Clamp the optional Sarvam pace slider value to the API's supported range.
+    # 0.0 = "use server default" (preserves the legacy SARVAM_PACE behaviour).
+    try:
+        sarvam_pace = float(sarvam_pace)
+    except (TypeError, ValueError):
+        sarvam_pace = 0.0
+    if sarvam_pace > 0:
+        sarvam_pace = max(0.5, min(2.0, sarvam_pace))
+    else:
+        sarvam_pace = 0.0
     stt_engine = stt_engine.lower().strip() or config.default_stt_engine
     if stt_engine not in ("auto", "sarvam", "soniox", "google", "azure", "amazon", "whisper"):
         stt_engine = "auto"
@@ -275,7 +290,8 @@ async def websocket_endpoint(
 
     await websocket.accept()
     logger.info(
-        "WebSocket connected from %s (language=%s, business=%s, voice=%s, tts=%s, sarvam_speaker=%s, sarvam_emotion=%s, stt=%s, llm=%s)",
+        "WebSocket connected from %s (language=%s, business=%s, voice=%s, tts=%s, "
+        "sarvam_speaker=%s, sarvam_emotion=%s, sarvam_pace=%s, stt=%s, llm=%s)",
         websocket.client,
         language,
         business,
@@ -283,6 +299,7 @@ async def websocket_endpoint(
         tts_engine,
         sarvam_speaker or "default",
         sarvam_emotion,
+        f"{sarvam_pace:.2f}" if sarvam_pace else "default",
         stt_engine,
         llm_backend,
     )
@@ -311,6 +328,7 @@ async def websocket_endpoint(
         tts_engine=tts_engine,
         sarvam_speaker=sarvam_speaker,
         sarvam_emotion=sarvam_emotion,
+        sarvam_pace=sarvam_pace,
         stt_engine=stt_engine,
         llm_backend=llm_backend,
     )
@@ -336,9 +354,32 @@ async def websocket_endpoint(
                         {"type": "error", "message": "PCM chunk has odd byte count"}
                     )
                     continue
-                speech_threshold = config.audio.vad_rms_threshold
-                is_speech = _pcm_rms(pcm_chunk) > speech_threshold
-                if is_speech:
+                # Silero (or RMS-fallback) VAD classifies the chunk as speech /
+                # non-speech BEFORE it reaches barge-in logic or the STT engine.
+                # Background TV / chatter / fan noise gets tagged is_speech=False
+                # so neither the interrupt path nor the STT utterance buffer
+                # picks it up.
+                if session.vad is not None:
+                    is_speech_raw = bool(session.vad.is_speech(pcm_chunk))
+                else:
+                    is_speech_raw = (
+                        _pcm_rms(pcm_chunk) > config.audio.vad_rms_threshold
+                    )
+
+                # Echo guard: while the bot is actively playing TTS, the
+                # microphone almost always picks up the bot's own audio
+                # bleeding through the speakers (browser AEC is imperfect on
+                # laptops/phones). Tagging those frames as is_speech=True
+                # for the STT engine causes it to buffer and transcribe the
+                # bot's greeting back as user input — exactly the "welcome"
+                # loop seen in production logs. We keep the raw VAD verdict
+                # for barge-in detection (separate counter below), but
+                # suppress the STT-facing tag during bot playback. Once the
+                # user genuinely barges in, cancel_tts() clears
+                # bot_audio_active and normal flow resumes.
+                is_speech_for_stt = is_speech_raw and not session.bot_audio_active
+
+                if is_speech_raw:
                     session.user_speaking_event.set()
                     session.input_silence_frames = 0
                     if session.bot_audio_active:
@@ -363,7 +404,10 @@ async def websocket_endpoint(
                         session.user_speaking_event.clear()
                 else:
                     session.bot_bargein_speech_frames = 0
-                await session.audio_queue.put(pcm_chunk)
+                # Push (bytes, is_speech_for_stt) so STT engines can rely on
+                # the gated VAD verdict — they will neither buffer echoed
+                # bot audio nor re-run an energy check.
+                await session.audio_queue.put((pcm_chunk, is_speech_for_stt))
 
             # Text frame — JSON control message
             elif "text" in message and message["text"]:

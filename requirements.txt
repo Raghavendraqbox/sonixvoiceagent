@@ -35,6 +35,16 @@ soniox>=2.0.0
 faster-whisper==1.2.1
 
 # ---------------------------------------------------------------------------
+# VAD — Silero VAD (~1.7 MB ONNX model)
+# Filters background TV / chatter / fans before audio reaches a cloud STT API
+# so the agent only responds to actual user speech. Falls back to a pure RMS
+# energy gate if onnxruntime is unavailable (set USE_SILERO_VAD=false to opt
+# out at runtime). Tune SILERO_VAD_THRESHOLD (0.0–1.0, default 0.6).
+# ---------------------------------------------------------------------------
+silero-vad>=5.1.2
+onnxruntime>=1.17.0
+
+# ---------------------------------------------------------------------------
 # LLM — Ollama (local GPU, open-source, no API key required)
 # Install Ollama: curl -fsSL https://ollama.com/install.sh | sh
 # Pull model:    ollama pull qwen2.5:7b
