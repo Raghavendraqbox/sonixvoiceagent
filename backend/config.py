@@ -41,6 +41,20 @@ SARVAM_FEMALE_SPEAKERS: Tuple[str, ...] = (
 )
 
 
+SARVAM_EMOTION_TEMPERATURES: Dict[str, float] = {
+    # Bulbul v3 exposes expressiveness through temperature rather than a
+    # separate emotion field. Keep presets conservative to avoid artifacts.
+    "neutral": 0.60,
+    "calm": 0.35,
+    "warm": 0.70,
+    "empathetic": 0.70,
+    "happy": 0.85,
+    "cheerful": 0.85,
+    "excited": 1.00,
+    "serious": 0.45,
+}
+
+
 # ---------------------------------------------------------------------------
 # Language-specific configurations
 # ---------------------------------------------------------------------------
@@ -583,6 +597,10 @@ class TTSConfig:
     sarvam_api_key:     str   = field(default_factory=lambda: os.getenv("SARVAM_API_KEY", ""))
     # Speech pace: 0.5 (slow) → 1.0 (normal) → 2.0 (fast). Default 1.0.
     sarvam_pace:        float = float(os.getenv("SARVAM_PACE", "1.0"))
+    # Emotion preset for Bulbul v3. Maps to Sarvam's supported temperature control.
+    sarvam_emotion:     str   = field(default_factory=lambda: os.getenv("SARVAM_EMOTION", "neutral"))
+    # Optional direct Bulbul v3 temperature override. Range is clamped in tts.py.
+    sarvam_temperature: str   = field(default_factory=lambda: os.getenv("SARVAM_TEMPERATURE", ""))
 
     # Google Cloud TTS  (https://cloud.google.com/text-to-speech)
     # Auth uses Application Default Credentials from GOOGLE_APPLICATION_CREDENTIALS.

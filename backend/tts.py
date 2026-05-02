@@ -57,7 +57,12 @@ import numpy as np
 
 import httpx
 
-from config import SARVAM_FEMALE_SPEAKERS, config, get_language_config
+from config import (
+    SARVAM_EMOTION_TEMPERATURES,
+    SARVAM_FEMALE_SPEAKERS,
+    config,
+    get_language_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +107,22 @@ def _get_google_tts_client():
 TTS_RATE = config.tts.sample_rate      # 24 000 Hz — browser playback rate
 
 AudioSendCallback = Callable[[bytes], Awaitable[None]]
+
+
+def _normalize_sarvam_emotion(emotion: str) -> str:
+    normalized = (emotion or "neutral").strip().lower().replace("-", "_")
+    return normalized if normalized in SARVAM_EMOTION_TEMPERATURES else "neutral"
+
+
+def _parse_sarvam_temperature(raw: str) -> Optional[float]:
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    return min(2.0, max(0.01, value))
 
 # Task-local capture buffer: when set, _stream_pcm appends bytes here instead
 # of sending to the client. Used by synthesize_to_pcm for pipeline pre-synthesis.
@@ -471,6 +492,7 @@ class VoiceTTSHandler:
         voice: str = "male",
         tts_engine: str = "auto",
         sarvam_speaker: str = "",
+        sarvam_emotion: str = "",
     ) -> None:
         self.session_id    = session_id
         self._send_audio   = send_audio_cb
@@ -478,6 +500,18 @@ class VoiceTTSHandler:
         self._language     = language.lower()
         self._voice        = voice.lower()
         self._sarvam_speaker_override = sarvam_speaker.strip().lower()
+        requested_emotion = sarvam_emotion or config.tts.sarvam_emotion
+        self._sarvam_emotion = _normalize_sarvam_emotion(requested_emotion)
+        if requested_emotion and self._sarvam_emotion != requested_emotion.strip().lower().replace("-", "_"):
+            logger.warning(
+                "Ignoring unsupported Sarvam emotion '%s'",
+                requested_emotion,
+                extra={"session_id": session_id},
+            )
+        self._sarvam_temperature = SARVAM_EMOTION_TEMPERATURES[self._sarvam_emotion]
+        temperature_override = _parse_sarvam_temperature(config.tts.sarvam_temperature)
+        if temperature_override is not None:
+            self._sarvam_temperature = temperature_override
         self.last_pcm_bytes_sent: int = 0  # tracks bytes sent in last synthesis
 
         if (
@@ -776,6 +810,7 @@ class VoiceTTSHandler:
             speaker = self._lang_cfg.get("sarvam_speaker_male", "abhilash")
         language_code = self._lang_cfg.get("sarvam_language_code", "te-IN")
         model         = self._lang_cfg.get("sarvam_model", "bulbul:v3")
+        is_bulbul_v3  = str(model).lower().startswith("bulbul:v3")
 
         url = "https://api.sarvam.ai/text-to-speech"
         headers = {
@@ -789,11 +824,12 @@ class VoiceTTSHandler:
             "speaker":              speaker,
             "pace":                 config.tts.sarvam_pace,
             "speech_sample_rate":   22050,
-            "enable_preprocessing": True,
             "model":                model,
         }
-        # Bulbul v3 currently rejects pitch/loudness parameters.
-        if not str(model).lower().startswith("bulbul:v3"):
+        if is_bulbul_v3:
+            payload["temperature"] = self._sarvam_temperature
+        else:
+            payload["enable_preprocessing"] = True
             payload["pitch"] = 0
             payload["loudness"] = 1.5
 
@@ -802,7 +838,7 @@ class VoiceTTSHandler:
             resp = await client.post(url, headers=headers, json=payload)
             if (
                 resp.status_code == 400
-                and str(model).lower().startswith("bulbul:v3")
+                and is_bulbul_v3
                 and "not compatible with model bulbul:v3" in resp.text
             ):
                 fallback_speaker = "priya" if self._voice == "female" else "aditya"
@@ -815,6 +851,18 @@ class VoiceTTSHandler:
                     )
                     payload["speaker"] = fallback_speaker
                     resp = await client.post(url, headers=headers, json=payload)
+            if (
+                resp.status_code in (400, 422)
+                and is_bulbul_v3
+                and "temperature" in resp.text.lower()
+                and "temperature" in payload
+            ):
+                logger.warning(
+                    "Sarvam AI: temperature rejected for bulbul:v3, retrying without emotion preset",
+                    extra={"session_id": self.session_id},
+                )
+                payload.pop("temperature", None)
+                resp = await client.post(url, headers=headers, json=payload)
             if resp.status_code == 401:
                 logger.error("Sarvam AI: invalid API key (401)",
                              extra={"session_id": self.session_id})
@@ -847,6 +895,7 @@ class VoiceTTSHandler:
             if pcm_bytes is None:
                 return False
 
+            effective_speaker = payload.get("speaker", speaker)
             _debug_dump_audio_pair(
                 provider="sarvam",
                 session_id=self.session_id,
@@ -855,8 +904,13 @@ class VoiceTTSHandler:
                 decoded_pcm=pcm_bytes,
             )
             logger.info(
-                "Sarvam AI TTS success: speaker=%s language=%s model=%s (%d bytes)",
-                speaker, language_code, model, len(wav_bytes),
+                "Sarvam AI TTS success: speaker=%s language=%s model=%s emotion=%s temperature=%.2f (%d bytes)",
+                effective_speaker,
+                language_code,
+                model,
+                self._sarvam_emotion,
+                self._sarvam_temperature,
+                len(wav_bytes),
                 extra={"session_id": self.session_id},
             )
             return await self._stream_pcm(pcm_bytes)

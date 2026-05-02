@@ -460,6 +460,21 @@
         </select>
       </div>
 
+      <!-- Sarvam Bulbul v3 emotion preset — applied when Sarvam TTS is used -->
+      <div class="selector-card">
+        <label for="sarvam-emotion-select">Emotion</label>
+        <select id="sarvam-emotion-select" onchange="onSarvamEmotionChange(this.value)">
+          <option value="neutral" selected>Neutral</option>
+          <option value="calm">Calm</option>
+          <option value="warm">Warm</option>
+          <option value="empathetic">Empathetic</option>
+          <option value="happy">Happy</option>
+          <option value="cheerful">Cheerful</option>
+          <option value="excited">Excited</option>
+          <option value="serious">Serious</option>
+        </select>
+      </div>
+
       <!-- LLM Backend selector — locked once session starts -->
       <div class="selector-card">
         <label for="llm-select">LLM</label>
@@ -523,6 +538,9 @@ const DEFAULT_SARVAM_FEMALE_SPEAKERS = [
   "simra", "kavya", "ishita", "shreya", "roopa", "tanya", "sunny",
   "suhani", "kavitha", "rupal",
 ];
+const DEFAULT_SARVAM_EMOTIONS = [
+  "neutral", "calm", "warm", "empathetic", "happy", "cheerful", "excited", "serious",
+];
 
 // ---------------------------------------------------------------------------
 // State
@@ -530,6 +548,7 @@ const DEFAULT_SARVAM_FEMALE_SPEAKERS = [
 let selectedLanguage   = "telugu";
 let selectedVoice      = "male";
 let selectedSarvamSpeaker = "anushka";
+let selectedSarvamEmotion = "neutral";
 let selectedSTTEngine  = "auto";
 let selectedTTSEngine  = "auto";
 let selectedLLMBackend = "ollama";
@@ -588,6 +607,10 @@ async function loadClientConfig() {
       ? sarvam.female_speakers
       : DEFAULT_SARVAM_FEMALE_SPEAKERS;
     populateSarvamSpeakerOptions(speakers);
+    const emotions = Array.isArray(sarvam.emotions)
+      ? sarvam.emotions
+      : DEFAULT_SARVAM_EMOTIONS;
+    populateSarvamEmotionOptions(emotions, sarvam.default_emotion);
   } catch (err) {
     console.warn("Using default client config:", err);
   } finally {
@@ -616,6 +639,7 @@ const voiceSelector     = document.getElementById("voice-selector");
 const voiceSelect       = document.getElementById("voice-select");
 const sarvamSpeakerSelector = document.getElementById("sarvam-speaker-selector");
 const sarvamSpeakerSelect   = document.getElementById("sarvam-speaker-select");
+const sarvamEmotionSelect   = document.getElementById("sarvam-emotion-select");
 const sttSelect         = document.getElementById("stt-select");
 const ttsSelect         = document.getElementById("tts-select");
 const llmSelect         = document.getElementById("llm-select");
@@ -644,6 +668,10 @@ function onTTSEngineChange(engine) {
   updateSarvamSpeakerVisibility();
 }
 
+function onSarvamEmotionChange(emotion) {
+  selectedSarvamEmotion = emotion;
+}
+
 function populateSarvamSpeakerOptions(speakers) {
   const cleanSpeakers = speakers
     .map(speaker => String(speaker).trim().toLowerCase())
@@ -664,6 +692,27 @@ function populateSarvamSpeakerOptions(speakers) {
     : uniqueSpeakers[0];
   selectedSarvamSpeaker = sarvamSpeakerSelect.value;
   updateSarvamSpeakerVisibility();
+}
+
+function populateSarvamEmotionOptions(emotions, defaultEmotion) {
+  const cleanEmotions = emotions
+    .map(emotion => String(emotion).trim().toLowerCase())
+    .filter(Boolean);
+  const uniqueEmotions = [...new Set(cleanEmotions)];
+  if (uniqueEmotions.length === 0) return;
+
+  const preferredEmotion = String(defaultEmotion || selectedSarvamEmotion || "neutral").toLowerCase();
+  sarvamEmotionSelect.innerHTML = "";
+  uniqueEmotions.forEach(emotion => {
+    const option = document.createElement("option");
+    option.value = emotion;
+    option.textContent = emotion.charAt(0).toUpperCase() + emotion.slice(1);
+    sarvamEmotionSelect.appendChild(option);
+  });
+  sarvamEmotionSelect.value = uniqueEmotions.includes(preferredEmotion)
+    ? preferredEmotion
+    : uniqueEmotions[0];
+  selectedSarvamEmotion = sarvamEmotionSelect.value;
 }
 
 function updateSarvamSpeakerVisibility() {
@@ -721,12 +770,14 @@ async function startSession() {
   selectedTTSEngine  = ttsSelect.value;
   selectedLLMBackend = llmSelect.value;
   selectedSarvamSpeaker = sarvamSpeakerSelect.value;
+  selectedSarvamEmotion = sarvamEmotionSelect.value;
 
   setStatus("Requesting microphone permission…");
   btnStart.disabled = true;
   langSelect.disabled = true;
   voiceSelect.disabled = true;
   sarvamSpeakerSelect.disabled = true;
+  sarvamEmotionSelect.disabled = true;
   ttsSelect.disabled = true;
   llmSelect.disabled = true;
 
@@ -746,6 +797,7 @@ async function startSession() {
     langSelect.disabled = false;
     voiceSelect.disabled = false;
     updateSarvamSpeakerVisibility();
+    sarvamEmotionSelect.disabled = false;
     ttsSelect.disabled = false;
     llmSelect.disabled = false;
     return;
@@ -784,6 +836,7 @@ function stopSession() {
   langSelect.disabled = false;
   voiceSelect.disabled = false;
   updateSarvamSpeakerVisibility();
+  sarvamEmotionSelect.disabled = false;
   ttsSelect.disabled = false;
   llmSelect.disabled = false;
   finalizeBotBubble();
@@ -1097,12 +1150,13 @@ function checkVAD(rms) {
 function connectWebSocket() {
   selectedVoice = voiceSelect.value;
   selectedSarvamSpeaker = selectedVoice === "female" ? sarvamSpeakerSelect.value : "";
+  selectedSarvamEmotion = sarvamEmotionSelect.value;
   // Always reconnect with the language that was active when the session
   // started (sessionLanguage), not the current dropdown value — prevents
   // a language-switch + reconnect from spawning a second session in a
   // different language and playing two voices simultaneously.
   const lang = sessionLanguage;
-  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&voice=${encodeURIComponent(selectedVoice)}&sarvam_speaker=${encodeURIComponent(selectedSarvamSpeaker)}&stt_engine=${encodeURIComponent(selectedSTTEngine)}&tts_engine=${encodeURIComponent(selectedTTSEngine)}&llm_backend=${encodeURIComponent(selectedLLMBackend)}`;
+  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&voice=${encodeURIComponent(selectedVoice)}&sarvam_speaker=${encodeURIComponent(selectedSarvamSpeaker)}&sarvam_emotion=${encodeURIComponent(selectedSarvamEmotion)}&stt_engine=${encodeURIComponent(selectedSTTEngine)}&tts_engine=${encodeURIComponent(selectedTTSEngine)}&llm_backend=${encodeURIComponent(selectedLLMBackend)}`;
   setStatus("Connecting to server…");
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";

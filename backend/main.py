@@ -49,7 +49,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from config import SARVAM_FEMALE_SPEAKERS, config, SUPPORTED_LANGUAGES
+from config import (
+    SARVAM_EMOTION_TEMPERATURES,
+    SARVAM_FEMALE_SPEAKERS,
+    config,
+    SUPPORTED_LANGUAGES,
+)
 from session_manager import session_manager
 
 # ---------------------------------------------------------------------------
@@ -191,6 +196,8 @@ async def client_config():
         },
         "sarvam": {
             "female_speakers": list(SARVAM_FEMALE_SPEAKERS),
+            "emotions": list(SARVAM_EMOTION_TEMPERATURES.keys()),
+            "default_emotion": config.tts.sarvam_emotion,
         },
     }
 
@@ -206,6 +213,7 @@ async def websocket_endpoint(
     voice: str = "male",
     tts_engine: str = "auto",
     sarvam_speaker: str = "",
+    sarvam_emotion: str = "",
     stt_engine: str = "",
     llm_backend: str = "",
 ):
@@ -216,6 +224,8 @@ async def websocket_endpoint(
       language   — "telugu" or "kannada" (defaults to LANGUAGE env var → "telugu")
       voice      — "male" (default) or "female"
       sarvam_speaker — female Sarvam speaker override, e.g. "anushka"
+      sarvam_emotion — Bulbul v3 emotion preset: neutral | calm | warm | empathetic |
+                       happy | cheerful | excited | serious
       tts_engine — Kannada TTS engine override: auto | elevenlabs | mms | edge |
                    narakeet | micmonster | speakatoo | gtts
                    "auto" uses KANNADA_TTS_ENGINE_PRIORITY from .env
@@ -231,6 +241,9 @@ async def websocket_endpoint(
     sarvam_speaker = sarvam_speaker.lower().strip()
     if sarvam_speaker not in SARVAM_FEMALE_SPEAKERS:
         sarvam_speaker = ""
+    sarvam_emotion = sarvam_emotion.lower().strip() or config.tts.sarvam_emotion
+    if sarvam_emotion not in SARVAM_EMOTION_TEMPERATURES:
+        sarvam_emotion = "neutral"
     stt_engine = stt_engine.lower().strip() or config.default_stt_engine
     if stt_engine not in ("auto", "sarvam", "soniox", "google", "azure", "amazon", "whisper"):
         stt_engine = "auto"
@@ -240,12 +253,13 @@ async def websocket_endpoint(
 
     await websocket.accept()
     logger.info(
-        "WebSocket connected from %s (language=%s, voice=%s, tts=%s, sarvam_speaker=%s, stt=%s, llm=%s)",
+        "WebSocket connected from %s (language=%s, voice=%s, tts=%s, sarvam_speaker=%s, sarvam_emotion=%s, stt=%s, llm=%s)",
         websocket.client,
         language,
         voice,
         tts_engine,
         sarvam_speaker or "default",
+        sarvam_emotion,
         stt_engine,
         llm_backend,
     )
@@ -272,6 +286,7 @@ async def websocket_endpoint(
         voice=voice,
         tts_engine=tts_engine,
         sarvam_speaker=sarvam_speaker,
+        sarvam_emotion=sarvam_emotion,
         stt_engine=stt_engine,
         llm_backend=llm_backend,
     )
