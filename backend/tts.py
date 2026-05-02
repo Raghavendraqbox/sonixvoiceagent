@@ -964,6 +964,16 @@ class VoiceTTSHandler:
                 return False
 
             effective_speaker = payload.get("speaker", speaker)
+            # `temperature` may have been popped by the retry path — log
+            # exactly what the API used so it's obvious when an emotion
+            # preset silently failed and the synthesis fell back to Sarvam's
+            # internal default.
+            applied_temperature = payload.get("temperature")
+            temperature_repr = (
+                f"{applied_temperature:.2f}"
+                if applied_temperature is not None
+                else "default(stripped)"
+            )
             _debug_dump_audio_pair(
                 provider="sarvam",
                 session_id=self.session_id,
@@ -973,12 +983,12 @@ class VoiceTTSHandler:
             )
             logger.info(
                 "Sarvam AI TTS success: speaker=%s language=%s model=%s emotion=%s "
-                "temperature=%.2f pace=%.2f (base=%.2f + offset=%+.2f) (%d bytes)",
+                "temperature=%s pace=%.2f (base=%.2f + offset=%+.2f) (%d bytes)",
                 effective_speaker,
                 language_code,
                 model,
                 self._sarvam_emotion,
-                self._sarvam_temperature,
+                temperature_repr,
                 effective_pace,
                 self._sarvam_base_pace,
                 self._sarvam_emotion_pace_offset,

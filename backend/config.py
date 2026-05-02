@@ -47,23 +47,28 @@ SARVAM_FEMALE_SPEAKERS: Tuple[str, ...] = (
 
 # Per-emotion synthesis presets for Sarvam Bulbul v3.
 #
-# Bulbul v3 exposes expressiveness only through `temperature`, so to make the
-# eight presets audibly distinct we widen the temperature spread (0.20 → 1.25)
-# and couple a small `pace_offset` (-0.10 → +0.15) into each emotion. The
-# offset is added to the user-selected speed slider value at synthesis time,
-# clamped to the [0.5, 2.0] range Sarvam accepts.
+# Bulbul v3 exposes expressiveness only through `temperature`, which the API
+# strictly clamps to the [0.01, 1.0] range — values >1.0 trigger an HTTP 400
+# "temperature out of range" error, after which our retry path strips the
+# field entirely and the synthesis silently degrades to Sarvam's default
+# (~0.6, indistinguishable from `neutral`). Keep every value here ≤ 1.0.
+#
+# We pair each temperature with a small `pace_offset` (-0.10 → +0.15) so
+# emotion changes are perceptible even when temperatures sit close together.
+# The offset is added to the user-selected speed slider at synthesis time
+# and the final value is clamped to the [0.5, 2.0] range Sarvam accepts.
 #
 # Adjust here only — `SARVAM_EMOTION_TEMPERATURES` below is derived from this
 # table and kept as a backwards-compatible alias for legacy callers.
 SARVAM_EMOTION_PRESETS: Dict[str, Dict[str, float]] = {
-    "neutral":    {"temperature": 0.55, "pace_offset":  0.00},
-    "calm":       {"temperature": 0.20, "pace_offset": -0.10},
-    "warm":       {"temperature": 0.75, "pace_offset":  0.00},
-    "empathetic": {"temperature": 0.45, "pace_offset": -0.05},
-    "happy":      {"temperature": 0.95, "pace_offset":  0.05},
-    "cheerful":   {"temperature": 0.85, "pace_offset":  0.10},
-    "excited":    {"temperature": 1.25, "pace_offset":  0.15},
+    "calm":       {"temperature": 0.15, "pace_offset": -0.10},
     "serious":    {"temperature": 0.30, "pace_offset": -0.05},
+    "empathetic": {"temperature": 0.45, "pace_offset": -0.05},
+    "neutral":    {"temperature": 0.55, "pace_offset":  0.00},
+    "warm":       {"temperature": 0.70, "pace_offset":  0.00},
+    "cheerful":   {"temperature": 0.82, "pace_offset":  0.10},
+    "happy":      {"temperature": 0.92, "pace_offset":  0.05},
+    "excited":    {"temperature": 1.00, "pace_offset":  0.15},
 }
 
 
