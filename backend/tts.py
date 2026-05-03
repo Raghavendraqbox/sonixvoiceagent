@@ -4,7 +4,7 @@ tts.py — Multi-language TTS handler for Telugu and Kannada.
 Priority chain per language:
   Telugu (configurable via TELUGU_TTS_ENGINE_PRIORITY):
     Engines available:
-      sarvam     — Sarvam AI REST API    (requires SARVAM_API_KEY, best Telugu quality)
+      sarvam     — Sarvam AI WebSocket streaming TTS (REST fallback via SARVAM_TTS_TRANSPORT=rest)
       google_tts — Google Cloud TTS      (requires GOOGLE_APPLICATION_CREDENTIALS)
       gnani      — Gnani.ai REST API     (requires GNANI_API_KEY + GNANI_CLIENT_ID)
       ttsmaker   — TTSMaker REST API     (requires TTSMAKER_TOKEN + TTSMAKER_VOICE_ID_TELUGU)
@@ -17,7 +17,7 @@ Priority chain per language:
 
   Kannada (configurable via KANNADA_TTS_ENGINE_PRIORITY):
     Engines available:
-      sarvam       — Sarvam AI REST API    (requires SARVAM_API_KEY, best Indian language quality)
+      sarvam       — Sarvam AI WebSocket streaming TTS (REST fallback available)
       google_tts   — Google Cloud TTS      (requires GOOGLE_APPLICATION_CREDENTIALS)
       gnani        — Gnani.ai REST API     (requires GNANI_API_KEY + GNANI_CLIENT_ID)
       ttsmaker     — TTSMaker REST API     (requires TTSMAKER_TOKEN + TTSMAKER_VOICE_ID_KANNADA)
@@ -43,15 +43,18 @@ Cancel semantics:
 """
 
 import asyncio
+import base64
 import contextvars
 import datetime
 import io
+import json
 import logging
 import os
 import threading
 import wave
 from pathlib import Path
 from typing import Callable, Awaitable, Optional
+from urllib.parse import urlencode
 
 import numpy as np
 
@@ -818,28 +821,16 @@ class VoiceTTSHandler:
         return await self._stream_pcm(pcm_bytes)
 
     # ------------------------------------------------------------------
-    # Sarvam AI  (best quality for Indian languages including Telugu)
-    # Docs: https://docs.sarvam.ai/api-reference-docs/text-to-speech
+    # Sarvam AI  — WebSocket streaming (`wss://…/text-to-speech/ws`) with
+    # REST POST fallback. Docs:
+    # https://docs.sarvam.ai/api-reference-docs/text-to-speech/stream
     # ------------------------------------------------------------------
 
-    async def _synthesize_sarvam(self, text: str) -> bool:
+    def _resolve_sarvam_voice_params(self) -> tuple[str, str, str, bool, float]:
         """
-        Sarvam AI TTS — best quality for Telugu.
-        Requires SARVAM_API_KEY.
-        Speaker overrides: SARVAM_SPEAKER_TELUGU / SARVAM_SPEAKER_TELUGU_MALE
-        Model override: SARVAM_MODEL (default: bulbul:v3)
+        Resolve speaker, BCP-47 language, model id, bulbul:v3 flag, and
+        effective pace (slider + emotion offset) for both transports.
         """
-        if self._cancel_event.is_set():
-            return False
-
-        api_key = config.tts.sarvam_api_key
-        if not api_key:
-            logger.warning(
-                "Sarvam AI: SARVAM_API_KEY not set, skipping",
-                extra={"session_id": self.session_id},
-            )
-            return False
-
         if self._voice == "female":
             speaker = self._sarvam_speaker_override or self._lang_cfg.get(
                 "sarvam_speaker", _BULBUL_V3_DEFAULT_FEMALE
@@ -847,48 +838,291 @@ class VoiceTTSHandler:
         else:
             speaker = self._lang_cfg.get("sarvam_speaker_male", _BULBUL_V3_DEFAULT_MALE)
         language_code = self._lang_cfg.get("sarvam_language_code", "te-IN")
-        model         = self._lang_cfg.get("sarvam_model", "bulbul:v3")
-        is_bulbul_v3  = str(model).lower().startswith("bulbul:v3")
+        model = self._lang_cfg.get("sarvam_model", "bulbul:v3")
+        is_bulbul_v3 = str(model).lower().startswith("bulbul:v3")
         if is_bulbul_v3:
-            valid_speakers = (
+            valid = (
                 BULBUL_V3_FEMALE_SPEAKERS
                 if self._voice == "female"
                 else BULBUL_V3_MALE_SPEAKERS
             )
-            default_speaker = (
+            default_spk = (
                 _BULBUL_V3_DEFAULT_FEMALE
                 if self._voice == "female"
                 else _BULBUL_V3_DEFAULT_MALE
             )
-            if speaker not in valid_speakers:
+            if speaker not in valid:
                 logger.info(
                     "Sarvam AI: speaker '%s' is not in the bulbul:v3 whitelist — "
                     "using '%s' instead",
                     speaker,
-                    default_speaker,
+                    default_spk,
                     extra={"session_id": self.session_id},
                 )
-                speaker = default_speaker
-
-        # Per-emotion pace offset is added to the user-selected slider value
-        # so calm vs excited differ in both temperature and speed.
+                speaker = default_spk
         effective_pace = _clamp_sarvam_pace(
             self._sarvam_base_pace + self._sarvam_emotion_pace_offset
         )
+        return speaker, language_code, model, is_bulbul_v3, effective_pace
 
-        url = "https://api.sarvam.ai/text-to-speech"
+    def _sarvam_ws_config_payload(
+        self,
+        *,
+        speaker: str,
+        language_code: str,
+        model: str,
+        is_bulbul_v3: bool,
+        effective_pace: float,
+        temperature_opt: Optional[float],
+        output_audio_codec: str,
+    ) -> dict:
+        sr = int(TTS_RATE) if is_bulbul_v3 else 22050
+        data: dict = {
+            "model": model,
+            "target_language_code": language_code,
+            "speaker": speaker,
+            "pace": effective_pace,
+            "speech_sample_rate": sr,
+            "output_audio_codec": output_audio_codec,
+        }
+        if is_bulbul_v3:
+            if temperature_opt is not None:
+                data["temperature"] = temperature_opt
+        else:
+            data["enable_preprocessing"] = True
+            data["pitch"] = 0.0
+            data["loudness"] = 1.5
+        return {"type": "config", "data": data}
+
+    async def _decode_sarvam_ws_audio_chunk(
+        self, content_type: str, raw: bytes
+    ) -> Optional[bytes]:
+        """Decode one streaming audio frame → int16 PCM at TTS_RATE (mono)."""
+        if not raw:
+            return None
+        ct = (content_type or "").lower()
+        if "linear16" in ct or "pcm" in ct or "/l16" in ct:
+            return raw
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda b=raw: _mp3_bytes_to_pcm(b, denoise=False),
+        )
+
+    async def _run_sarvam_ws_once(
+        self,
+        *,
+        text: str,
+        api_key: str,
+        speaker: str,
+        language_code: str,
+        model: str,
+        is_bulbul_v3: bool,
+        effective_pace: float,
+        temperature_opt: Optional[float],
+        output_audio_codec: str,
+    ) -> bool:
+        """One WebSocket session: config → text → flush → drain audio until `final`."""
+        from websockets.asyncio.client import connect as ws_connect
+
+        query = urlencode({"model": model, "send_completion_event": "true"})
+        uri = f"wss://api.sarvam.ai/text-to-speech/ws?{query}"
+        cfg = self._sarvam_ws_config_payload(
+            speaker=speaker,
+            language_code=language_code,
+            model=model,
+            is_bulbul_v3=is_bulbul_v3,
+            effective_pace=effective_pace,
+            temperature_opt=temperature_opt,
+            output_audio_codec=output_audio_codec,
+        )
+
+        try:
+            async with ws_connect(
+                uri,
+                additional_headers=[("Api-Subscription-Key", api_key)],
+                open_timeout=20.0,
+                close_timeout=10.0,
+                max_size=16 * 1024 * 1024,
+            ) as ws:
+                await ws.send(json.dumps(cfg))
+                await ws.send(json.dumps({"type": "text", "data": {"text": text}}))
+                await ws.send(json.dumps({"type": "flush"}))
+
+                streamed_pcm = 0
+                chunks = 0
+                audio_received = False
+
+                while True:
+                    if self._cancel_event.is_set():
+                        await ws.close()
+                        return False
+                    try:
+                        raw_m = await asyncio.wait_for(ws.recv(), timeout=120.0)
+                    except asyncio.TimeoutError:
+                        logger.error(
+                            "Sarvam WebSocket recv timeout",
+                            extra={"session_id": self.session_id},
+                        )
+                        return False
+
+                    if isinstance(raw_m, (bytes, bytearray)):
+                        try:
+                            raw_m = raw_m.decode("utf-8")
+                        except UnicodeDecodeError:
+                            logger.debug(
+                                "Sarvam WS binary frame len=%d (ignored)",
+                                len(raw_m),
+                                extra={"session_id": self.session_id},
+                            )
+                            continue
+
+                    try:
+                        msg = json.loads(raw_m)
+                    except json.JSONDecodeError:
+                        logger.warning(
+                            "Sarvam WS non-JSON frame",
+                            extra={"session_id": self.session_id},
+                        )
+                        continue
+
+                    mtype = msg.get("type")
+                    if mtype == "audio":
+                        audio_received = True
+                        dta = msg.get("data") or {}
+                        b64 = dta.get("audio") or ""
+                        ctype = dta.get("content_type") or ""
+                        try:
+                            chunk = base64.b64decode(b64) if b64 else b""
+                        except Exception:
+                            chunk = b""
+                        pcm = await self._decode_sarvam_ws_audio_chunk(ctype, chunk)
+                        if pcm:
+                            streamed_pcm += len(pcm)
+                            chunks += 1
+                            if not await self._stream_pcm(pcm):
+                                return False
+                    elif mtype == "event":
+                        if (msg.get("data") or {}).get("event_type") == "final":
+                            break
+                    elif mtype == "error":
+                        err_txt = ""
+                        dat = msg.get("data")
+                        if isinstance(dat, dict):
+                            err_txt = str(dat.get("message", "") or "")
+                        logger.warning(
+                            "Sarvam WebSocket error: %s",
+                            err_txt[:400],
+                            extra={"session_id": self.session_id},
+                        )
+                        return False
+
+                if not audio_received:
+                    logger.warning(
+                        "Sarvam WebSocket completed with no audio frames",
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+
+                temp_repr = (
+                    f"{temperature_opt:.2f}"
+                    if temperature_opt is not None
+                    else "default"
+                )
+                logger.info(
+                    "Sarvam AI TTS stream ok: codec=%s speaker=%s language=%s model=%s "
+                    "emotion=%s temperature=%s pace=%.2f (base=%.2f + offset=%+.2f) "
+                    "pcm_bytes=%d chunks=%d",
+                    output_audio_codec,
+                    speaker,
+                    language_code,
+                    model,
+                    self._sarvam_emotion,
+                    temp_repr,
+                    effective_pace,
+                    self._sarvam_base_pace,
+                    self._sarvam_emotion_pace_offset,
+                    streamed_pcm,
+                    chunks,
+                    extra={"session_id": self.session_id},
+                )
+                return True
+
+        except Exception as exc:
+            logger.warning(
+                "Sarvam WebSocket session failed: %s",
+                exc,
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+    async def _synthesize_sarvam_websocket(self, text: str) -> bool:
+        """Try streaming TTS; internally retries codec / speaker / temperature like REST."""
+        api_key = config.tts.sarvam_api_key.strip()
+        if not api_key:
+            return False
+
+        (
+            speaker,
+            language_code,
+            model,
+            is_bulbul_v3,
+            effective_pace,
+        ) = self._resolve_sarvam_voice_params()
+
+        fb = (
+            _BULBUL_V3_DEFAULT_FEMALE
+            if self._voice == "female"
+            else _BULBUL_V3_DEFAULT_MALE
+        )
+        temp_val: Optional[float] = float(self._sarvam_temperature) if is_bulbul_v3 else None
+
+        # Preference order: low-latency linear PCM → MP3 chunks → relax temperature → relax speaker.
+        attempts: list[tuple[str, str, Optional[float]]] = [
+            ("linear16", speaker, temp_val),
+            ("mp3", speaker, temp_val),
+        ]
+        if is_bulbul_v3 and temp_val is not None:
+            attempts.append(("linear16", speaker, None))
+        if is_bulbul_v3 and speaker != fb:
+            attempts.append(("linear16", fb, temp_val))
+            attempts.append(("mp3", fb, temp_val))
+
+        for codec, spk, t_opt in attempts:
+            if self._cancel_event.is_set():
+                return False
+            if await self._run_sarvam_ws_once(
+                text=text,
+                api_key=api_key,
+                speaker=spk,
+                language_code=language_code,
+                model=model,
+                is_bulbul_v3=is_bulbul_v3,
+                effective_pace=effective_pace,
+                temperature_opt=t_opt,
+                output_audio_codec=codec,
+            ):
+                return True
+        return False
+
+    async def _synthesize_sarvam_rest(self, text: str) -> bool:
+        """Classic POST https://api.sarvam.ai/text-to-speech (full utterance WAV)."""
+        api_key = config.tts.sarvam_api_key
         headers = {
             "API-Subscription-Key": api_key,
             "Content-Type": "application/json",
         }
-        # Sarvam accepts up to 500 chars per request; split if needed
-        payload = {
-            "inputs":               [text],
+        speaker, language_code, model, is_bulbul_v3, effective_pace = (
+            self._resolve_sarvam_voice_params()
+        )
+        sr = int(TTS_RATE) if is_bulbul_v3 else 22050
+        payload: dict = {
+            "inputs": [text],
             "target_language_code": language_code,
-            "speaker":              speaker,
-            "pace":                 effective_pace,
-            "speech_sample_rate":   22050,
-            "model":                model,
+            "speaker": speaker,
+            "pace": effective_pace,
+            "speech_sample_rate": sr,
+            "model": model,
         }
         if is_bulbul_v3:
             payload["temperature"] = self._sarvam_temperature
@@ -896,6 +1130,8 @@ class VoiceTTSHandler:
             payload["enable_preprocessing"] = True
             payload["pitch"] = 0
             payload["loudness"] = 1.5
+
+        url = "https://api.sarvam.ai/text-to-speech"
 
         try:
             client = _get_cloud_client()
@@ -905,19 +1141,19 @@ class VoiceTTSHandler:
                 and is_bulbul_v3
                 and "not compatible with model bulbul:v3" in resp.text
             ):
-                fallback_speaker = (
+                fb = (
                     _BULBUL_V3_DEFAULT_FEMALE
                     if self._voice == "female"
                     else _BULBUL_V3_DEFAULT_MALE
                 )
-                if payload.get("speaker") != fallback_speaker:
+                if payload.get("speaker") != fb:
                     logger.warning(
                         "Sarvam AI: speaker '%s' incompatible with bulbul:v3, retrying with '%s'",
                         payload.get("speaker"),
-                        fallback_speaker,
+                        fb,
                         extra={"session_id": self.session_id},
                     )
-                    payload["speaker"] = fallback_speaker
+                    payload["speaker"] = fb
                     resp = await client.post(url, headers=headers, json=payload)
             if (
                 resp.status_code in (400, 422)
@@ -932,13 +1168,16 @@ class VoiceTTSHandler:
                 payload.pop("temperature", None)
                 resp = await client.post(url, headers=headers, json=payload)
             if resp.status_code == 401:
-                logger.error("Sarvam AI: invalid API key (401)",
-                             extra={"session_id": self.session_id})
+                logger.error(
+                    "Sarvam AI: invalid API key (401)",
+                    extra={"session_id": self.session_id},
+                )
                 return False
             if resp.status_code != 200:
                 logger.error(
                     "Sarvam AI API error %d: %s",
-                    resp.status_code, resp.text[:200],
+                    resp.status_code,
+                    resp.text[:200],
                     extra={"session_id": self.session_id},
                 )
                 return False
@@ -946,16 +1185,16 @@ class VoiceTTSHandler:
 
             audios = data.get("audios") or []
             if not audios:
-                logger.error("Sarvam AI: empty 'audios' in response",
-                             extra={"session_id": self.session_id})
+                logger.error(
+                    "Sarvam AI: empty 'audios' in response",
+                    extra={"session_id": self.session_id},
+                )
                 return False
 
-            import base64
             wav_bytes = base64.b64decode(audios[0])
             if not wav_bytes:
                 return False
 
-            # WAV is decoded via PyAV (same as MP3 — av.open auto-detects format)
             loop = asyncio.get_running_loop()
             pcm_bytes = await loop.run_in_executor(
                 None, lambda: _mp3_bytes_to_pcm(wav_bytes, denoise=False)
@@ -964,10 +1203,6 @@ class VoiceTTSHandler:
                 return False
 
             effective_speaker = payload.get("speaker", speaker)
-            # `temperature` may have been popped by the retry path — log
-            # exactly what the API used so it's obvious when an emotion
-            # preset silently failed and the synthesis fell back to Sarvam's
-            # internal default.
             applied_temperature = payload.get("temperature")
             temperature_repr = (
                 f"{applied_temperature:.2f}"
@@ -975,14 +1210,14 @@ class VoiceTTSHandler:
                 else "default(stripped)"
             )
             _debug_dump_audio_pair(
-                provider="sarvam",
+                provider="sarvam-rest",
                 session_id=self.session_id,
                 source_audio=wav_bytes,
                 source_ext="wav",
                 decoded_pcm=pcm_bytes,
             )
             logger.info(
-                "Sarvam AI TTS success: speaker=%s language=%s model=%s emotion=%s "
+                "Sarvam AI TTS success (REST): speaker=%s language=%s model=%s emotion=%s "
                 "temperature=%s pace=%.2f (base=%.2f + offset=%+.2f) (%d bytes)",
                 effective_speaker,
                 language_code,
@@ -998,9 +1233,43 @@ class VoiceTTSHandler:
             return await self._stream_pcm(pcm_bytes)
 
         except Exception as exc:
-            logger.error("Sarvam AI TTS error: %s", exc,
-                         extra={"session_id": self.session_id})
+            logger.error(
+                "Sarvam AI REST TTS error: %s",
+                exc,
+                extra={"session_id": self.session_id},
+            )
             return False
+
+    async def _synthesize_sarvam(self, text: str) -> bool:
+        """
+        Sarvam AI — WebSocket streaming by default (see SARVAM_TTS_TRANSPORT).
+
+        Fallback: synchronous REST POST returns one WAV per utterance.
+        """
+        if self._cancel_event.is_set():
+            return False
+
+        if not config.tts.sarvam_api_key.strip():
+            logger.warning(
+                "Sarvam AI: SARVAM_API_KEY not set, skipping",
+                extra={"session_id": self.session_id},
+            )
+            return False
+
+        transport = (
+            getattr(config.tts, "sarvam_tts_transport", "websocket") or "websocket"
+        ).strip().lower()
+        if transport in ("rest", "http", "post", "sync"):
+            return await self._synthesize_sarvam_rest(text)
+
+        if await self._synthesize_sarvam_websocket(text):
+            return True
+
+        logger.warning(
+            "Sarvam WebSocket TTS failed — falling back to REST for this utterance",
+            extra={"session_id": self.session_id},
+        )
+        return await self._synthesize_sarvam_rest(text)
 
     # ------------------------------------------------------------------
     # Google Cloud TTS  (https://cloud.google.com/text-to-speech)

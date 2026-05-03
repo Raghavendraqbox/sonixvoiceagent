@@ -771,6 +771,11 @@ class TTSConfig:
     sarvam_emotion:     str   = field(default_factory=lambda: os.getenv("SARVAM_EMOTION", "neutral"))
     # Optional direct Bulbul v3 temperature override. Range is clamped in tts.py.
     sarvam_temperature: str   = field(default_factory=lambda: os.getenv("SARVAM_TEMPERATURE", ""))
+    # Sarvam TTS transport: websocket (default, real-time chunked audio) or rest
+    # (single HTTP round-trip per utterance). WebSocket failures auto-fallback to REST.
+    sarvam_tts_transport: str = field(
+        default_factory=lambda: os.getenv("SARVAM_TTS_TRANSPORT", "websocket").strip().lower()
+    )
 
     # Google Cloud TTS  (https://cloud.google.com/text-to-speech)
     # Auth uses Application Default Credentials from GOOGLE_APPLICATION_CREDENTIALS.
