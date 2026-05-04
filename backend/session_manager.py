@@ -534,7 +534,12 @@ class SessionManager:
                         max_wait=12.0,
                         post_silence_grace=0.5,
                     )
-                    _silence_timeout = 2.0
+                    # Give Azure STT enough time to return a transcript before
+                    # considering the user silent again. 2s was too short —
+                    # Azure often takes 300-600ms after speech ends, and on
+                    # empty results the timeout was firing before the next
+                    # recognition attempt completed, triggering spurious reprompts.
+                    _silence_timeout = 8.0
                     continue
                 if _silence_reprompt_count < 2:
                     reprompt = silence_reprompt or last_bot_text
