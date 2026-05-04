@@ -627,8 +627,8 @@ class ASRHandler:
                     extra={"session_id": self.session_id})
 
         SILENCE_RMS_THRESHOLD    = 0.008
-        # 0.3s commit balances latency and long-utterance stability.
-        SILENCE_FRAMES_TO_COMMIT = 3
+        # 0.2s commit reduces latency without cutting off natural pauses.
+        SILENCE_FRAMES_TO_COMMIT = 2
         MIN_SPEECH_FRAMES        = max(1, config.audio.min_speech_frames_before_stt)
         MAX_SILENCE_FRAMES       = 30
 
@@ -735,8 +735,8 @@ class ASRHandler:
                     extra={"session_id": self.session_id})
 
         SILENCE_RMS_THRESHOLD    = 0.008
-        # 0.3s commit balances latency and long-utterance stability.
-        SILENCE_FRAMES_TO_COMMIT = 3
+        # 0.2s commit reduces latency without cutting off natural pauses.
+        SILENCE_FRAMES_TO_COMMIT = 2
         MIN_SPEECH_FRAMES        = max(1, config.audio.min_speech_frames_before_stt)
         MAX_SILENCE_FRAMES       = 30
 
@@ -862,8 +862,8 @@ class ASRHandler:
                     extra={"session_id": self.session_id})
 
         SILENCE_RMS_THRESHOLD    = 0.008
-        # 0.3s commit balances latency and long-utterance stability.
-        SILENCE_FRAMES_TO_COMMIT = 3
+        # 0.2s commit reduces latency without cutting off natural pauses.
+        SILENCE_FRAMES_TO_COMMIT = 2
         MIN_SPEECH_FRAMES        = max(1, config.audio.min_speech_frames_before_stt)
         MAX_SILENCE_FRAMES       = 30
 
@@ -1025,8 +1025,8 @@ class ASRHandler:
 
         # VAD parameters
         SILENCE_RMS_THRESHOLD = 0.008
-        # 0.3s commit balances latency and long-utterance stability.
-        SILENCE_FRAMES_TO_COMMIT = 3
+        # 0.2s commit reduces latency without cutting off natural pauses.
+        SILENCE_FRAMES_TO_COMMIT = 2
         MIN_SPEECH_FRAMES = max(1, config.audio.min_speech_frames_before_stt)
         MAX_SILENCE_FRAMES = 30         # 3 s hard reset
 
