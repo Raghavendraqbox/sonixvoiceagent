@@ -395,6 +395,16 @@ async def websocket_endpoint(
                     ):
                         session.cancel_tts()
                         await send_json_msg({"type": "tts_stopped"})
+                    elif (
+                        session.bot_audio_active
+                        and not (session.tts_orchestrator and session.tts_orchestrator.is_active())
+                        and session.bot_bargein_speech_frames >= 2
+                    ):
+                        # TTS bytes are fully sent but the echo-guard sleep is still
+                        # running. User spoke — drop the guard immediately so STT
+                        # picks up this utterance instead of waiting out the timer.
+                        session.bot_audio_active = False
+                        session.bot_bargein_speech_frames = 0
                 elif session.user_speaking_event.is_set():
                     session.input_silence_frames += 1
                     session.bot_bargein_speech_frames = 0
