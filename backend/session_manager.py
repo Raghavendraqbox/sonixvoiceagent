@@ -450,22 +450,19 @@ class SessionManager:
         await send_json_cb({"type": "tts_end"})
         session.memory.add_bot_turn(text)
 
-        # Estimated client-side playback duration (24 kHz mono int16 = 48 000
-        # bytes/sec). Add a small tail buffer to cover network jitter and the
-        # browser's small playback queue. cancel_tts() always clears
-        # bot_audio_active early if the user genuinely barges in, so this
-        # sleep never blocks a real user interruption.
-        _playback_secs = max(
-            0.4,
-            session.tts_handler.last_pcm_bytes_sent / _TTS_BYTES_PER_SEC + 0.3,
-        )
-        await asyncio.sleep(_playback_secs)
-        session.bot_audio_active = False
-
-        # Final safety net — drop any transcripts that slipped through despite
-        # the echo guard (e.g. the very first frames of playback before the
-        # flag was asserted).
-        self._drain_echo_transcripts(session)
+        # Echo guard: hold bot_audio_active until the client finishes playing,
+        # then drain any mic-echo transcripts that slipped through.
+        # Skip entirely if the user already barged in (bot_audio_active was
+        # cleared by cancel_tts()) — their transcript must NOT be drained.
+        if session.bot_audio_active:
+            _playback_secs = max(
+                0.4,
+                session.tts_handler.last_pcm_bytes_sent / _TTS_BYTES_PER_SEC + 0.3,
+            )
+            await asyncio.sleep(_playback_secs)
+            if session.bot_audio_active:   # re-check: barge-in may have fired during sleep
+                session.bot_audio_active = False
+                self._drain_echo_transcripts(session)
 
     # ------------------------------------------------------------------
     # LLM + TTS conversation loop
@@ -785,11 +782,14 @@ class SessionManager:
             _silence_reprompt_count = 0
             _silence_timeout = 10.0 + _turn_play_secs
 
-            # Hold the echo guard until playback truly ends, then release the
-            # flag and drain any transcripts that slipped through.
-            await asyncio.sleep(max(0.4, _turn_play_secs + 0.3))
-            session.bot_audio_active = False
-            self._drain_echo_transcripts(session)
+            # Hold the echo guard until playback truly ends, then drain echo.
+            # Skip if user already barged in (bot_audio_active cleared by
+            # cancel_tts) — their pending transcript must survive.
+            if session.bot_audio_active:
+                await asyncio.sleep(max(0.4, _turn_play_secs + 0.3))
+                if session.bot_audio_active:   # re-check after sleep
+                    session.bot_audio_active = False
+                    self._drain_echo_transcripts(session)
 
         logger.info("LLM/TTS loop exiting", extra={"session_id": session.session_id})
 
