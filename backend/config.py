@@ -375,7 +375,205 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "ask them to continue with the remaining digits."
         ),
     },
+
+    "english": {
+        "display_name": "English",
+        "display_name_native": "English",
+        "spoken_style": (
+            "Reply in clear international English with a calm, neutral tone. "
+            "Use short, conversational sentences suitable for voice. "
+            "Use AED for prices and UAE place names when relevant."
+        ),
+
+        "soniox_language_code": "en",
+        "whisper_language": "en",
+        "sarvam_stt_language_code": "en-IN",
+        "google_stt_language_code": "en-US",
+        "azure_stt_language_code": "en-US",
+        "amazon_transcribe_language_code": "en-US",
+
+        "mms_tts_model": "",
+        "mms_tts_sample_rate": 16_000,
+
+        "sarvam_speaker": os.getenv("SARVAM_SPEAKER_ENGLISH", "priya"),
+        "sarvam_speaker_male": os.getenv("SARVAM_SPEAKER_ENGLISH_MALE", "aditya"),
+        "sarvam_language_code": "en-IN",
+        "sarvam_model": os.getenv("SARVAM_MODEL", "bulbul:v3"),
+
+        "google_tts_voice": os.getenv("GOOGLE_TTS_VOICE_ENGLISH", "en-US-Neural2-F"),
+        "google_tts_voice_male": os.getenv("GOOGLE_TTS_VOICE_ENGLISH_MALE", "en-US-Neural2-D"),
+        "google_tts_language": "en-US",
+
+        "gnani_language_code": "en",
+        "gnani_voice": os.getenv("GNANI_VOICE_ENGLISH", "female"),
+
+        "ttsmaker_voice_id": int(os.getenv("TTSMAKER_VOICE_ID_ENGLISH", "0")),
+
+        "elevenlabs_voice_id_male": os.getenv(
+            "ELEVENLABS_VOICE_ID_ENGLISH_MALE", "pNInz6obpgDQGcFmaJgB"
+        ),
+        "elevenlabs_voice_id_female": os.getenv(
+            "ELEVENLABS_VOICE_ID_ENGLISH_FEMALE", "EXAVITQu4vr4xnSDxMaL"
+        ),
+
+        "azure_tts_voice": os.getenv("AZURE_TTS_VOICE_ENGLISH", "en-US-JennyNeural"),
+        "azure_tts_voice_male": os.getenv("AZURE_TTS_VOICE_ENGLISH_MALE", "en-US-GuyNeural"),
+        "azure_tts_language": "en-US",
+
+        "amazon_polly_voice": os.getenv("AWS_POLLY_VOICE_ENGLISH", "Joanna"),
+        "amazon_polly_voice_male": os.getenv("AWS_POLLY_VOICE_ENGLISH_MALE", "Matthew"),
+        "amazon_polly_language_code": os.getenv("AWS_POLLY_LANGUAGE_ENGLISH", "en-US"),
+        "amazon_polly_engine": os.getenv("AWS_POLLY_ENGINE", "neural"),
+
+        "edge_tts_voice": os.getenv("TTS_VOICE_ENGLISH", "en-US-JennyNeural"),
+        "edge_tts_voice_male": os.getenv("TTS_VOICE_ENGLISH_MALE", "en-US-GuyNeural"),
+
+        "gtts_language": "en",
+        "tts_rate": os.getenv("ENGLISH_TTS_RATE", "+0%"),
+
+        "sentence_delimiters": (".", "!", "?"),
+
+        "greeting": (
+            "Hello, welcome to Parts Manager. How can I help you with spare parts today?"
+        ),
+        "ivr_main_menu": "",
+        "neutral_stubs": [
+            "One moment please, I am checking that for you.",
+            "Thank you, let me look that up.",
+            "Sorry, please give me a moment.",
+        ],
+        "silence_reprompt": "Hello, can you hear me? How can I help you?",
+
+        "system_prompt": (
+            "You are a professional English-speaking voice assistant for the UAE "
+            "automotive spare parts marketplace."
+        ),
+    },
 }
+
+
+# Speech style appended to every Parts Manager persona prompt.
+PARTS_MANAGER_SPEECH_STYLE = (
+    "Always speak with a clear female voice. Speak at a calm, moderate pace with "
+    "neutral international English. Avoid strong regional accents. Use short, clear sentences."
+)
+
+
+# Parts Manager personas (from parts_manager_professional.pdf).
+PARTS_MANAGER_PERSONAS: Dict[str, Dict[str, Any]] = {
+    "workshop-owner": {
+        "id": "workshop-owner",
+        "ui_name": "Ahmed Al Hashimi",
+        "role": "Workshop Owner / Parts Manager (Buyer)",
+        "subtitle": "Al Ghurair Auto Repairs, Al Quoz, Dubai",
+        "speaker": "Layla",
+        "voice_label": "en-US-JennyNeural (female, neutral English)",
+        "greeting": (
+            "Hello, I am Layla from Parts Manager. "
+            "How can I help you find spare parts or track an order today?"
+        ),
+        "system_prompt": (
+            "You work for Parts Manager which is the UAE automotive spare parts marketplace "
+            "and your name is Layla. You are a woman and you speak with a female voice. "
+            "You assist workshop owners such as Ahmed Al Hashimi at Al Ghurair Auto Repairs "
+            "in Al Quoz, Dubai. Information: Help find parts by make, model, year, and VIN; "
+            "create RFQs; compare quotes in AED; place orders; track deliveries; handle returns. "
+            "When the user speaks, answer as Layla the female assistant in first person. "
+            "Do not role-play as Ahmed or use a male voice."
+        ),
+        "sample_questions": [
+            "Find me a front left headlight for a 2020 Toyota Camry V6.",
+            "Show me all pending RFQs I submitted this week.",
+            "Where is my delivery from Pro Parts?",
+        ],
+    },
+    "retailer-supplier": {
+        "id": "retailer-supplier",
+        "ui_name": "Fatima Al Marri",
+        "role": "Retailer / Parts Supplier (Seller)",
+        "subtitle": "Gulf Star Auto Parts, Sharjah",
+        "speaker": "Fatima Al Marri",
+        "voice_label": "en-US-JennyNeural (female, neutral English)",
+        "greeting": (
+            "Hello, I am Fatima from Gulf Star Auto Parts on Parts Manager. "
+            "How can I help with RFQs or orders today?"
+        ),
+        "system_prompt": (
+            "You work for Gulf Star Auto Parts which is a large retailer in Sharjah and "
+            "your name is Fatima Al Marri. You are a woman and you speak with a female voice. "
+            "You sell on the Parts Manager platform. Information: Receive RFQs, send quotes in "
+            "AED with OEM and aftermarket options, update delivery status, handle returns, "
+            "review team performance. Response-rate goal is 75 percent. When the user speaks, "
+            "answer as Fatima in first person with a female voice. Be professional and concise."
+        ),
+        "sample_questions": [
+            "Show me new RFQs for Toyota and Lexus only.",
+            "Dashboard of my team's response rates this week.",
+            "Mark Order 2080 as ready for dispatch.",
+        ],
+    },
+    "platform-admin": {
+        "id": "platform-admin",
+        "ui_name": "Priya Sharma",
+        "role": "Platform Admin (Operator)",
+        "subtitle": "Parts Manager HQ — Operations",
+        "speaker": "Priya Sharma",
+        "voice_label": "en-US-JennyNeural (female, neutral English)",
+        "greeting": (
+            "Hello, I am Priya from Parts Manager HQ operations. "
+            "What would you like to check on the platform?"
+        ),
+        "system_prompt": (
+            "You work for Parts Manager HQ which operates the UAE marketplace and your name "
+            "is Priya Sharma. You are a woman and you speak with a female voice. You are the "
+            "platform operations manager. Information: Monitor system health, retailer onboarding, "
+            "disputes, and revenue in AED. Target quote-to-order time is 30 minutes. When the user "
+            "speaks, answer as Priya in first person with a female voice. Use clear operational language."
+        ),
+        "sample_questions": [
+            "Run a health check on the system.",
+            "Show retailers with zero RFQ response in 48 hours.",
+            "Show today's platform revenue.",
+        ],
+    },
+    "car-owner": {
+        "id": "car-owner",
+        "ui_name": "Carlos Fernandez",
+        "role": "End Customer (Car Owner)",
+        "subtitle": "2016 Jeep Wrangler — City Garage, Dubai",
+        "speaker": "Amira",
+        "voice_label": "en-US-JennyNeural (female, neutral English)",
+        "greeting": (
+            "Hello, I am Amira from the City Garage customer portal on Parts Manager. "
+            "How can I help with your repair or parts today?"
+        ),
+        "system_prompt": (
+            "You work for Parts Manager on the City Garage customer portal and your name is Amira. "
+            "You are a woman and you speak with a female voice. You help car owners such as "
+            "Carlos Fernandez who has a 2016 Jeep Wrangler in Dubai. Information: Explain repairs, "
+            "OEM versus aftermarket parts in AED, delivery timing, and invoices that separate parts "
+            "from labor. When the user speaks, answer as Amira the female assistant in first person. "
+            "Do not role-play as Carlos or use a male voice. Use simple friendly language."
+        ),
+        "sample_questions": [
+            "My brakes are grinding — what's wrong?",
+            "OEM vs aftermarket brake pads for my Jeep?",
+            "Is the part here yet for my repair?",
+        ],
+    },
+}
+
+DEFAULT_PARTS_MANAGER_PERSONA = "workshop-owner"
+SUPPORTED_PERSONAS = list(PARTS_MANAGER_PERSONAS.keys())
+PARTS_MANAGER_PROMPT_VERSION = "2"
+
+
+def get_persona_config(persona: str) -> Dict[str, Any]:
+    """Return Parts Manager persona config (defaults to workshop-owner / Layla)."""
+    return PARTS_MANAGER_PERSONAS.get(
+        persona.lower(),
+        PARTS_MANAGER_PERSONAS[DEFAULT_PARTS_MANAGER_PERSONA],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -468,22 +666,34 @@ BUSINESS_CONFIGS: Dict[str, Dict[str, Any]] = {
             "- If goodbye, close warmly on behalf of Davia Hospital."
         ),
     },
+    "parts_manager": {
+        "display_name": "Parts Manager Platform",
+        "description": (
+            "Voice-powered spare parts marketplace for workshops, retailers, "
+            "and customers in the UAE."
+        ),
+        "greeting": {},
+        "silence_reprompt": {
+            "english": "Hello, can you hear me? How can I help you with parts today?",
+        },
+        "system_prompt": "",
+    },
 }
 
 SUPPORTED_LANGUAGES = list(LANGUAGE_CONFIGS.keys())
 SUPPORTED_BUSINESSES = list(BUSINESS_CONFIGS.keys())
-DEFAULT_LANGUAGE: str = os.getenv("LANGUAGE", "telugu").lower()
-DEFAULT_BUSINESS: str = os.getenv("BUSINESS", "mercotrace").lower()
+DEFAULT_LANGUAGE: str = os.getenv("LANGUAGE", "english").lower()
+DEFAULT_BUSINESS: str = os.getenv("BUSINESS", "parts_manager").lower()
 
 if DEFAULT_LANGUAGE not in SUPPORTED_LANGUAGES:
-    DEFAULT_LANGUAGE = "telugu"
+    DEFAULT_LANGUAGE = "english"
 if DEFAULT_BUSINESS not in SUPPORTED_BUSINESSES:
-    DEFAULT_BUSINESS = "mercotrace"
+    DEFAULT_BUSINESS = "parts_manager"
 
 
 def get_language_config(language: str) -> Dict[str, Any]:
-    """Return the config dict for the given language (defaults to Telugu)."""
-    return LANGUAGE_CONFIGS.get(language.lower(), LANGUAGE_CONFIGS["telugu"])
+    """Return the config dict for the given language (defaults to English)."""
+    return LANGUAGE_CONFIGS.get(language.lower(), LANGUAGE_CONFIGS["english"])
 
 
 def get_business_config(business: str) -> Dict[str, Any]:
@@ -754,6 +964,10 @@ class TTSConfig:
         "KANNADA_TTS_ENGINE_PRIORITY", "google_tts,edge,sarvam,gtts"
     )
 
+    english_engine_priority: str = os.getenv(
+        "ENGLISH_TTS_ENGINE_PRIORITY", "azure_tts,edge,elevenlabs,google_tts,gtts"
+    )
+
     # ---------------------------------------------------------------------------
     # Third-party TTS credentials and API keys
     # ---------------------------------------------------------------------------
@@ -882,11 +1096,11 @@ class AppConfig:
 
     # Default STT engine (overridden per-session via ?stt_engine= query param)
     # Options: auto | sarvam | soniox | google | azure | amazon | whisper
-    default_stt_engine: str = os.getenv("STT_ENGINE", "auto")
+    default_stt_engine: str = os.getenv("STT_ENGINE", "azure")
 
     # Default LLM backend (overridden per-session via ?llm_backend= query param)
     # Options: ollama | gemini
-    default_llm_backend: str = os.getenv("LLM_BACKEND", "ollama")
+    default_llm_backend: str = os.getenv("LLM_BACKEND", "gemini")
 
 
 # Module-level singleton — import this everywhere

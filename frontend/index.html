@@ -3,134 +3,290 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QOBOX Customer Care</title>
+  <title>Parts Manager Platform</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Telugu:wght@400;600&family=Noto+Sans+Kannada:wght@400;600&display=swap');
-
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:        #0f1117;
-      --surface:   #1a1d27;
-      --border:    #2a2d3a;
-      --accent:    #f97316;
-      --accent-2:  #a78bfa;
-      --danger:    #f87171;
-      --success:   #34d399;
-      --text:      #e2e8f0;
-      --muted:     #64748b;
-      --radius:    12px;
+      --primary: #1e4d8c;
+      --primary-light: #2d6cb5;
+      --primary-bg: #e8f0fa;
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --border: #e4e4e7;
+      --text: #3f3f46;
+      --muted: #71717a;
+      --success: #16a34a;
+      --danger: #dc2626;
+      --radius: 10px;
     }
 
     html, body {
-      height: 100%;
-      font-family: "Inter", system-ui, sans-serif;
+      min-height: 100%;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
+      line-height: 1.5;
     }
 
     body {
       display: flex;
       flex-direction: column;
       align-items: center;
+      padding: 24px 16px 40px;
       gap: 20px;
-      padding: 24px;
-      min-height: 100vh;
     }
 
-    /* ---- Header ---- */
-    header { text-align: center; width: 100%; }
+    .container {
+      width: 100%;
+      max-width: 920px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 8px;
+    }
+
     header h1 {
-      font-size: 1.6rem;
+      font-size: 1.75rem;
       font-weight: 700;
-      letter-spacing: -0.5px;
+      color: var(--primary);
+      letter-spacing: -0.02em;
     }
-    header p {
-      color: var(--muted);
-      font-size: 0.875rem;
-      margin-top: 4px;
-    }
-    header .badge {
-      display: inline-block;
+
+    header .tagline {
       margin-top: 6px;
-      padding: 2px 10px;
-      border-radius: 20px;
-      background: rgba(249,115,22,0.15);
-      border: 1px solid rgba(249,115,22,0.4);
-      color: var(--accent);
-      font-size: 0.72rem;
-      font-weight: 600;
-      letter-spacing: 0.04em;
+      font-size: 0.95rem;
+      color: var(--muted);
+      max-width: 520px;
+      margin-left: auto;
+      margin-right: auto;
     }
 
-    /* ---- Two-column layout ---- */
-    .main-layout {
-      display: flex;
-      flex-direction: row;
-      align-items: flex-start;
-      gap: 24px;
-      width: 100%;
-      max-width: 1100px;
-      flex: 1;
-    }
-
-    /* ---- LEFT: Conversation panel ---- */
-    .left-panel {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      min-width: 0;
-    }
-
-    #conversation-wrap {
-      width: 100%;
+    .card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
+      padding: 16px;
     }
-    #conversation-header {
-      padding: 10px 16px;
-      border-bottom: 1px solid var(--border);
-      font-size: 0.7rem;
+
+    .section-title {
+      font-size: 0.72rem;
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.06em;
       color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .persona-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width: 600px) {
+      .persona-grid { grid-template-columns: 1fr; }
+    }
+
+    .persona-card {
+      text-align: left;
+      padding: 14px;
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .persona-card:hover {
+      border-color: var(--primary-light);
+    }
+
+    .persona-card.selected {
+      border-color: var(--primary);
+      background: var(--primary-bg);
+    }
+
+    .persona-card:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .persona-card h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--primary);
+    }
+
+    .persona-card .role {
+      font-size: 0.82rem;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+
+    .persona-card .subtitle {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .persona-card .speaker {
+      font-size: 0.75rem;
+      margin-top: 8px;
+      color: var(--primary-light);
+    }
+
+    label.field-label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    #role-prompt {
+      width: 100%;
+      min-height: 120px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: ui-monospace, monospace;
+      font-size: 0.8rem;
+      line-height: 1.45;
+      color: var(--text);
+      resize: vertical;
+    }
+
+    #role-prompt:disabled {
+      background: #f4f4f5;
+    }
+
+    .sample-list {
+      margin: 0;
+      padding-left: 1.2rem;
+      font-size: 0.88rem;
+      color: var(--text);
+    }
+
+    .sample-list li { margin-bottom: 4px; }
+
+    .voice-row {
       display: flex;
       align-items: center;
       gap: 8px;
+      font-size: 0.88rem;
+      padding: 10px 12px;
+      background: var(--primary-bg);
+      border-radius: 8px;
+      border: 1px solid #c5d9f0;
     }
-    #conversation-header::before {
+
+    .voice-row strong { color: var(--primary); }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    #btn-connect {
+      padding: 12px 24px;
+      border: none;
+      border-radius: var(--radius);
+      background: var(--primary);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    #btn-connect:hover:not(:disabled) {
+      background: var(--primary-light);
+      transform: translateY(-1px);
+    }
+
+    #btn-connect:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #btn-connect.active {
+      background: var(--danger);
+    }
+
+    .status-dot {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .status-dot::before {
       content: "";
-      display: inline-block;
-      width: 7px; height: 7px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
-      background: var(--muted);
+      background: #a1a1aa;
     }
-    #conversation-header.active::before { background: var(--success); }
+
+    .status-dot.connected::before { background: var(--success); }
+
+    /* Conversation panel */
+    #conversation-panel {
+      display: none;
+    }
+
+    #conversation-panel.visible {
+      display: block;
+    }
+
+    .conv-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .conv-header h2 {
+      font-size: 1.1rem;
+      color: var(--primary);
+    }
+
+    .conv-meta {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .conv-meta strong { color: var(--text); }
 
     #conversation-log {
-      flex: 1;
+      min-height: 280px;
+      max-height: 50vh;
       overflow-y: auto;
-      padding: 14px 16px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fafafa;
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      min-height: 320px;
-      max-height: calc(100vh - 260px);
-      scroll-behavior: smooth;
+      gap: 10px;
     }
+
     #conversation-log:empty::before {
-      content: "Conversation will appear here…";
+      content: "Speak after connecting — your conversation appears here.";
       color: var(--muted);
-      font-size: 0.85rem;
+      font-size: 0.88rem;
       margin: auto;
       text-align: center;
-      padding: 40px 0;
     }
 
     .msg-row { display: flex; flex-direction: column; gap: 2px; }
@@ -138,1271 +294,540 @@
       font-size: 0.65rem;
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.07em;
+      letter-spacing: 0.06em;
     }
-    .msg-label.user  { color: var(--accent);  text-align: right; }
-    .msg-label.bot   { color: var(--accent-2); text-align: left; }
+    .msg-label.user { color: var(--primary); text-align: right; }
+    .msg-label.bot { color: var(--primary-light); }
     .msg-bubble {
-      max-width: 88%;
-      padding: 9px 13px;
+      max-width: 90%;
+      padding: 9px 12px;
       border-radius: 10px;
-      font-size: 0.93rem;
-      line-height: 1.6;
-      word-break: break-word;
-      font-family: "Noto Naskh Arabic", "Tahoma", "Arial Unicode MS", sans-serif;
-      direction: rtl;
-      text-align: right;
+      font-size: 0.92rem;
+      line-height: 1.5;
     }
     .msg-bubble.user {
-      background: rgba(249,115,22,0.12);
-      border: 1px solid rgba(249,115,22,0.3);
-      color: var(--text);
       align-self: flex-end;
+      background: var(--primary-bg);
+      border: 1px solid #c5d9f0;
     }
     .msg-bubble.bot {
-      background: rgba(167,139,250,0.1);
-      border: 1px solid rgba(167,139,250,0.25);
-      color: var(--text);
       align-self: flex-start;
+      background: #fff;
+      border: 1px solid var(--border);
     }
-    .msg-bubble.bot.streaming { opacity: 0.75; }
+    .msg-bubble.bot.streaming { opacity: 0.8; }
 
-    /* session ended divider */
-    .session-end-divider {
-      text-align: center;
-      font-size: 0.72rem;
-      color: var(--muted);
-      letter-spacing: 0.08em;
-      padding: 6px 0;
-      opacity: 0.6;
-    }
-
-    /* partial ASR — lives below the conversation box */
     #transcript-partial {
       font-size: 0.82rem;
       color: var(--muted);
       font-style: italic;
-      text-align: right;
-      direction: rtl;
-      min-height: 1.1em;
-      padding: 2px 6px;
-      font-family: "Noto Naskh Arabic", "Tahoma", "Arial Unicode MS", sans-serif;
+      min-height: 1.2em;
+      margin-top: 8px;
     }
 
-    /* Download button — shown after session stops */
+    .orb-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 12px;
+    }
+
+    .orb {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #e4e4e7;
+      flex-shrink: 0;
+      transition: background 0.25s, box-shadow 0.25s;
+    }
+
+    .orb.listening {
+      background: radial-gradient(circle at 35% 35%, var(--primary-light), var(--primary));
+      box-shadow: 0 0 0 0 rgba(30, 77, 140, 0.4);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    .orb.speaking {
+      background: radial-gradient(circle at 35% 35%, #4ade80, #16a34a);
+      animation: pulse 1s ease-in-out infinite;
+    }
+
+    .orb.thinking {
+      background: radial-gradient(circle at 35% 35%, #fbbf24, #d97706);
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(30, 77, 140, 0.35); }
+      70% { box-shadow: 0 0 0 14px rgba(30, 77, 140, 0); }
+    }
+
+    .meter-track {
+      flex: 1;
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    #energy-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--primary);
+      transition: width 0.08s;
+    }
+
+    #energy-bar.active { background: var(--success); }
+
     #btn-download {
       display: none;
+      margin-top: 10px;
       width: 100%;
-      padding: 11px 0;
-      border-radius: 8px;
+      padding: 10px;
       border: 1px solid var(--success);
-      background: rgba(52,211,153,0.08);
-      color: var(--success);
-      font-size: 0.88rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    #btn-download:hover { background: rgba(52,211,153,0.2); }
-
-    /* ---- RIGHT: Controls panel ---- */
-    .right-panel {
-      width: 300px;
-      flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 14px;
-    }
-
-    /* ---- Selector cards ---- */
-    .selector-card {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 12px 16px;
-    }
-    .selector-card label {
-      font-size: 0.78rem;
-      font-weight: 600;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      white-space: nowrap;
-      min-width: 54px;
-    }
-    .selector-card select {
-      flex: 1;
-      background: var(--bg);
-      color: var(--text);
-      border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 7px 10px;
-      font-size: 0.92rem;
-      font-family: inherit;
-      cursor: pointer;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    .selector-card select:focus  { border-color: var(--accent); }
-    .selector-card select:disabled { opacity: 0.5; cursor: not-allowed; }
-    .selector-card input[type="range"] {
-      flex: 1;
-      accent-color: var(--accent);
-      cursor: pointer;
-    }
-    .selector-card input[type="range"]:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .selector-card .slider-readout {
-      min-width: 44px;
-      text-align: right;
-      font-variant-numeric: tabular-nums;
-      font-size: 0.85rem;
-      color: var(--text);
-    }
-    .lang-native {
-      font-size: 1rem;
-      min-width: 32px;
-      text-align: center;
-      color: var(--accent);
-    }
-
-    /* ---- Status orb ---- */
-    .orb-wrapper {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 12px;
-      padding: 24px 0 8px;
-    }
-    .orb {
-      width: 90px; height: 90px; border-radius: 50%;
-      background: radial-gradient(circle at 35% 35%, #2d3146, #0f1117);
-      box-shadow: 0 0 20px rgba(249,115,22,0.08);
-      transition: background 0.3s, box-shadow 0.3s;
-    }
-    .orb.idle {
-      background: radial-gradient(circle at 35% 35%, #2d3146, #0f1117);
-      box-shadow: 0 0 20px rgba(249,115,22,0.08);
-    }
-    .orb.user-speaking {
-      background: radial-gradient(circle at 35% 35%, #c2410c, #7c2d12);
-      animation: pulse-user 1s ease-in-out infinite;
-    }
-    @keyframes pulse-user {
-      0%   { box-shadow: 0 0 0 0   rgba(249,115,22,0.7); }
-      70%  { box-shadow: 0 0 0 22px rgba(249,115,22,0); }
-      100% { box-shadow: 0 0 0 0   rgba(249,115,22,0); }
-    }
-    .orb.bot-speaking {
-      background: radial-gradient(circle at 35% 35%, #7c3aed, #4c1d95);
-      animation: pulse-bot 1.2s ease-in-out infinite;
-    }
-    @keyframes pulse-bot {
-      0%   { box-shadow: 0 0 0 0   rgba(139,92,246,0.7); }
-      70%  { box-shadow: 0 0 0 26px rgba(139,92,246,0); }
-      100% { box-shadow: 0 0 0 0   rgba(139,92,246,0); }
-    }
-    .orb.thinking {
-      background: radial-gradient(circle at 35% 35%, #d97706, #92400e);
-      animation: pulse-think 0.8s ease-in-out infinite;
-    }
-    @keyframes pulse-think {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: 0.55; }
-    }
-    .orb-label {
-      font-size: 0.78rem;
-      color: var(--muted);
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      min-height: 1.2em;
-    }
-
-    /* ---- Start/Stop button ---- */
-    #btn-start {
-      width: 100%;
-      padding: 14px 0;
-      border: none;
-      border-radius: var(--radius);
-      font-size: 0.95rem;
+      background: #f0fdf4;
+      color: var(--success);
       font-weight: 600;
       cursor: pointer;
-      transition: transform 0.12s, box-shadow 0.2s, background 0.2s;
-      background: var(--accent);
-      color: #fff;
-      box-shadow: 0 4px 20px rgba(249,115,22,0.35);
     }
-    #btn-start:hover  { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(249,115,22,0.5); }
-    #btn-start:active { transform: translateY(0); }
-    #btn-start.active {
-      background: var(--danger);
-      box-shadow: 0 4px 20px rgba(248,113,113,0.4);
-    }
-    #btn-start:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
-    /* ---- Energy meter ---- */
-    .meter-wrapper {
+    .engine-note {
+      margin-top: 10px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .advanced-toggle { display: none !important; }
+    #advanced-panel { display: none !important; }
+
+    .adv-row {
       display: flex;
       align-items: center;
       gap: 10px;
+      margin-bottom: 8px;
     }
-    .meter-label { font-size: 0.7rem; color: var(--muted); white-space: nowrap; width: 60px; }
-    .meter-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
-    #energy-bar {
-      height: 100%; width: 0%; background: var(--accent);
-      border-radius: 3px; transition: width 0.08s ease;
-    }
-    #energy-bar.above-threshold { background: var(--success); }
 
-    /* ---- Status bar ---- */
-    #status-bar { font-size: 0.73rem; color: var(--muted); text-align: center; }
-    #status-bar span {
-      display: inline-block;
-      padding: 3px 10px;
-      border-radius: 20px;
-      background: var(--surface);
+    .adv-row label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      min-width: 48px;
+    }
+
+    .adv-row select {
+      flex: 1;
+      padding: 6px 8px;
       border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.85rem;
     }
 
-    /* ---- Responsive: stack on narrow screens ---- */
-    @media (max-width: 700px) {
-      .main-layout { flex-direction: column-reverse; }
-      .right-panel  { width: 100%; }
-      #conversation-log { max-height: 340px; }
+    #setup-panel.session-active .persona-grid,
+    #setup-panel.session-active #role-prompt,
+    #setup-panel.session-active .sample-list {
+      pointer-events: none;
+      opacity: 0.85;
     }
   </style>
 </head>
 <body>
 
-  <header>
-    <h1 id="app-title">Mercotrace Customer Care</h1>
-    <p id="app-subtitle">Telugu &amp; Kannada Vegetable Market Support</p>
-    <span class="badge" id="app-badge">Mercotrace · Telugu · Kannada</span>
-  </header>
+  <div class="container">
+    <header>
+      <h1>Parts Manager Platform</h1>
+      <p class="tagline">Voice-powered spare parts marketplace for workshops, retailers, and customers in the UAE.</p>
+    </header>
 
-  <div class="main-layout">
+    <div id="setup-panel" class="card">
+      <p class="section-title">Select persona</p>
+      <div class="persona-grid" id="persona-grid"></div>
 
-    <!-- ===== LEFT: Conversation + Download ===== -->
-    <div class="left-panel">
-      <div id="conversation-wrap">
-        <div id="conversation-header">Conversation</div>
-        <div id="conversation-log"></div>
+      <div style="margin-top: 16px;">
+        <label class="field-label" for="role-prompt">Role prompt</label>
+        <textarea id="role-prompt" spellcheck="false"></textarea>
       </div>
-      <!-- Live partial ASR preview while user is speaking -->
+
+      <div style="margin-top: 16px;">
+        <p class="section-title">Sample questions</p>
+        <ul class="sample-list" id="sample-questions"></ul>
+      </div>
+
+      <div style="margin-top: 16px;">
+        <p class="section-title">Voice</p>
+        <div class="voice-row" id="voice-label">
+          <strong>Female</strong>
+          <span>— neutral international English (Azure JennyNeural)</span>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top: 18px;">
+        <button type="button" id="btn-connect">Connect &amp; talk</button>
+        <span class="status-dot" id="status-dot">Not connected</span>
+      </div>
+      <p class="engine-note">English · Azure speech · Gemini</p>
+      <button type="button" class="advanced-toggle" id="btn-advanced" hidden>Advanced</button>
+      <div id="advanced-panel">
+        <div class="adv-row">
+          <label for="stt-select">STT</label>
+          <select id="stt-select">
+            <option value="azure" selected>Microsoft Azure</option>
+            <option value="auto">Auto</option>
+            <option value="google">Google Cloud</option>
+            <option value="soniox">Soniox</option>
+            <option value="whisper">Whisper (local)</option>
+          </select>
+        </div>
+        <div class="adv-row">
+          <label for="tts-select">TTS</label>
+          <select id="tts-select">
+            <option value="azure_tts" selected>Microsoft Azure</option>
+            <option value="edge">Edge TTS (free)</option>
+            <option value="elevenlabs">ElevenLabs</option>
+            <option value="auto">Auto</option>
+          </select>
+        </div>
+        <div class="adv-row">
+          <label for="llm-select">LLM</label>
+          <select id="llm-select">
+            <option value="ollama" selected>Ollama (local)</option>
+            <option value="gemini">Gemini (cloud)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div id="conversation-panel" class="card">
+      <div class="conv-header">
+        <div>
+          <h2 id="conv-title">Parts Manager Platform</h2>
+          <p class="conv-meta" id="conv-meta"></p>
+        </div>
+        <span class="status-dot" id="conv-status-dot">Connected</span>
+      </div>
+      <div id="conversation-log"></div>
       <div id="transcript-partial"></div>
-      <!-- Download button — shown only after session stops -->
-      <button id="btn-download" onclick="downloadTranscript()">&#x2B07; Download Transcript</button>
-    </div>
-
-    <!-- ===== RIGHT: Controls ===== -->
-    <div class="right-panel">
-
-      <!-- Language selector — locked once session starts -->
-      <div class="selector-card">
-        <label for="lang-select">Language</label>
-        <span class="lang-native" id="lang-native">తెలుగు</span>
-        <select id="lang-select" onchange="onLanguageChange(this.value)">
-          <option value="telugu" selected>Telugu — తెలుగు</option>
-          <option value="kannada">Kannada — ಕನ್ನಡ</option>
-        </select>
-      </div>
-
-      <!-- Business selector — locked once session starts -->
-      <div class="selector-card">
-        <label for="business-select">Business</label>
-        <select id="business-select" onchange="onBusinessChange(this.value)">
-          <option value="mercotrace" selected>Mercotrace</option>
-          <option value="davia_hospital">Davia Hospital</option>
-        </select>
-      </div>
-
-      <!-- Voice selector — Male / Female -->
-      <div class="selector-card" id="voice-selector">
-        <label for="voice-select">Voice</label>
-        <select id="voice-select" onchange="onVoiceChange(this.value)">
-          <option value="male"   selected>Male</option>
-          <option value="female"         >Female</option>
-        </select>
-      </div>
-
-      <!-- Sarvam female speaker selector — used only when TTS is Sarvam + Voice is Female -->
-      <div class="selector-card" id="sarvam-speaker-selector" style="display: none;">
-        <label for="sarvam-speaker-select">Sarvam Female Voice</label>
-        <select id="sarvam-speaker-select">
-          <option value="priya" selected>Priya</option>
-          <option value="ritu">Ritu</option>
-          <option value="neha">Neha</option>
-          <option value="pooja">Pooja</option>
-          <option value="simran">Simran</option>
-          <option value="kavya">Kavya</option>
-          <option value="ishita">Ishita</option>
-          <option value="shreya">Shreya</option>
-          <option value="roopa">Roopa</option>
-          <option value="tanya">Tanya</option>
-          <option value="shruti">Shruti</option>
-          <option value="suhani">Suhani</option>
-          <option value="kavitha">Kavitha</option>
-          <option value="rupali">Rupali</option>
-        </select>
-      </div>
-
-      <!-- STT Engine selector — can be changed mid-session -->
-      <div class="selector-card">
-        <label for="stt-select">STT</label>
-        <select id="stt-select" onchange="onSTTEngineChange(this.value)">
-          <option value="auto"            >Auto</option>
-          <option value="sarvam"          >Sarvam</option>
-          <option value="soniox"          >Soniox</option>
-          <option value="google"          >Google Cloud</option>
-          <option value="azure"   selected>Microsoft Azure</option>
-          <option value="amazon"          >Amazon Transcribe</option>
-          <option value="whisper"         >Whisper (local)</option>
-        </select>
-      </div>
-
-      <!-- TTS Engine selector — locked once session starts -->
-      <div class="selector-card">
-        <label for="tts-select">TTS</label>
-        <select id="tts-select" onchange="onTTSEngineChange(this.value)">
-          <option value="auto"                 >Auto</option>
-          <option value="sarvam"       selected>Sarvam</option>
-          <option value="google_tts"           >Google Cloud</option>
-          <option value="azure_tts"            >Microsoft Azure</option>
-          <option value="amazon_polly"         >Amazon Polly</option>
-          <option value="elevenlabs"           >ElevenLabs</option>
-          <option value="edge"                 >Edge TTS (free)</option>
-          <option value="gtts"                 >gTTS (free)</option>
-        </select>
-      </div>
-
-      <!-- Sarvam Bulbul v3 emotion preset — applied when Sarvam TTS is used -->
-      <div class="selector-card">
-        <label for="sarvam-emotion-select">Emotion</label>
-        <select id="sarvam-emotion-select" onchange="onSarvamEmotionChange(this.value)">
-          <option value="neutral" selected>Neutral</option>
-          <option value="calm">Calm</option>
-          <option value="warm">Warm</option>
-          <option value="empathetic">Empathetic</option>
-          <option value="happy">Happy</option>
-          <option value="cheerful">Cheerful</option>
-          <option value="excited">Excited</option>
-          <option value="serious">Serious</option>
-        </select>
-      </div>
-
-      <!-- Sarvam speech-rate slider — visible only when TTS is Sarvam -->
-      <div class="selector-card" id="sarvam-pace-selector" style="display: none;">
-        <label for="sarvam-pace-input">Speed</label>
-        <input
-          type="range"
-          id="sarvam-pace-input"
-          min="0.7" max="1.4" step="0.05" value="1.0"
-          oninput="onSarvamPaceChange(this.value)"
-        />
-        <span class="slider-readout" id="sarvam-pace-readout">1.00x</span>
-      </div>
-
-      <!-- LLM Backend selector — locked once session starts -->
-      <div class="selector-card">
-        <label for="llm-select">LLM</label>
-        <select id="llm-select">
-          <option value="ollama" selected>Ollama (local)</option>
-          <option value="gemini"         >Gemini (cloud ✨)</option>
-        </select>
-      </div>
-
-      <!-- Orb -->
-      <div class="orb-wrapper">
-        <div class="orb idle" id="orb"></div>
-        <div class="orb-label" id="orb-label">Inactive</div>
-      </div>
-
-      <!-- Start / Stop -->
-      <button id="btn-start" onclick="toggleSession()">Start Conversation</button>
-
-      <!-- Mic level meter -->
-      <div class="meter-wrapper">
-        <span class="meter-label">Mic Level</span>
+      <div class="orb-row">
+        <div class="orb" id="orb"></div>
         <div class="meter-track"><div id="energy-bar"></div></div>
+        <span id="orb-label" style="font-size:0.8rem;color:var(--muted);">Inactive</span>
       </div>
-
-      <!-- Status -->
-      <div id="status-bar"><span id="status-text">Not connected</span></div>
-
+      <button type="button" id="btn-download">Download transcript</button>
     </div>
-  </div><!-- /.main-layout -->
+  </div>
 
 <script>
 "use strict";
 
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
-const WS_BASE           = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
-const SEND_INTERVAL_MS  = 100;
-const VAD_THRESHOLD_BASE   = 0.024;  // floor for the client-side mute layer
-const VAD_THRESHOLD_MARGIN = 0.012;  // added on top of the calibrated noise floor
-let   VAD_THRESHOLD        = VAD_THRESHOLD_BASE;  // re-tuned per session via ambient calibration
-const VAD_HOLD_FRAMES      = 3;      // frames to confirm user started speaking (3 × 100ms = 300ms)
-const VAD_INTERRUPT_FRAMES = 2;      // fast barge-in while bot speaks (2 × 100ms = 200ms)
-const TTS_GRACE_FRAMES     = 1;      // short echo guard; keeps full-duplex interruption responsive
+const WS_BASE = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+const SEND_INTERVAL_MS = 100;
+const VAD_THRESHOLD_BASE = 0.024;
+const VAD_THRESHOLD_MARGIN = 0.012;
+let VAD_THRESHOLD = VAD_THRESHOLD_BASE;
+const VAD_HOLD_FRAMES = 3;
+const VAD_INTERRUPT_FRAMES = 2;
+const TTS_GRACE_FRAMES = 1;
 const PLAYBACK_SAMPLE_RATE = 24000;
-const PREBUFFER_MS      = 100;
-let humanizerOfficeEnabled = true;
-let humanizerTypingEnabled = true;
-let humanizerOfficeGain = 0.018;  // subtle office ambience while bot speaks
-let humanizerTypingGain = 0.05;   // very soft keyboard ticks
-let humanizerTypingMinMs = 90;
-let humanizerTypingMaxMs = 190;
-let clientConfigLoaded = false;
+const PREBUFFER_MS = 100;
 
-// Language display data
-const LANG_INFO = {
-  telugu:  { native: "తెలుగు",  name: "Telugu" },
-  kannada: { native: "ಕನ್ನಡ",  name: "Kannada" },
-};
+const STORAGE_PERSONA = "partsManagerPersonaId";
+const STORAGE_PROMPT_VER = "partsManagerPromptVersion";
+const STT_ENGINE = "azure";
+const TTS_ENGINE = "azure_tts";
+const LLM_BACKEND = "gemini";
 
-const BUSINESS_INFO = {
-  mercotrace: {
-    name: "Mercotrace",
-    title: "Mercotrace Customer Care",
-    subtitle: "Telugu & Kannada Vegetable Market Support",
-    badge: "Mercotrace · Telugu · Kannada",
-  },
-  davia_hospital: {
-    name: "Davia Hospital",
-    title: "Davia Hospital Customer Care",
-    subtitle: "Telugu & Kannada Appointment Booking Support",
-    badge: "Davia Hospital · Telugu · Kannada",
-  },
-};
+let personas = {};
+let promptVersion = 2;
+let selectedPersonaId = localStorage.getItem(STORAGE_PERSONA) || "workshop-owner";
+let sessionActive = false;
+let sessionPersonaId = selectedPersonaId;
 
-// Sarvam Bulbul v3 female speaker catalogue (14 voices). Server-side rejects
-// any speaker outside this list with HTTP 400, so we keep the dropdown
-// strictly aligned with the actual API. The /client-config endpoint can
-// override this at runtime if Sarvam adds more voices later.
-const DEFAULT_SARVAM_FEMALE_SPEAKERS = [
-  "priya", "ritu", "neha", "pooja", "simran", "kavya",
-  "ishita", "shreya", "roopa", "tanya", "shruti", "suhani",
-  "kavitha", "rupali",
-];
-const DEFAULT_SARVAM_EMOTIONS = [
-  "neutral", "calm", "warm", "empathetic", "happy", "cheerful", "excited", "serious",
-];
+let ws = null;
+let audioCtx = null;
+let mediaStream = null;
+let sourceNode = null;
+let analyserNode = null;
+let processorNode = null;
+let sendInterval = null;
+let pcmBuffer = [];
+let botSpeaking = false;
+let userSpeaking = false;
+let vadFrameCount = 0;
+let interruptSent = false;
+let ttsGraceFrames = 0;
+let reconnectTimer = null;
 
-// Sarvam pace slider defaults — overridden by /client-config at startup.
-const DEFAULT_SARVAM_PACE     = 1.0;
-const DEFAULT_SARVAM_PACE_MIN = 0.7;
-const DEFAULT_SARVAM_PACE_MAX = 1.4;
-const DEFAULT_SARVAM_PACE_STEP = 0.05;
-
-// ---------------------------------------------------------------------------
-// State
-// ---------------------------------------------------------------------------
-let selectedLanguage   = "telugu";
-let selectedVoice      = "male";
-let selectedSarvamSpeaker = "priya";
-let selectedSarvamEmotion = "neutral";
-let selectedSarvamPace = DEFAULT_SARVAM_PACE;
-let sarvamPaceMin      = DEFAULT_SARVAM_PACE_MIN;
-let sarvamPaceMax      = DEFAULT_SARVAM_PACE_MAX;
-let sarvamPaceStep     = DEFAULT_SARVAM_PACE_STEP;
-let selectedSTTEngine  = "azure";
-let selectedTTSEngine  = "sarvam";
-let selectedLLMBackend = "ollama";
-let selectedBusiness   = "mercotrace";
-let sessionLanguage   = "telugu";   // locked at session start — used for all WS reconnects
-let sessionBusiness   = "mercotrace"; // locked at session start — used for all WS reconnects
-// Conversation history: [{role:"user"|"bot", text:"...", ts: Date}]
-let conversationHistory = [];
-let currentBotMsgEl    = null;   // the streaming bot bubble currently being built
-let reconnectTimer    = null;     // debounce: only one reconnect pending at a time
-let ws                = null;
-let audioCtx          = null;
-let mediaStream       = null;
-let sourceNode        = null;
-let analyserNode      = null;
-let processorNode     = null;
-let sendInterval      = null;
-let pcmBuffer         = [];
-let sessionActive     = false;
-let botSpeaking       = false;
-let userSpeaking      = false;
-let vadFrameCount     = 0;
-let interruptSent     = false;
-let ttsGraceFrames    = 0;    // counts down after tts_start; VAD interrupt blocked during this window
-
-// TTS playback queue
-let ttsAudioCtx       = null;
-let ttsSourceNodes    = [];
-let ttsQueue          = [];
-let ttsBufferedMs     = 0;
+let ttsAudioCtx = null;
+let ttsSourceNodes = [];
+let ttsQueue = [];
+let ttsBufferedMs = 0;
 let ttsScheduledUntil = 0;
-let ttsPrebufferDone  = false;
+let ttsPrebufferDone = false;
 let ttsMasterGainNode = null;
-let ambienceGainNode  = null;
-let ambienceSource    = null;
-let typingTimer       = null;
 
-async function loadClientConfig() {
-  if (clientConfigLoaded) return;
-  try {
-    const resp = await fetch("/client-config", { cache: "no-store" });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const cfg = await resp.json();
-    const audio = cfg.audio || {};
+let conversationHistory = [];
+let currentBotMsgEl = null;
 
-    humanizerOfficeEnabled = audio.office_background_noise_enabled !== false;
-    humanizerTypingEnabled = audio.keyboard_typing_sound_enabled !== false;
-    humanizerOfficeGain = parseFiniteNumber(audio.office_background_noise_gain, humanizerOfficeGain, 0, 0.2);
-    humanizerTypingGain = parseFiniteNumber(audio.keyboard_typing_sound_gain, humanizerTypingGain, 0, 0.2);
-    humanizerTypingMinMs = parseFiniteNumber(audio.keyboard_typing_min_ms, humanizerTypingMinMs, 25, 2000);
-    humanizerTypingMaxMs = parseFiniteNumber(audio.keyboard_typing_max_ms, humanizerTypingMaxMs, humanizerTypingMinMs, 3000);
-    if (humanizerTypingMaxMs < humanizerTypingMinMs) {
-      humanizerTypingMaxMs = humanizerTypingMinMs;
-    }
-
-    const sarvam = cfg.sarvam || {};
-    const speakers = Array.isArray(sarvam.female_speakers)
-      ? sarvam.female_speakers
-      : DEFAULT_SARVAM_FEMALE_SPEAKERS;
-    populateSarvamSpeakerOptions(speakers);
-    const emotions = Array.isArray(sarvam.emotions)
-      ? sarvam.emotions
-      : DEFAULT_SARVAM_EMOTIONS;
-    populateSarvamEmotionOptions(emotions, sarvam.default_emotion);
-    applySarvamPaceBounds(
-      parseFiniteNumber(sarvam.min_pace, DEFAULT_SARVAM_PACE_MIN, 0.5, 2.0),
-      parseFiniteNumber(sarvam.max_pace, DEFAULT_SARVAM_PACE_MAX, 0.5, 2.0),
-      parseFiniteNumber(sarvam.pace_step, DEFAULT_SARVAM_PACE_STEP, 0.01, 0.5),
-      parseFiniteNumber(sarvam.default_pace, DEFAULT_SARVAM_PACE, 0.5, 2.0),
-    );
-    updateSarvamPaceVisibility();
-  } catch (err) {
-    console.warn("Using default client config:", err);
-  } finally {
-    clientConfigLoaded = true;
-  }
-}
-
-function parseFiniteNumber(value, fallback, min, max) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return fallback;
-  return Math.min(max, Math.max(min, num));
-}
-
-// ---------------------------------------------------------------------------
-// DOM
-// ---------------------------------------------------------------------------
-const orbEl             = document.getElementById("orb");
-const orbLabel          = document.getElementById("orb-label");
-const btnStart          = document.getElementById("btn-start");
-const statusText        = document.getElementById("status-text");
+const personaGrid = document.getElementById("persona-grid");
+const rolePrompt = document.getElementById("role-prompt");
+const sampleQuestions = document.getElementById("sample-questions");
+const voiceLabel = document.getElementById("voice-label");
+const btnConnect = document.getElementById("btn-connect");
+const statusDot = document.getElementById("status-dot");
+const setupPanel = document.getElementById("setup-panel");
+const conversationPanel = document.getElementById("conversation-panel");
+const conversationLog = document.getElementById("conversation-log");
 const transcriptPartial = document.getElementById("transcript-partial");
-const energyBar         = document.getElementById("energy-bar");
-const appTitle          = document.getElementById("app-title");
-const appSubtitle       = document.getElementById("app-subtitle");
-const appBadge          = document.getElementById("app-badge");
-const langSelect        = document.getElementById("lang-select");
-const langNative        = document.getElementById("lang-native");
-const businessSelect    = document.getElementById("business-select");
-const voiceSelector     = document.getElementById("voice-selector");
-const voiceSelect       = document.getElementById("voice-select");
-const sarvamSpeakerSelector = document.getElementById("sarvam-speaker-selector");
-const sarvamSpeakerSelect   = document.getElementById("sarvam-speaker-select");
-const sarvamEmotionSelect   = document.getElementById("sarvam-emotion-select");
-const sarvamPaceSelector    = document.getElementById("sarvam-pace-selector");
-const sarvamPaceInput       = document.getElementById("sarvam-pace-input");
-const sarvamPaceReadout     = document.getElementById("sarvam-pace-readout");
-const sttSelect         = document.getElementById("stt-select");
-const ttsSelect         = document.getElementById("tts-select");
-const llmSelect         = document.getElementById("llm-select");
-const conversationLog   = document.getElementById("conversation-log");
-const conversationHeader= document.getElementById("conversation-header");
-const btnDownload       = document.getElementById("btn-download");
+const convMeta = document.getElementById("conv-meta");
+const convStatusDot = document.getElementById("conv-status-dot");
+const orb = document.getElementById("orb");
+const orbLabel = document.getElementById("orb-label");
+const energyBar = document.getElementById("energy-bar");
+const btnDownload = document.getElementById("btn-download");
 
-// ---------------------------------------------------------------------------
-// Language selector
-// ---------------------------------------------------------------------------
-function onLanguageChange(lang) {
-  if (sessionActive) return;   // cannot change language mid-session
-  selectedLanguage = lang;
-  voiceSelector.style.display = "flex";
-  const info = LANG_INFO[lang] || LANG_INFO.telugu;
-  langNative.textContent = info.native;
-}
-
-function onBusinessChange(business) {
-  if (sessionActive) return;   // cannot change business mid-session
-  selectedBusiness = BUSINESS_INFO[business] ? business : "mercotrace";
-  updateBusinessChrome();
-}
-
-function updateBusinessChrome() {
-  const info = BUSINESS_INFO[selectedBusiness] || BUSINESS_INFO.mercotrace;
-  appTitle.textContent = info.title;
-  appSubtitle.textContent = info.subtitle;
-  appBadge.textContent = info.badge;
-  conversationHeader.textContent = sessionActive
-    ? `${info.name} Conversation`
-    : "Conversation";
-}
-
-function onVoiceChange(voice) {
-  selectedVoice = voice;
-  updateSarvamSpeakerVisibility();
-}
-
-function onTTSEngineChange(engine) {
-  selectedTTSEngine = engine;
-  updateSarvamSpeakerVisibility();
-  updateSarvamPaceVisibility();
-}
-
-function onSarvamEmotionChange(emotion) {
-  selectedSarvamEmotion = emotion;
-}
-
-function onSarvamPaceChange(value) {
-  const num = Number(value);
-  selectedSarvamPace = Number.isFinite(num) ? num : DEFAULT_SARVAM_PACE;
-  if (sarvamPaceReadout) {
-    sarvamPaceReadout.textContent = `${selectedSarvamPace.toFixed(2)}x`;
+async function loadConfig() {
+  try {
+    const resp = await fetch("/client-config");
+    const cfg = await resp.json();
+    const pm = cfg.parts_manager || {};
+    personas = pm.personas || {};
+    promptVersion = pm.prompt_version || 2;
+    const storedVer = localStorage.getItem(STORAGE_PROMPT_VER);
+    if (storedVer && Number(storedVer) !== promptVersion) {
+      localStorage.removeItem(STORAGE_PERSONA);
+    }
+    localStorage.setItem(STORAGE_PROMPT_VER, String(promptVersion));
+    if (!personas[selectedPersonaId]) {
+      selectedPersonaId = pm.default_persona || "workshop-owner";
+    }
+    renderPersonas();
+    selectPersona(selectedPersonaId);
+  } catch (err) {
+    console.error("Failed to load config", err);
   }
 }
 
-function populateSarvamSpeakerOptions(speakers) {
-  const cleanSpeakers = speakers
-    .map(speaker => String(speaker).trim().toLowerCase())
-    .filter(Boolean);
-  const uniqueSpeakers = [...new Set(cleanSpeakers)];
-  if (uniqueSpeakers.length === 0) return;
-
-  const currentSpeaker = sarvamSpeakerSelect.value || selectedSarvamSpeaker;
-  sarvamSpeakerSelect.innerHTML = "";
-  uniqueSpeakers.forEach(speaker => {
-    const option = document.createElement("option");
-    option.value = speaker;
-    option.textContent = speaker.charAt(0).toUpperCase() + speaker.slice(1);
-    sarvamSpeakerSelect.appendChild(option);
+function renderPersonas() {
+  personaGrid.innerHTML = "";
+  Object.values(personas).forEach((p) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "persona-card";
+    btn.dataset.id = p.id;
+    btn.innerHTML = `
+      <h3>${esc(p.ui_name)}</h3>
+      <div class="role">${esc(p.role)}</div>
+      <div class="subtitle">${esc(p.subtitle)}</div>
+      <div class="speaker">Voice: ${esc(p.speaker)} (female assistant)</div>
+    `;
+    btn.addEventListener("click", () => {
+      if (sessionActive) return;
+      selectPersona(p.id);
+    });
+    personaGrid.appendChild(btn);
   });
-  sarvamSpeakerSelect.value = uniqueSpeakers.includes(currentSpeaker)
-    ? currentSpeaker
-    : uniqueSpeakers[0];
-  selectedSarvamSpeaker = sarvamSpeakerSelect.value;
-  updateSarvamSpeakerVisibility();
 }
 
-function populateSarvamEmotionOptions(emotions, defaultEmotion) {
-  const cleanEmotions = emotions
-    .map(emotion => String(emotion).trim().toLowerCase())
-    .filter(Boolean);
-  const uniqueEmotions = [...new Set(cleanEmotions)];
-  if (uniqueEmotions.length === 0) return;
-
-  const preferredEmotion = String(defaultEmotion || selectedSarvamEmotion || "neutral").toLowerCase();
-  sarvamEmotionSelect.innerHTML = "";
-  uniqueEmotions.forEach(emotion => {
-    const option = document.createElement("option");
-    option.value = emotion;
-    option.textContent = emotion.charAt(0).toUpperCase() + emotion.slice(1);
-    sarvamEmotionSelect.appendChild(option);
+function selectPersona(id) {
+  const p = personas[id];
+  if (!p) return;
+  selectedPersonaId = id;
+  localStorage.setItem(STORAGE_PERSONA, id);
+  document.querySelectorAll(".persona-card").forEach((el) => {
+    el.classList.toggle("selected", el.dataset.id === id);
   });
-  sarvamEmotionSelect.value = uniqueEmotions.includes(preferredEmotion)
-    ? preferredEmotion
-    : uniqueEmotions[0];
-  selectedSarvamEmotion = sarvamEmotionSelect.value;
+  rolePrompt.value = p.system_prompt;
+  voiceLabel.innerHTML = `<strong>Female</strong> <span>— ${esc(p.voice_label)}</span>`;
+  sampleQuestions.innerHTML = (p.sample_questions || [])
+    .map((q) => `<li>${esc(q)}</li>`)
+    .join("");
+  updateConvMeta(p);
 }
 
-function updateSarvamSpeakerVisibility() {
-  const show = voiceSelect.value === "female" && ttsSelect.value === "sarvam";
-  sarvamSpeakerSelector.style.display = show ? "flex" : "none";
-  sarvamSpeakerSelect.disabled = sessionActive || !show;
+function updateConvMeta(p) {
+  if (!p) p = personas[sessionPersonaId] || personas[selectedPersonaId];
+  if (!p) return;
+  convMeta.innerHTML = `Persona: <strong>${esc(p.ui_name)}</strong> · ${esc(p.role)} · Speaker: <strong>${esc(p.speaker)}</strong>`;
 }
 
-function updateSarvamPaceVisibility() {
-  if (!sarvamPaceSelector || !sarvamPaceInput) return;
-  const show = ttsSelect.value === "sarvam";
-  sarvamPaceSelector.style.display = show ? "flex" : "none";
-  sarvamPaceInput.disabled = sessionActive || !show;
+function esc(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
-function applySarvamPaceBounds(min, max, step, defaultValue) {
-  if (!sarvamPaceInput) return;
-  const safeMin = Number.isFinite(min) ? Math.max(0.5, Math.min(2.0, min)) : DEFAULT_SARVAM_PACE_MIN;
-  const safeMax = Number.isFinite(max) ? Math.max(safeMin, Math.min(2.0, max)) : DEFAULT_SARVAM_PACE_MAX;
-  const safeStep = Number.isFinite(step) && step > 0 ? step : DEFAULT_SARVAM_PACE_STEP;
-  const safeDefault = Number.isFinite(defaultValue)
-    ? Math.max(safeMin, Math.min(safeMax, defaultValue))
-    : DEFAULT_SARVAM_PACE;
-
-  sarvamPaceMin = safeMin;
-  sarvamPaceMax = safeMax;
-  sarvamPaceStep = safeStep;
-  sarvamPaceInput.min = String(safeMin);
-  sarvamPaceInput.max = String(safeMax);
-  sarvamPaceInput.step = String(safeStep);
-  sarvamPaceInput.value = String(safeDefault);
-  selectedSarvamPace = safeDefault;
-  if (sarvamPaceReadout) {
-    sarvamPaceReadout.textContent = `${safeDefault.toFixed(2)}x`;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// STT engine selector
-// ---------------------------------------------------------------------------
-function onSTTEngineChange(engine) {
-  selectedSTTEngine = engine;
-  if (sessionActive) {
-    // Send live switch request — backend restarts ASR with the new engine
-    sendJSON({ type: "set_stt_engine", engine });
-    const labels = { auto: "Auto", sarvam: "Sarvam AI", soniox: "Soniox", google: "Google Cloud", azure: "Microsoft Azure", amazon: "Amazon Transcribe", whisper: "Whisper" };
-    setStatus("Switching STT to " + (labels[engine] || engine) + "…");
-  }
-}
-
-// ---------------------------------------------------------------------------
-// UI helpers
-// ---------------------------------------------------------------------------
-function setOrb(state, label) {
-  orbEl.className = `orb ${state}`;
-  orbLabel.textContent = label;
-}
-function setStatus(msg) { statusText.textContent = msg; }
-
-// ---------------------------------------------------------------------------
-// Session toggle
-// ---------------------------------------------------------------------------
-async function toggleSession() {
+btnConnect.addEventListener("click", () => {
   if (sessionActive) stopSession();
-  else await startSession();
-}
+  else startSession();
+});
 
 async function startSession() {
-  await loadClientConfig();
+  sessionPersonaId = selectedPersonaId;
+  btnConnect.disabled = true;
+  btnConnect.textContent = "Connecting…";
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, sampleRate: 16000, echoCancellation: true, noiseSuppression: true },
+    });
+  } catch (err) {
+    alert("Microphone permission denied: " + err.message);
+    btnConnect.disabled = false;
+    btnConnect.textContent = "Connect & talk";
+    return;
+  }
 
-  // Clear previous conversation log and history for a fresh session
   conversationLog.innerHTML = "";
   conversationHistory = [];
   currentBotMsgEl = null;
   btnDownload.style.display = "none";
-  conversationHeader.classList.add("active");
-  conversationHeader.textContent = "Conversation";
 
-  // Lock language for this session — reconnects must use the same language
-  // or a language-change mid-session could start a second session in a
-  // different language and play two voices simultaneously.
-  sessionLanguage = selectedLanguage;
-  sessionBusiness = selectedBusiness;
-
-  selectedTTSEngine  = ttsSelect.value;
-  selectedLLMBackend = llmSelect.value;
-  selectedSarvamSpeaker = sarvamSpeakerSelect.value;
-  selectedSarvamEmotion = sarvamEmotionSelect.value;
-  if (sarvamPaceInput) {
-    onSarvamPaceChange(sarvamPaceInput.value);
-  }
-
-  setStatus("Requesting microphone permission…");
-  btnStart.disabled = true;
-  langSelect.disabled = true;
-  businessSelect.disabled = true;
-  voiceSelect.disabled = true;
-  sarvamSpeakerSelect.disabled = true;
-  sarvamEmotionSelect.disabled = true;
-  if (sarvamPaceInput) sarvamPaceInput.disabled = true;
-  ttsSelect.disabled = true;
-  llmSelect.disabled = true;
-
-  try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        sampleRate: 16000,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
-  } catch (err) {
-    setStatus("Microphone permission denied: " + err.message);
-    btnStart.disabled = false;
-    langSelect.disabled = false;
-    businessSelect.disabled = false;
-    voiceSelect.disabled = false;
-    updateSarvamSpeakerVisibility();
-    sarvamEmotionSelect.disabled = false;
-    updateSarvamPaceVisibility();
-    ttsSelect.disabled = false;
-    llmSelect.disabled = false;
-    return;
-  }
-
-  // Capture context — 16kHz for ASR
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)({
-    sampleRate: 16000,
-    latencyHint: "interactive",
-  });
-
-  // Sample ~500 ms of ambient audio to lift the client-side VAD threshold
-  // above the room's actual noise floor. The server's Silero VAD also gates
-  // STT, but tightening the client cuts barge-in false-positives on TVs and
-  // chatter, so the user's own speech still wins the duplex race.
+  audioCtx = new AudioContext({ sampleRate: 16000, latencyHint: "interactive" });
   try {
     await calibrateAmbientNoise(mediaStream);
-  } catch (calibErr) {
-    console.warn("Ambient noise calibration skipped:", calibErr);
+  } catch (_) {
     VAD_THRESHOLD = VAD_THRESHOLD_BASE;
   }
 
-  // Playback context — 24kHz for TTS
-  ttsAudioCtx = new (window.AudioContext || window.webkitAudioContext)({
-    sampleRate: PLAYBACK_SAMPLE_RATE,
-    latencyHint: "playback",
-  });
-  setupPlaybackHumanizer();
+  ttsAudioCtx = new AudioContext({ sampleRate: PLAYBACK_SAMPLE_RATE, latencyHint: "playback" });
+  ttsMasterGainNode = ttsAudioCtx.createGain();
+  ttsMasterGainNode.connect(ttsAudioCtx.destination);
 
   await setupAudioPipeline();
   connectWebSocket();
 
   sessionActive = true;
-  btnStart.textContent = "Stop";
-  btnStart.classList.add("active");
-  btnStart.disabled = false;
-
-  const info = LANG_INFO[selectedLanguage] || LANG_INFO.telugu;
-  const businessInfo = BUSINESS_INFO[sessionBusiness] || BUSINESS_INFO.mercotrace;
-  setOrb("idle", "Listening");
-  conversationHeader.textContent = `${businessInfo.name} Conversation`;
-  setStatus(`Connected to ${businessInfo.name} — speak in ${info.name} (${info.native})`);
+  setupPanel.classList.add("session-active");
+  conversationPanel.classList.add("visible");
+  btnConnect.textContent = "Disconnect";
+  btnConnect.classList.add("active");
+  btnConnect.disabled = false;
+  rolePrompt.disabled = true;
+  document.querySelectorAll(".persona-card").forEach((el) => { el.disabled = true; });
+  statusDot.textContent = "Connecting…";
+  statusDot.classList.remove("connected");
+  convStatusDot.classList.remove("connected");
+  updateConvMeta();
+  setOrb("", "Listening");
 }
 
 function stopSession() {
   sessionActive = false;
-  btnStart.textContent = "Start Conversation";
-  btnStart.classList.remove("active");
-  langSelect.disabled = false;
-  businessSelect.disabled = false;
-  voiceSelect.disabled = false;
-  updateSarvamSpeakerVisibility();
-  sarvamEmotionSelect.disabled = false;
-  updateSarvamPaceVisibility();
-  ttsSelect.disabled = false;
-  llmSelect.disabled = false;
+  setupPanel.classList.remove("session-active");
+  btnConnect.textContent = "Connect & talk";
+  btnConnect.classList.remove("active");
+  rolePrompt.disabled = false;
+  document.querySelectorAll(".persona-card").forEach((el) => { el.disabled = false; });
   finalizeBotBubble();
-  conversationHeader.classList.remove("active");
-  updateBusinessChrome();
 
-  // Show download button and session-end marker if there's content
   if (conversationHistory.length > 0) {
-    const divider = document.createElement("div");
-    divider.className = "session-end-divider";
-    divider.textContent = "— Session ended —";
-    conversationLog.appendChild(divider);
-    conversationLog.scrollTop = conversationLog.scrollHeight;
     btnDownload.style.display = "block";
   }
 
-  if (reconnectTimer)  { clearTimeout(reconnectTimer); reconnectTimer = null; }
-  if (sendInterval)    { clearInterval(sendInterval); sendInterval = null; }
-  if (processorNode)   { processorNode.disconnect(); processorNode = null; }
-  if (sourceNode)      { sourceNode.disconnect();    sourceNode    = null; }
-  if (analyserNode)    { analyserNode.disconnect();  analyserNode  = null; }
-  if (audioCtx)        { audioCtx.close();           audioCtx      = null; }
-  if (mediaStream)     { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
-
-  ttsSourceNodes.forEach(s => { try { s.stop(0); } catch (_) {} });
-  ttsSourceNodes = [];
-  stopBackgroundAmbience();
-  stopTypingLayer();
-  if (ambienceGainNode) { try { ambienceGainNode.disconnect(); } catch (_) {} ambienceGainNode = null; }
-  if (ttsMasterGainNode) { try { ttsMasterGainNode.disconnect(); } catch (_) {} ttsMasterGainNode = null; }
-  if (ttsAudioCtx)  { ttsAudioCtx.close(); ttsAudioCtx = null; }
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  if (sendInterval) { clearInterval(sendInterval); sendInterval = null; }
+  if (processorNode) processorNode.disconnect();
+  if (sourceNode) sourceNode.disconnect();
+  if (analyserNode) analyserNode.disconnect();
+  if (audioCtx) audioCtx.close();
+  if (mediaStream) mediaStream.getTracks().forEach((t) => t.stop());
+  if (ttsAudioCtx) ttsAudioCtx.close();
   if (ws && ws.readyState === WebSocket.OPEN) ws.close();
   ws = null;
-
-  ttsQueue = []; ttsBufferedMs = 0; ttsPrebufferDone = false;
-  ttsScheduledUntil = 0; botSpeaking = false; userSpeaking = false;
-  vadFrameCount = 0; interruptSent = false; ttsGraceFrames = 0;
-  setOrb("idle", "Inactive");
-  setStatus("Not connected");
+  stopTTSPlayback();
+  setOrb("", "Inactive");
+  statusDot.textContent = "Not connected";
+  statusDot.classList.remove("connected");
+  convStatusDot.textContent = "Disconnected";
+  convStatusDot.classList.remove("connected");
 }
 
-// ---------------------------------------------------------------------------
-// Audio pipeline
-// ---------------------------------------------------------------------------
-async function setupAudioPipeline() {
-  sourceNode   = audioCtx.createMediaStreamSource(mediaStream);
-  analyserNode = audioCtx.createAnalyser();
-  analyserNode.fftSize = 256;
-  analyserNode.smoothingTimeConstant = 0.5;
-  sourceNode.connect(analyserNode);
-
-  if (audioCtx.audioWorklet) {
-    await setupWorklet();
-  } else {
-    setupScriptProcessor();
-  }
-
-  sendInterval = setInterval(sendAudioChunk, SEND_INTERVAL_MS);
-}
-
-const WORKLET_CODE = `
-class PCMCapture extends AudioWorkletProcessor {
-  process(inputs) {
-    const ch = inputs[0][0];
-    if (ch && ch.length > 0) {
-      const copy = new Float32Array(ch);
-      this.port.postMessage(copy, [copy.buffer]);
-    }
-    return true;
-  }
-}
-registerProcessor("pcm-capture", PCMCapture);
-`;
-
-async function setupWorklet() {
-  const blob = new Blob([WORKLET_CODE], { type: "application/javascript" });
-  const url  = URL.createObjectURL(blob);
-  await audioCtx.audioWorklet.addModule(url);
-  URL.revokeObjectURL(url);
-  processorNode = new AudioWorkletNode(audioCtx, "pcm-capture");
-  processorNode.port.onmessage = (e) => { pcmBuffer.push(...e.data); };
-  analyserNode.connect(processorNode);
-  processorNode.connect(audioCtx.destination);
-}
-
-function setupScriptProcessor() {
-  processorNode = audioCtx.createScriptProcessor(4096, 1, 1);
-  processorNode.onaudioprocess = (e) => {
-    const s = e.inputBuffer.getChannelData(0);
-    pcmBuffer.push(...s);
-  };
-  analyserNode.connect(processorNode);
-  processorNode.connect(audioCtx.destination);
-}
-
-// ---------------------------------------------------------------------------
-// PCM helpers
-// ---------------------------------------------------------------------------
-function float32ToInt16PCM(float32Array) {
-  const int16 = new Int16Array(float32Array.length);
-  for (let i = 0; i < float32Array.length; i++) {
-    const s = Math.max(-1, Math.min(1, float32Array[i]));
-    int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-  }
-  return int16;
-}
-
-function int16ToFloat32(int16Array) {
-  const float32 = new Float32Array(int16Array.length);
-  for (let i = 0; i < int16Array.length; i++) {
-    float32[i] = int16Array[i] / 32768.0;
-  }
-  return float32;
-}
-
-function setupPlaybackHumanizer() {
-  if (!ttsAudioCtx) return;
-  if (ttsMasterGainNode) return;
-
-  ttsMasterGainNode = ttsAudioCtx.createGain();
-  ttsMasterGainNode.gain.value = 1.0;
-  ttsMasterGainNode.connect(ttsAudioCtx.destination);
-
-  ambienceGainNode = ttsAudioCtx.createGain();
-  ambienceGainNode.gain.value = 0.0;
-  ambienceGainNode.connect(ttsMasterGainNode);
-}
-
-function ensureAmbienceSource() {
-  if (!ttsAudioCtx || !ambienceGainNode || ambienceSource) return;
-  const durationSec = 2.0;
-  const frameCount = Math.floor(PLAYBACK_SAMPLE_RATE * durationSec);
-  const noiseBuffer = ttsAudioCtx.createBuffer(1, frameCount, PLAYBACK_SAMPLE_RATE);
-  const data = noiseBuffer.getChannelData(0);
-
-  // Colored-noise style shaping to feel like distant office/line ambience.
-  let prev = 0;
-  for (let i = 0; i < data.length; i++) {
-    const white = (Math.random() * 2 - 1) * 0.12;
-    prev = 0.985 * prev + white;
-    data[i] = prev;
-  }
-
-  ambienceSource = ttsAudioCtx.createBufferSource();
-  ambienceSource.buffer = noiseBuffer;
-  ambienceSource.loop = true;
-  ambienceSource.connect(ambienceGainNode);
-  ambienceSource.start();
-}
-
-function startBackgroundAmbience() {
-  if (!humanizerOfficeEnabled) return;
-  if (!ttsAudioCtx || !ambienceGainNode) return;
-  ensureAmbienceSource();
-  const now = ttsAudioCtx.currentTime;
-  ambienceGainNode.gain.cancelScheduledValues(now);
-  ambienceGainNode.gain.setValueAtTime(ambienceGainNode.gain.value, now);
-  ambienceGainNode.gain.linearRampToValueAtTime(humanizerOfficeGain, now + 0.18);
-}
-
-function stopBackgroundAmbience() {
-  if (!ttsAudioCtx || !ambienceGainNode) return;
-  const now = ttsAudioCtx.currentTime;
-  ambienceGainNode.gain.cancelScheduledValues(now);
-  ambienceGainNode.gain.setValueAtTime(ambienceGainNode.gain.value, now);
-  ambienceGainNode.gain.linearRampToValueAtTime(0.0, now + 0.12);
-}
-
-function scheduleTypingLayer() {
-  if (!humanizerTypingEnabled) return;
-  if (!sessionActive || !botSpeaking || !ttsAudioCtx || !ttsMasterGainNode) return;
-  if (typingTimer) clearTimeout(typingTimer);
-  const delay = humanizerTypingMinMs + Math.random() * (humanizerTypingMaxMs - humanizerTypingMinMs);
-  typingTimer = setTimeout(() => {
-    playTypingTick();
-    scheduleTypingLayer();
-  }, delay);
-}
-
-function playTypingTick() {
-  if (!humanizerTypingEnabled) return;
-  if (!ttsAudioCtx || !ttsMasterGainNode || !botSpeaking) return;
-  const now = ttsAudioCtx.currentTime;
-  const peak = humanizerTypingGain * (0.75 + Math.random() * 0.4);
-
-  const triggerClick = (startAt) => {
-    const durationMs = 8 + Math.random() * 8; // short, percussive key tap
-    const frameCount = Math.max(64, Math.floor((PLAYBACK_SAMPLE_RATE * durationMs) / 1000));
-    const clickBuffer = ttsAudioCtx.createBuffer(1, frameCount, PLAYBACK_SAMPLE_RATE);
-    const data = clickBuffer.getChannelData(0);
-    for (let i = 0; i < data.length; i++) {
-      data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
-    }
-
-    const src = ttsAudioCtx.createBufferSource();
-    const hp = ttsAudioCtx.createBiquadFilter();
-    const bp = ttsAudioCtx.createBiquadFilter();
-    const gain = ttsAudioCtx.createGain();
-
-    hp.type = "highpass";
-    hp.frequency.value = 700;
-    bp.type = "bandpass";
-    bp.frequency.value = 2200 + Math.random() * 1100;
-    bp.Q.value = 1.2;
-
-    gain.gain.value = 0.0;
-    src.buffer = clickBuffer;
-    src.connect(hp);
-    hp.connect(bp);
-    bp.connect(gain);
-    gain.connect(ttsMasterGainNode);
-
-    const attack = 0.0015;
-    const release = 0.02;
-    gain.gain.setValueAtTime(0.0, startAt);
-    gain.gain.linearRampToValueAtTime(peak, startAt + attack);
-    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + attack + release);
-
-    src.start(startAt);
-    src.stop(startAt + attack + release + 0.01);
-  };
-
-  triggerClick(now);
-  if (Math.random() < 0.35) {
-    triggerClick(now + (0.02 + Math.random() * 0.03)); // occasional double key hit
-  }
-}
-
-function stopTypingLayer() {
-  if (typingTimer) {
-    clearTimeout(typingTimer);
-    typingTimer = null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Audio chunk sender (every 100ms)
-// ---------------------------------------------------------------------------
-function sendAudioChunk() {
-  if (!ws || ws.readyState !== WebSocket.OPEN || pcmBuffer.length === 0) return;
-  const samples = new Float32Array(pcmBuffer);
-  pcmBuffer = [];
-  const rms = computeRMS(samples);
-  updateEnergyMeter(rms);
-  checkVAD(rms);
-  ws.send(float32ToInt16PCM(samples).buffer);
-}
-
-// ---------------------------------------------------------------------------
-// VAD
-// ---------------------------------------------------------------------------
-function computeRMS(arr) {
-  let s = 0;
-  for (let i = 0; i < arr.length; i++) s += arr[i] * arr[i];
-  return Math.sqrt(s / arr.length);
-}
-
-// Records ~500ms of ambient audio from the live mic stream and lifts
-// VAD_THRESHOLD above the measured noise floor (with a fixed margin), so
-// rooms with constant low-level chatter / fans don't trigger barge-in on
-// every frame. We sample short windows and use the median to ignore brief
-// spikes (a cough, the user clearing their throat etc.) during calibration.
-async function calibrateAmbientNoise(stream) {
-  if (!stream || !window.AudioContext) return;
-  const calibCtx = new (window.AudioContext || window.webkitAudioContext)({
-    sampleRate: 16000,
-    latencyHint: "interactive",
-  });
-  try {
-    const source = calibCtx.createMediaStreamSource(stream);
-    const analyser = calibCtx.createAnalyser();
-    analyser.fftSize = 1024;
-    source.connect(analyser);
-
-    const buffer = new Float32Array(analyser.fftSize);
-    const samples = [];
-    const SAMPLE_INTERVAL_MS = 50;
-    const SAMPLE_COUNT = 10;  // ~500ms total
-
-    for (let i = 0; i < SAMPLE_COUNT; i++) {
-      analyser.getFloatTimeDomainData(buffer);
-      samples.push(computeRMS(buffer));
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise(r => setTimeout(r, SAMPLE_INTERVAL_MS));
-    }
-
-    samples.sort((a, b) => a - b);
-    const median = samples[Math.floor(samples.length / 2)] || 0;
-    const newThreshold = Math.max(VAD_THRESHOLD_BASE, median + VAD_THRESHOLD_MARGIN);
-    VAD_THRESHOLD = newThreshold;
-    console.info(
-      `Ambient calibration: noise_floor=${median.toFixed(4)} → VAD_THRESHOLD=${newThreshold.toFixed(4)}`,
-    );
-
-    try { source.disconnect(); } catch (_) {}
-    try { analyser.disconnect(); } catch (_) {}
-  } finally {
-    try { await calibCtx.close(); } catch (_) {}
-  }
-}
-
-function updateEnergyMeter(rms) {
-  const pct = Math.min(100, rms * 1000);
-  energyBar.style.width = pct + "%";
-  energyBar.classList.toggle("above-threshold", rms > VAD_THRESHOLD);
-}
-
-function checkVAD(rms) {
-  // Grace window: ignore VAD completely for the first TTS_GRACE_FRAMES frames
-  // after TTS starts. This prevents the bot's own audio or room echo from
-  // immediately triggering a false barge-in interrupt.
-  if (ttsGraceFrames > 0) {
-    ttsGraceFrames--;
-    vadFrameCount = 0;
-    return;
-  }
-
-  if (rms > VAD_THRESHOLD) {
-    vadFrameCount++;
-
-    // Use a fast, short hold for barge-in so users can interrupt naturally.
-    // Background noise still has to clear the RMS threshold for consecutive frames.
-    // When the bot is silent, VAD_HOLD_FRAMES (400ms) is enough to confirm speech.
-    const holdRequired = botSpeaking ? VAD_INTERRUPT_FRAMES : VAD_HOLD_FRAMES;
-
-    if (vadFrameCount >= holdRequired) {
-      if (botSpeaking && !interruptSent) {
-        interruptSent = true;
-        sendJSON({ type: "interrupt" });
-        stopTTSPlayback();
-        setOrb("user-speaking", "You are speaking…");
-        userSpeaking = true;
-      }
-      if (!userSpeaking) {
-        userSpeaking = true;
-        setOrb("user-speaking", "You are speaking…");
-      }
-    }
-  } else {
-    vadFrameCount = 0;
-    if (userSpeaking) {
-      userSpeaking = false;
-      if (!botSpeaking) setOrb("idle", "Listening");
-    }
-    // Only clear interruptSent once the bot has finished speaking.
-    // Resetting it on every brief silence (e.g. between TTS sentences)
-    // would allow echo from the next sentence to re-trigger the interrupt.
-    if (!botSpeaking) interruptSent = false;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// WebSocket
-// ---------------------------------------------------------------------------
 function connectWebSocket() {
-  selectedVoice = voiceSelect.value;
-  selectedSarvamSpeaker = selectedVoice === "female" ? sarvamSpeakerSelect.value : "";
-  selectedSarvamEmotion = sarvamEmotionSelect.value;
-  if (sarvamPaceInput) {
-    const paceNum = Number(sarvamPaceInput.value);
-    if (Number.isFinite(paceNum)) selectedSarvamPace = paceNum;
-  }
-  // Always reconnect with the language that was active when the session
-  // started (sessionLanguage), not the current dropdown value — prevents
-  // a language-switch + reconnect from spawning a second session in a
-  // different language and playing two voices simultaneously.
-  const lang = sessionLanguage;
-  const business = sessionBusiness;
-  // Only forward sarvam_pace when Sarvam is the active TTS engine — keeps the
-  // query string short and avoids confusing engines that don't accept it.
-  const paceParam = selectedTTSEngine === "sarvam"
-    ? `&sarvam_pace=${encodeURIComponent(selectedSarvamPace.toFixed(2))}`
-    : "";
-  const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&business=${encodeURIComponent(business)}&voice=${encodeURIComponent(selectedVoice)}&sarvam_speaker=${encodeURIComponent(selectedSarvamSpeaker)}&sarvam_emotion=${encodeURIComponent(selectedSarvamEmotion)}${paceParam}&stt_engine=${encodeURIComponent(selectedSTTEngine)}&tts_engine=${encodeURIComponent(selectedTTSEngine)}&llm_backend=${encodeURIComponent(selectedLLMBackend)}`;
-  setStatus("Connecting to server…");
-  ws = new WebSocket(wsUrl);
+  const params = new URLSearchParams({
+    language: "english",
+    business: "parts_manager",
+    persona: sessionPersonaId,
+    voice: "female",
+    stt_engine: STT_ENGINE,
+    tts_engine: TTS_ENGINE,
+    llm_backend: LLM_BACKEND,
+  });
+  ws = new WebSocket(`${WS_BASE}?${params}`);
   ws.binaryType = "arraybuffer";
-
-  ws.onopen  = () => { reconnectTimer = null; setStatus("Connected — starting session…"); };
-  ws.onclose = (e) => {
-    setStatus("Disconnected (code " + e.code + ")");
+  ws.onopen = () => {
+    statusDot.textContent = "Connected";
+    statusDot.classList.add("connected");
+    convStatusDot.textContent = "Connected";
+    convStatusDot.classList.add("connected");
+  };
+  ws.onclose = () => {
+    statusDot.textContent = "Disconnected";
+    statusDot.classList.remove("connected");
+    convStatusDot.classList.remove("connected");
     if (sessionActive && !reconnectTimer) {
-      setOrb("idle", "Reconnecting…");
-      reconnectTimer = setTimeout(() => {
-        reconnectTimer = null;
-        connectWebSocket();
-      }, 2000);
+      reconnectTimer = setTimeout(() => { reconnectTimer = null; connectWebSocket(); }, 2000);
     }
   };
-  ws.onerror = () => setStatus("WebSocket error");
-
-  ws.onmessage = (event) => {
-    if (event.data instanceof ArrayBuffer) onAudioReceived(event.data);
-    else if (typeof event.data === "string") onJSONReceived(event.data);
+  ws.onmessage = (ev) => {
+    if (ev.data instanceof ArrayBuffer) onAudio(ev.data);
+    else onJSON(ev.data);
   };
 }
 
-function sendJSON(obj) {
-  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+function onJSON(raw) {
+  let msg;
+  try { msg = JSON.parse(raw); } catch { return; }
+  switch (msg.type) {
+    case "session_ready":
+      if (msg.persona_name) {
+        convMeta.innerHTML = `Persona: <strong>${esc(msg.persona_name)}</strong> · ${esc(msg.persona_role || "")} · Speaker: <strong>${esc(msg.speaker || "")}</strong>`;
+      }
+      setOrb("listening", "Ready — speak now");
+      break;
+    case "transcript_partial":
+      transcriptPartial.textContent = msg.text || "";
+      break;
+    case "transcript_final":
+      transcriptPartial.textContent = "";
+      addUserBubble(msg.text || "");
+      setOrb("thinking", "Thinking…");
+      botSpeaking = false;
+      break;
+    case "bot_text_fragment":
+      appendBot(msg.text || "");
+      break;
+    case "tts_start":
+      stopTTSPlayback();
+      botSpeaking = true;
+      ttsGraceFrames = TTS_GRACE_FRAMES;
+      ttsPrebufferDone = false;
+      ttsScheduledUntil = 0;
+      if (!currentBotMsgEl) startBotBubble();
+      if (ttsAudioCtx?.state !== "running") ttsAudioCtx.resume();
+      setOrb("speaking", "Assistant speaking…");
+      break;
+    case "tts_end":
+    case "tts_stopped":
+      finalizeBotBubble();
+      botSpeaking = false;
+      interruptSent = false;
+      if (!userSpeaking) setOrb("listening", "Listening");
+      break;
+    case "error":
+      console.error(msg.message);
+      break;
+  }
 }
 
-// ---------------------------------------------------------------------------
-// Conversation log helpers
-// ---------------------------------------------------------------------------
+function setOrb(state, label) {
+  orb.className = "orb" + (state ? " " + state : "");
+  orbLabel.textContent = label;
+}
+
 function addUserBubble(text) {
   const row = document.createElement("div");
   row.className = "msg-row";
-  row.innerHTML = `<span class="msg-label user">You</span>
-                   <div class="msg-bubble user">${escHtml(text)}</div>`;
+  row.innerHTML = `<span class="msg-label user">You</span><div class="msg-bubble user">${esc(text)}</div>`;
   conversationLog.appendChild(row);
   conversationLog.scrollTop = conversationLog.scrollHeight;
   conversationHistory.push({ role: "user", text, ts: new Date() });
@@ -1416,16 +841,14 @@ function startBotBubble() {
   row.innerHTML = `<span class="msg-label bot">Assistant</span>`;
   row.appendChild(bubble);
   conversationLog.appendChild(row);
-  conversationLog.scrollTop = conversationLog.scrollHeight;
   currentBotMsgEl = bubble;
-  // ts is set to null here; finalizeBotBubble() stamps it when complete
   conversationHistory.push({ role: "bot", text: "", ts: null });
 }
 
-function appendBotFragment(text) {
+function appendBot(text) {
   if (!currentBotMsgEl) startBotBubble();
   const last = conversationHistory[conversationHistory.length - 1];
-  if (last && last.role === "bot") last.text += text + " ";
+  if (last?.role === "bot") last.text += text + " ";
   currentBotMsgEl.textContent = (currentBotMsgEl.textContent || "") + text + " ";
   conversationLog.scrollTop = conversationLog.scrollHeight;
 }
@@ -1434,177 +857,128 @@ function finalizeBotBubble() {
   if (currentBotMsgEl) {
     currentBotMsgEl.classList.remove("streaming");
     currentBotMsgEl = null;
-    // Stamp the timestamp now that the full response is delivered
     const last = conversationHistory[conversationHistory.length - 1];
-    if (last && last.role === "bot" && !last.ts) last.ts = new Date();
+    if (last?.role === "bot" && !last.ts) last.ts = new Date();
   }
 }
 
-function escHtml(str) {
-  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-}
-
-// ---------------------------------------------------------------------------
-// Download transcript
-// ---------------------------------------------------------------------------
-function downloadTranscript() {
-  if (!conversationHistory.length) return;
-  const langInfo  = LANG_INFO[sessionLanguage] || LANG_INFO.telugu;
-  const businessInfo = BUSINESS_INFO[sessionBusiness] || BUSINESS_INFO.mercotrace;
-  const now       = new Date();
-  const dateStr   = now.toISOString().slice(0,19).replace("T"," ");
-  const divider   = "─".repeat(52);
-
-  let lines = [
-    "Telugu & Kannada Voice Agent — Conversation Transcript",
-    divider,
-    `Business : ${businessInfo.name}`,
-    `Language : ${langInfo.name} (${langInfo.native})`,
-    `Date     : ${dateStr}`,
-    `Turns    : ${Math.floor(conversationHistory.length / 2)}`,
-    divider,
-    "",
-  ];
-
-  conversationHistory.forEach(({ role, text, ts }, i) => {
-    const isUser  = role === "user";
-    const label   = isUser ? "You" : "Assistant";
-    const time    = ts ? ts.toTimeString().slice(0,8) : "--:--:--";
-    if (isUser && i > 0) lines.push(""); // blank line between turns
-    lines.push(`[${time}]  ${label}`);
-    lines.push(text.trim());
-  });
-
-  lines.push("", divider);
-
-  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href     = url;
-  a.download = `${sessionBusiness}-transcript-${dateStr.replace(/[ :]/g,"-")}.txt`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// ---------------------------------------------------------------------------
-// WebSocket message handler
-// ---------------------------------------------------------------------------
-function onJSONReceived(raw) {
-  let msg;
-  try { msg = JSON.parse(raw); } catch { return; }
-
-  const info = LANG_INFO[selectedLanguage] || LANG_INFO.telugu;
-  const businessInfo = BUSINESS_INFO[sessionBusiness] || BUSINESS_INFO.mercotrace;
-
-  switch (msg.type) {
-    case "session_ready":
-      setStatus(`Ready for ${businessInfo.name} — speak in ${info.name} (${info.native})`);
-      break;
-
-    case "transcript_partial":
-      transcriptPartial.textContent = msg.text || "";
-      break;
-
-    case "transcript_final":
-      transcriptPartial.textContent = "";
-      addUserBubble(msg.text || "");
-      setOrb("thinking", "Thinking…");
-      botSpeaking = false;
-      break;
-
-    case "bot_text_fragment":
-      appendBotFragment(msg.text || "");
-      break;
-
-    case "tts_start":
-      stopTTSPlayback();
-      botSpeaking = true;
-      ttsGraceFrames = TTS_GRACE_FRAMES;  // brief echo guard before barge-in is allowed
-      ttsPrebufferDone = false;
-      ttsScheduledUntil = 0;
-      ttsBufferedMs = 0;
-      // Only open a new bubble if bot_text_fragment hasn't already created one
-      if (!currentBotMsgEl) startBotBubble();
-      if (ttsAudioCtx && ttsAudioCtx.state !== "running") ttsAudioCtx.resume();
-      startBackgroundAmbience();
-      scheduleTypingLayer();
-      setOrb("bot-speaking", "Assistant speaking…");
-      break;
-
-    case "tts_end":
-    case "tts_stopped":
-      finalizeBotBubble();
-      botSpeaking = false;
-      interruptSent = false;
-      stopBackgroundAmbience();
-      stopTypingLayer();
-      if (!userSpeaking) setOrb("idle", "Listening");
-      break;
-
-    case "stt_engine_changed": {
-      const labels = { auto: "Auto", sarvam: "Sarvam AI", soniox: "Soniox", google: "Google Cloud", azure: "Microsoft Azure", amazon: "Amazon Transcribe", whisper: "Whisper" };
-      const engineLabel = labels[msg.engine] || msg.engine;
-      setStatus(`STT switched to ${engineLabel} — listening…`);
-      break;
+async function setupAudioPipeline() {
+  sourceNode = audioCtx.createMediaStreamSource(mediaStream);
+  analyserNode = audioCtx.createAnalyser();
+  analyserNode.fftSize = 256;
+  sourceNode.connect(analyserNode);
+  const code = `
+    class PCMCapture extends AudioWorkletProcessor {
+      process(inputs) {
+        const ch = inputs[0][0];
+        if (ch?.length) {
+          const copy = new Float32Array(ch);
+          this.port.postMessage(copy, [copy.buffer]);
+        }
+        return true;
+      }
     }
+    registerProcessor("pcm-capture", PCMCapture);
+  `;
+  const url = URL.createObjectURL(new Blob([code], { type: "application/javascript" }));
+  await audioCtx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+  processorNode = new AudioWorkletNode(audioCtx, "pcm-capture");
+  processorNode.port.onmessage = (e) => pcmBuffer.push(...e.data);
+  analyserNode.connect(processorNode);
+  processorNode.connect(audioCtx.destination);
+  sendInterval = setInterval(sendChunk, SEND_INTERVAL_MS);
+}
 
-    case "error":
-      setStatus("Error: " + (msg.message || "Unknown error"));
-      console.error("Server error:", msg.message);
-      break;
+function sendChunk() {
+  if (!ws || ws.readyState !== WebSocket.OPEN || !pcmBuffer.length) return;
+  const samples = new Float32Array(pcmBuffer);
+  pcmBuffer = [];
+  const rms = computeRMS(samples);
+  energyBar.style.width = Math.min(100, rms * 1000) + "%";
+  energyBar.classList.toggle("active", rms > VAD_THRESHOLD);
+  checkVAD(rms);
+  const int16 = new Int16Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  ws.send(int16.buffer);
+}
 
-    case "pong":
-      break;
+function computeRMS(arr) {
+  let s = 0;
+  for (let i = 0; i < arr.length; i++) s += arr[i] * arr[i];
+  return Math.sqrt(s / arr.length);
+}
 
-    default:
-      console.debug("Unhandled:", msg.type);
+async function calibrateAmbientNoise(stream) {
+  const ctx = new AudioContext({ sampleRate: 16000 });
+  const src = ctx.createMediaStreamSource(stream);
+  const an = ctx.createAnalyser();
+  an.fftSize = 1024;
+  src.connect(an);
+  const buf = new Float32Array(an.fftSize);
+  const samples = [];
+  for (let i = 0; i < 10; i++) {
+    an.getFloatTimeDomainData(buf);
+    samples.push(computeRMS(buf));
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  samples.sort((a, b) => a - b);
+  VAD_THRESHOLD = Math.max(VAD_THRESHOLD_BASE, samples[5] + VAD_THRESHOLD_MARGIN);
+  src.disconnect();
+  await ctx.close();
+}
+
+function checkVAD(rms) {
+  if (ttsGraceFrames > 0) { ttsGraceFrames--; return; }
+  const hold = botSpeaking ? VAD_INTERRUPT_FRAMES : VAD_HOLD_FRAMES;
+  if (rms > VAD_THRESHOLD) {
+    vadFrameCount++;
+    if (vadFrameCount >= hold) {
+      if (botSpeaking && !interruptSent) {
+        interruptSent = true;
+        ws.send(JSON.stringify({ type: "interrupt" }));
+        stopTTSPlayback();
+        setOrb("listening", "You are speaking…");
+      }
+      userSpeaking = true;
+    }
+  } else {
+    vadFrameCount = 0;
+    userSpeaking = false;
+    if (!botSpeaking) interruptSent = false;
   }
 }
 
-// ---------------------------------------------------------------------------
-// TTS playback (24kHz PCM)
-// ---------------------------------------------------------------------------
-function onAudioReceived(arrayBuffer) {
+function onAudio(buf) {
   if (!ttsAudioCtx || !botSpeaking) return;
-
-  const int16 = new Int16Array(arrayBuffer);
+  const int16 = new Int16Array(buf);
   ttsQueue.push(int16);
-
-  const chunkDurationMs = (int16.length / PLAYBACK_SAMPLE_RATE) * 1000;
-  ttsBufferedMs += chunkDurationMs;
-
+  ttsBufferedMs += (int16.length / PLAYBACK_SAMPLE_RATE) * 1000;
   if (!ttsPrebufferDone && ttsBufferedMs >= PREBUFFER_MS) {
     ttsPrebufferDone = true;
-    drainTTSQueue();
-  } else if (ttsPrebufferDone) {
-    drainTTSQueue();
-  }
+    drainQueue();
+  } else if (ttsPrebufferDone) drainQueue();
 }
 
-function drainTTSQueue() {
-  if (!ttsAudioCtx) return;
+function drainQueue() {
   const now = ttsAudioCtx.currentTime;
-  const AHEAD_S = 0.005;
-  if (ttsScheduledUntil < now + AHEAD_S) ttsScheduledUntil = now + AHEAD_S;
-
-  while (ttsQueue.length > 0) {
-    const int16   = ttsQueue.shift();
-    const float32 = int16ToFloat32(int16);
-    const buffer  = ttsAudioCtx.createBuffer(1, float32.length, PLAYBACK_SAMPLE_RATE);
-    buffer.copyToChannel(float32, 0);
-
-    const source = ttsAudioCtx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ttsMasterGainNode || ttsAudioCtx.destination);
-    source.start(ttsScheduledUntil);
-    ttsSourceNodes.push(source);
-    source.addEventListener("ended", () => {
-      ttsSourceNodes = ttsSourceNodes.filter(n => n !== source);
-    });
-
-    ttsScheduledUntil += float32.length / PLAYBACK_SAMPLE_RATE;
+  if (ttsScheduledUntil < now + 0.005) ttsScheduledUntil = now + 0.005;
+  while (ttsQueue.length) {
+    const int16 = ttsQueue.shift();
+    const f32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768;
+    const buffer = ttsAudioCtx.createBuffer(1, f32.length, PLAYBACK_SAMPLE_RATE);
+    buffer.copyToChannel(f32, 0);
+    const src = ttsAudioCtx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ttsMasterGainNode);
+    src.start(ttsScheduledUntil);
+    ttsSourceNodes.push(src);
+    ttsScheduledUntil += f32.length / PLAYBACK_SAMPLE_RATE;
   }
-  ttsBufferedMs = 0;
 }
 
 function stopTTSPlayback() {
@@ -1612,16 +986,35 @@ function stopTTSPlayback() {
   ttsBufferedMs = 0;
   ttsPrebufferDone = false;
   ttsScheduledUntil = 0;
-  ttsSourceNodes.forEach(s => { try { s.stop(0); } catch (_) {} });
+  ttsSourceNodes.forEach((s) => { try { s.stop(0); } catch (_) {} });
   ttsSourceNodes = [];
 }
 
-// ---------------------------------------------------------------------------
-// Keepalive
-// ---------------------------------------------------------------------------
-setInterval(() => {
-  if (ws && ws.readyState === WebSocket.OPEN) sendJSON({ type: "ping" });
-}, 25000);
+btnDownload.addEventListener("click", () => {
+  const p = personas[sessionPersonaId];
+  const lines = [
+    "Parts Manager Platform — Conversation Transcript",
+    "─".repeat(50),
+    `Persona: ${p?.ui_name || sessionPersonaId}`,
+    `Speaker: ${p?.speaker || "Layla"}`,
+    `Date: ${new Date().toISOString().slice(0, 19).replace("T", " ")}`,
+    "",
+  ];
+  conversationHistory.forEach(({ role, text, ts }) => {
+    const label = role === "user" ? "You" : "Assistant";
+    const time = ts ? ts.toTimeString().slice(0, 8) : "--:--:--";
+    lines.push(`[${time}] ${label}`);
+    lines.push(text.trim());
+    lines.push("");
+  });
+  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `parts_manager_transcript_${Date.now()}.txt`;
+  a.click();
+});
+
+loadConfig();
 </script>
 </body>
 </html>

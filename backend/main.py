@@ -50,12 +50,17 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import (
+    PARTS_MANAGER_PERSONAS,
+    PARTS_MANAGER_PROMPT_VERSION,
     SARVAM_EMOTION_TEMPERATURES,
     SARVAM_FEMALE_SPEAKERS,
     BUSINESS_CONFIGS,
     config,
+    DEFAULT_PARTS_MANAGER_PERSONA,
+    get_persona_config,
     SUPPORTED_BUSINESSES,
     SUPPORTED_LANGUAGES,
+    SUPPORTED_PERSONAS,
 )
 from session_manager import session_manager
 
@@ -96,12 +101,20 @@ def _pcm_rms(pcm_bytes: bytes) -> float:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=" * 60)
-    logger.info("Telugu & Kannada Voice AI Agent starting…")
+    logger.info("Parts Manager Voice AI Agent starting…")
     logger.info("Default language : %s", config.default_language)
     logger.info("Supported        : %s", ", ".join(SUPPORTED_LANGUAGES))
-    logger.info("STT  : %s (default engine: %s)", config.soniox.model, config.default_stt_engine)
-    logger.info("LLM  : Ollama %s @ %s", config.ollama.model, config.ollama.base_url)
-    logger.info("TTS  : Telugu=%s | Kannada=%s", config.tts.telugu_engine_priority, config.tts.kannada_engine_priority)
+    logger.info("STT  : default engine %s (en-US)", config.default_stt_engine)
+    if config.default_llm_backend == "gemini" and config.gemini.api_key:
+        logger.info("LLM  : Gemini %s (cloud)", config.gemini.model)
+    else:
+        logger.info("LLM  : Ollama %s @ %s", config.ollama.model, config.ollama.base_url)
+    logger.info(
+        "TTS  : English=%s | Telugu=%s | Kannada=%s",
+        config.tts.english_engine_priority,
+        config.tts.telugu_engine_priority,
+        config.tts.kannada_engine_priority,
+    )
     logger.info("Audio: input 16kHz | TTS output 24kHz")
     logger.info("=" * 60)
     session_manager.initialize_rag()
@@ -118,12 +131,12 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="Telugu & Kannada Voice AI Agent",
+    title="Parts Manager Platform",
     description=(
-        "Real-time full-duplex Telugu and Kannada conversational voice agent. "
-        "Powered by multi-provider ASR + Ollama LLM + multi-provider TTS."
+        "Real-time voice assistant for the Parts Manager UAE automotive spare parts "
+        "marketplace. English STT + LLM + female neutral-accent TTS."
     ),
-    version="3.0.0",
+    version="4.0.0",
     lifespan=lifespan,
 )
 
@@ -173,6 +186,7 @@ async def health():
             else f"ollama/{config.ollama.model} @ {config.ollama.base_url}"
         ),
         "tts": (
+            f"english: {config.tts.english_engine_priority} | "
             f"telugu: {config.tts.telugu_engine_priority} | "
             f"kannada: {config.tts.kannada_engine_priority}"
         ),
@@ -220,6 +234,31 @@ async def client_config():
             }
             for business, cfg in BUSINESS_CONFIGS.items()
         },
+        "runtime": {
+            "language": config.default_language,
+            "llm_backend": config.default_llm_backend,
+            "stt_engine": config.default_stt_engine,
+            "tts_engine": "azure_tts",
+            "voice": "female",
+        },
+        "parts_manager": {
+            "prompt_version": PARTS_MANAGER_PROMPT_VERSION,
+            "default_persona": DEFAULT_PARTS_MANAGER_PERSONA,
+            "personas": {
+                pid: {
+                    "id": p["id"],
+                    "ui_name": p["ui_name"],
+                    "role": p["role"],
+                    "subtitle": p["subtitle"],
+                    "speaker": p["speaker"],
+                    "voice_label": p["voice_label"],
+                    "system_prompt": p["system_prompt"],
+                    "sample_questions": p["sample_questions"],
+                    "greeting": p["greeting"],
+                }
+                for pid, p in PARTS_MANAGER_PERSONAS.items()
+            },
+        },
     }
 
 
@@ -230,23 +269,25 @@ async def client_config():
 @app.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
-    language: str = "telugu",
-    business: str = "mercotrace",
-    voice: str = "male",
+    language: str = "english",
+    business: str = "parts_manager",
+    persona: str = DEFAULT_PARTS_MANAGER_PERSONA,
+    voice: str = "female",
     tts_engine: str = "auto",
     sarvam_speaker: str = "",
     sarvam_emotion: str = "",
     sarvam_pace: float = 0.0,
     stt_engine: str = "",
-    llm_backend: str = "",
+    llm_backend: str = "gemini",
 ):
     """
     Main WebSocket handler.
 
     Query parameters:
-      language   — "telugu" or "kannada" (defaults to LANGUAGE env var → "telugu")
-      business   — "mercotrace" or "davia_hospital"
-      voice      — "male" (default) or "female"
+      language   — "english" | "telugu" | "kannada" (defaults to LANGUAGE env var)
+      business   — "parts_manager" | "mercotrace" | "davia_hospital"
+      persona    — Parts Manager persona id (workshop-owner, retailer-supplier, …)
+      voice      — "female" (default for Parts Manager) or "male"
       sarvam_speaker — female Sarvam speaker override, e.g. "anushka"
       sarvam_emotion — Bulbul v3 emotion preset: neutral | calm | warm | empathetic |
                        happy | cheerful | excited | serious
@@ -263,7 +304,10 @@ async def websocket_endpoint(
     business = business.lower().strip()
     if business not in SUPPORTED_BUSINESSES:
         business = config.default_business
-    voice = voice.lower() if voice.lower() in ("male", "female") else "male"
+    persona = persona.lower().strip()
+    if persona not in SUPPORTED_PERSONAS:
+        persona = DEFAULT_PARTS_MANAGER_PERSONA
+    voice = voice.lower() if voice.lower() in ("male", "female") else "female"
     tts_engine = tts_engine.lower().strip()
     sarvam_speaker = sarvam_speaker.lower().strip()
     if sarvam_speaker not in SARVAM_FEMALE_SPEAKERS:
@@ -286,15 +330,18 @@ async def websocket_endpoint(
         stt_engine = "auto"
     llm_backend = llm_backend.lower().strip() or config.default_llm_backend
     if llm_backend not in ("ollama", "gemini"):
-        llm_backend = "ollama"
+        llm_backend = config.default_llm_backend
+    if llm_backend == "gemini" and not config.gemini.api_key:
+        logger.warning("GEMINI_API_KEY missing — responses will fail until .env is set")
 
     await websocket.accept()
     logger.info(
-        "WebSocket connected from %s (language=%s, business=%s, voice=%s, tts=%s, "
-        "sarvam_speaker=%s, sarvam_emotion=%s, sarvam_pace=%s, stt=%s, llm=%s)",
+        "WebSocket connected from %s (language=%s, business=%s, persona=%s, voice=%s, "
+        "tts=%s, sarvam_speaker=%s, sarvam_emotion=%s, sarvam_pace=%s, stt=%s, llm=%s)",
         websocket.client,
         language,
         business,
+        persona,
         voice,
         tts_engine,
         sarvam_speaker or "default",
@@ -331,12 +378,18 @@ async def websocket_endpoint(
         sarvam_pace=sarvam_pace,
         stt_engine=stt_engine,
         llm_backend=llm_backend,
+        persona=persona,
     )
+    persona_cfg = get_persona_config(persona) if business == "parts_manager" else None
     await send_json_msg({
         "type": "session_ready",
         "session_id": session.session_id,
         "language": language,
         "business": business,
+        "persona": persona,
+        "persona_name": persona_cfg["ui_name"] if persona_cfg else "",
+        "persona_role": persona_cfg["role"] if persona_cfg else "",
+        "speaker": persona_cfg["speaker"] if persona_cfg else "",
     })
     logger.info("Session %s ready [%s]", session.session_id, language)
 

@@ -24,7 +24,13 @@ from typing import AsyncIterator, Optional
 
 import httpx
 
-from config import config, get_business_config, get_language_config
+from config import (
+    PARTS_MANAGER_SPEECH_STYLE,
+    config,
+    get_business_config,
+    get_language_config,
+    get_persona_config,
+)
 from memory import ConversationMemory
 from rag import RAGRetriever
 
@@ -104,9 +110,28 @@ def _format_mock_price_data(price_data: dict) -> str:
     return "\n".join(lines)
 
 
-def _build_business_system_prompt(language: str, business: str) -> str:
-    """Combine language rules with the selected business persona."""
+def _build_business_system_prompt(
+    language: str,
+    business: str,
+    persona: str = "workshop-owner",
+) -> str:
+    """Combine language rules with the selected business or Parts Manager persona."""
     lang_cfg = get_language_config(language)
+
+    if business == "parts_manager":
+        persona_cfg = get_persona_config(persona)
+        return (
+            "You are a voice assistant for the Parts Manager Platform — the UAE automotive "
+            "spare parts marketplace. Respond only in clear international English.\n"
+            f"{lang_cfg.get('spoken_style', '')}\n"
+            "For low-latency voice, keep every response to one or two short conversational "
+            "sentences, ideally under 20 words. Do not use lists, bullets, or markdown. "
+            "Begin every reply with the actual answer — never with hesitation sounds, fillers, "
+            "or thinking noises like 'hmm', 'umm', or 'uh'.\n\n"
+            f"{persona_cfg['system_prompt']}\n\n"
+            f"{PARTS_MANAGER_SPEECH_STYLE}"
+        )
+
     business_cfg = get_business_config(business)
     price_data = business_cfg.get("mock_price_data", {})
     business_prompt = business_cfg["system_prompt"].format(
@@ -145,14 +170,18 @@ class VoiceLLMClient:
         retriever: Optional[RAGRetriever] = None,
         language: str = "telugu",
         business: str = "mercotrace",
+        persona: str = "workshop-owner",
     ) -> None:
         self._retriever = retriever
         self._language  = language
         self._business = business
+        self._persona = persona
 
         lang_cfg = get_language_config(language)
         business_cfg = get_business_config(business)
-        self._system_prompt: str = _build_business_system_prompt(language, business)
+        self._system_prompt: str = _build_business_system_prompt(
+            language, business, persona
+        )
         self._neutral_stubs: list = lang_cfg["neutral_stubs"]
         self._language_display: str = lang_cfg["display_name"]
         self._business_display: str = business_cfg["display_name"]
@@ -407,14 +436,18 @@ class GeminiLLMClient:
         retriever: Optional[RAGRetriever] = None,
         language: str = "telugu",
         business: str = "mercotrace",
+        persona: str = "workshop-owner",
     ) -> None:
         self._retriever = retriever
         self._language  = language
         self._business = business
+        self._persona = persona
 
         lang_cfg = get_language_config(language)
         business_cfg = get_business_config(business)
-        self._system_prompt: str = _build_business_system_prompt(language, business)
+        self._system_prompt: str = _build_business_system_prompt(
+            language, business, persona
+        )
         self._neutral_stubs: list = lang_cfg["neutral_stubs"]
         self._language_display: str = lang_cfg["display_name"]
         self._business_display: str = business_cfg["display_name"]
@@ -546,6 +579,7 @@ def create_llm_client(
     retriever: Optional[RAGRetriever] = None,
     language: str = "telugu",
     business: str = "mercotrace",
+    persona: str = "workshop-owner",
 ) -> "VoiceLLMClient | GeminiLLMClient":
     """
     Return an LLM client for the requested backend.
@@ -559,22 +593,18 @@ def create_llm_client(
     backend = backend.lower().strip()
     if backend == "gemini":
         if not config.gemini.api_key:
-            logger.warning(
-                "GEMINI_API_KEY not set — falling back to Ollama. "
-                "Get a free key at https://aistudio.google.com"
-            )
-            return VoiceLLMClient(
-                retriever=retriever,
-                language=language,
-                business=business,
+            logger.error(
+                "GEMINI_API_KEY not set — add it to .env (https://aistudio.google.com)"
             )
         return GeminiLLMClient(
             retriever=retriever,
             language=language,
             business=business,
+            persona=persona,
         )
     return VoiceLLMClient(
         retriever=retriever,
         language=language,
         business=business,
+        persona=persona,
     )

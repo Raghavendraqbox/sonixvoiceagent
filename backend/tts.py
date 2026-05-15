@@ -263,7 +263,9 @@ def schedule_tts_warmup(language: str = "telugu") -> None:
     Call once at startup to eliminate cold-start latency on the first request.
     """
     lang_cfg = get_language_config(language)
-    model_id = lang_cfg["mms_tts_model"]
+    model_id = (lang_cfg.get("mms_tts_model") or "").strip()
+    if not model_id:
+        return
 
     def _warmup():
         model, tokenizer = _get_mms(model_id)
@@ -624,6 +626,26 @@ class VoiceTTSHandler:
         else:
             self._kannada_engines = []
 
+        # Build English engine priority list
+        if self._language == "english":
+            ENGLISH_VALID = {
+                "sarvam", "google_tts", "gnani", "ttsmaker", "elevenlabs",
+                "azure_tts", "amazon_polly", "edge", "gtts",
+            }
+            if tts_engine and tts_engine != "auto" and tts_engine in ENGLISH_VALID:
+                fallbacks = [e for e in ["edge", "gtts"] if e != tts_engine]
+                self._english_engines: list[str] = [tts_engine] + fallbacks
+            else:
+                raw = config.tts.english_engine_priority
+                self._english_engines = [e.strip() for e in raw.split(",") if e.strip()]
+            logger.info(
+                "English TTS engine priority: %s (voice=%s, requested=%s)",
+                self._english_engines, voice, tts_engine,
+                extra={"session_id": session_id},
+            )
+        else:
+            self._english_engines = []
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -640,6 +662,9 @@ class VoiceTTSHandler:
 
         if self._language == "kannada":
             return await self._synthesize_kannada(text)
+
+        if self._language == "english":
+            return await self._synthesize_english(text)
 
         # Telugu: ElevenLabs primary → MMS Telugu fallback → silence
         return await self._synthesize_telugu(text)
@@ -707,6 +732,55 @@ class VoiceTTSHandler:
 
         logger.error(
             "All Telugu TTS engines exhausted — falling back to silence",
+            extra={"session_id": self.session_id},
+        )
+        return await self._synthesize_silence(text)
+
+    # ------------------------------------------------------------------
+    # English — walk the configurable engine priority list
+    # ------------------------------------------------------------------
+
+    async def _synthesize_english(self, text: str) -> bool:
+        """Try each configured English TTS engine in order."""
+        for engine in self._english_engines:
+            if self._cancel_event.is_set():
+                return False
+
+            logger.info(
+                "English TTS trying engine: %s", engine,
+                extra={"session_id": self.session_id},
+            )
+
+            if engine == "sarvam":
+                result = await self._synthesize_sarvam(text)
+            elif engine == "google_tts":
+                result = await self._synthesize_google_tts(text)
+            elif engine == "gnani":
+                result = await self._synthesize_gnani(text)
+            elif engine == "ttsmaker":
+                result = await self._synthesize_ttsmaker(text)
+            elif engine == "elevenlabs":
+                result = await self._synthesize_elevenlabs(text)
+            elif engine == "azure_tts":
+                result = await self._synthesize_azure_tts(text)
+            elif engine == "amazon_polly":
+                result = await self._synthesize_amazon_polly(text)
+            elif engine == "edge":
+                result = await self._synthesize_edge_tts(text)
+            elif engine == "gtts":
+                result = await self._synthesize_gtts(text)
+            else:
+                logger.warning(
+                    "Unknown English TTS engine '%s', skipping", engine,
+                    extra={"session_id": self.session_id},
+                )
+                continue
+
+            if result:
+                return True
+
+        logger.error(
+            "All English TTS engines exhausted — falling back to silence",
             extra={"session_id": self.session_id},
         )
         return await self._synthesize_silence(text)

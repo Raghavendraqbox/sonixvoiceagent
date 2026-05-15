@@ -13,7 +13,12 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Callable, Awaitable, Dict, Optional
 
-from config import config, get_business_config, get_language_config
+from config import (
+    config,
+    get_business_config,
+    get_language_config,
+    get_persona_config,
+)
 from memory import ConversationMemory
 from rag import RAGRetriever
 from asr import ASRHandler, TranscriptResult
@@ -45,6 +50,7 @@ class Session:
     memory: ConversationMemory
     language: str
     business: str
+    persona: str
     audio_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     transcript_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     interrupt_event: asyncio.Event = field(default_factory=asyncio.Event)
@@ -143,11 +149,20 @@ class SessionManager:
         Send a tiny dummy request to Ollama so the 72B model is fully loaded
         into GPU VRAM before the first real user query arrives.
 
-        Without this, the first inference triggers a ~100s cold-start load
-        while the user is waiting — the model layers page in from disk and the
-        session appears completely unresponsive.  With the warmup the model is
-        already resident in VRAM and first-token latency drops to <1 s.
+        Skipped when LLM_BACKEND=gemini (cloud LLM — no local Ollama needed).
         """
+        if config.default_llm_backend == "gemini":
+            if config.gemini.api_key:
+                logger.info(
+                    "LLM warm-up skipped — using Gemini %s (cloud)",
+                    config.gemini.model,
+                )
+            else:
+                logger.warning(
+                    "GEMINI_API_KEY is not set — set it in .env before connecting",
+                )
+            return
+
         import httpx
         logger.info(
             "LLM warm-up starting — loading %s into VRAM (this takes ~60-120s on first boot)…",
@@ -199,7 +214,8 @@ class SessionManager:
         sarvam_emotion: str = "",
         sarvam_pace: float = 0.0,
         stt_engine: str = "auto",
-        llm_backend: str = "ollama",
+        llm_backend: str = "gemini",
+        persona: str = "workshop-owner",
     ) -> Session:
         """
         Allocate a new session for the given language, wire all handlers,
@@ -209,9 +225,11 @@ class SessionManager:
         from config import SUPPORTED_BUSINESSES, SUPPORTED_LANGUAGES
         if language.lower() not in SUPPORTED_LANGUAGES:
             logger.warning(
-                "Unsupported language '%s', defaulting to 'telugu'", language
+                "Unsupported language '%s', defaulting to '%s'",
+                language,
+                config.default_language,
             )
-            language = "telugu"
+            language = config.default_language
         language = language.lower()
         if business.lower() not in SUPPORTED_BUSINESSES:
             logger.warning(
@@ -221,9 +239,11 @@ class SessionManager:
             )
             business = config.default_business
         business = business.lower()
+        persona = persona.lower().strip()
 
         lang_cfg = get_language_config(language)
         business_cfg = get_business_config(business)
+        persona_cfg = get_persona_config(persona) if business == "parts_manager" else None
 
         session_id = str(uuid.uuid4())
         memory = ConversationMemory(session_id=session_id)
@@ -232,6 +252,7 @@ class SessionManager:
             memory=memory,
             language=language,
             business=business,
+            persona=persona_cfg["id"] if persona_cfg else persona,
         )
 
         # Per-session VAD — used both for barge-in detection in main.py and
@@ -274,6 +295,7 @@ class SessionManager:
             retriever=None,
             language=language,
             business=business,
+            persona=session.persona,
         )
 
         # Start background tasks
@@ -490,8 +512,11 @@ class SessionManager:
 
         # Play greeting immediately at session start — before waiting for user input.
         # This ensures every user utterance always gets an LLM response.
-        greeting_by_language = business_cfg.get("greeting", {})
-        greeting = greeting_by_language.get(session.language) or lang_cfg.get("greeting", "")
+        if session.business == "parts_manager":
+            greeting = get_persona_config(session.persona).get("greeting", "")
+        else:
+            greeting_by_language = business_cfg.get("greeting", {})
+            greeting = greeting_by_language.get(session.language) or lang_cfg.get("greeting", "")
         if greeting:
             await self._play_hardcoded(session, send_json_cb, greeting)
         ivr_main_menu = lang_cfg.get("ivr_main_menu", "")
