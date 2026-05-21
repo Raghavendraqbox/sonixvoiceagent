@@ -9,6 +9,7 @@ Language is determined per-session via the WebSocket ?language= query param
 import asyncio
 import logging
 import re
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Callable, Awaitable, Dict, Optional
@@ -61,7 +62,11 @@ class Session:
     bot_audio_active: bool = field(default=False, init=False)
     bot_bargein_speech_frames: int = field(default=0, init=False)
     user_speaking_event: asyncio.Event = field(default_factory=asyncio.Event)
+    # Set only when VAD says speech AND echo-guard allows STT (not during bot TTS).
+    # Used for silence-reprompt deferral so TV/echo noise does not block forever.
+    user_stt_active_event: asyncio.Event = field(default_factory=asyncio.Event)
     input_silence_frames: int = field(default=0, init=False)
+    stt_silence_frames: int = field(default=0, init=False)
     # Per-session VAD instance (Silero or RMS fallback). Stateful — never share
     # across sessions. Lazily attached by SessionManager.create_session().
     vad: object = field(default=None, init=False)
@@ -192,7 +197,7 @@ class SessionManager:
         send_audio_cb: AudioSendCallback,
         send_json_cb: JsonSendCallback,
         language: str = "telugu",
-        business: str = "mercotrace",
+        business: str = "bank_loan",
         voice: str = "male",
         tts_engine: str = "auto",
         sarvam_speaker: str = "",
@@ -511,6 +516,7 @@ class SessionManager:
         # timer only fires after the user has actually heard the greeting.
         # After 2 reprompts, wait indefinitely instead of spamming.
         _silence_reprompt_count = 0
+        _silence_defer_count = 0
         _greeting_play_secs = session.tts_handler.last_pcm_bytes_sent / _TTS_BYTES_PER_SEC
         _silence_timeout = 10.0 + _greeting_play_secs
 
@@ -521,23 +527,24 @@ class SessionManager:
                     session.transcript_queue.get(), timeout=_silence_timeout
                 )
             except asyncio.TimeoutError:
-                if session.user_speaking_event.is_set():
+                if (
+                    session.user_stt_active_event.is_set()
+                    and _silence_defer_count < 3
+                ):
                     logger.info(
-                        "Silence reprompt deferred because user speech is active",
+                        "Silence reprompt deferred — STT-eligible speech active",
                         extra={"session_id": session.session_id},
                     )
+                    _silence_defer_count += 1
                     await self._wait_for_user_speech_idle(
                         session,
                         max_wait=12.0,
                         post_silence_grace=0.5,
                     )
-                    # Give Azure STT enough time to return a transcript before
-                    # considering the user silent again. 2s was too short —
-                    # Azure often takes 300-600ms after speech ends, and on
-                    # empty results the timeout was firing before the next
-                    # recognition attempt completed, triggering spurious reprompts.
+                    # Give batch STT time to return a transcript before reprompting.
                     _silence_timeout = 8.0
                     continue
+                _silence_defer_count = 0
                 if _silence_reprompt_count < 2:
                     reprompt = silence_reprompt or last_bot_text
                     if reprompt:
@@ -560,12 +567,15 @@ class SessionManager:
             if not user_text:
                 continue
 
+            _silence_defer_count = 0
+
             # User spoke — silence state resets; actual timeout set after bot replies
 
             # ASR engines may emit multiple final chunks for one long utterance
             # separated by very short pauses. Coalesce contiguous finals so the
             # LLM sees the full sentence and frontend transcript is complete.
             merged_parts = [user_text]
+            t_stt_received = transcript.received_at
             expecting_mobile_number = self._expects_mobile_number(last_bot_text)
             # Adaptive merge window:
             # - Sentence-ending punctuation → process immediately (lowest latency).
@@ -609,6 +619,7 @@ class SessionManager:
                     break
                 if more.is_final and more.text.strip():
                     merged_parts.append(more.text.strip())
+                    t_stt_received = min(t_stt_received, more.received_at)
                     merged_text = " ".join(merged_parts)
                     digit_count = len(self._digits_only(merged_text))
                     if expecting_mobile_number and 0 < digit_count < 10:
@@ -630,12 +641,15 @@ class SessionManager:
                         break
                     if more.is_final and more.text.strip():
                         merged_parts.append(more.text.strip())
+                        t_stt_received = min(t_stt_received, more.received_at)
                         if await self._wait_for_user_speech_idle(session):
                             continue
 
             user_text = " ".join(merged_parts).strip()
             if self._should_normalize_mobile_turn(user_text, last_bot_text):
                 user_text = self._normalize_mobile_turn(user_text, session.language)
+
+            t_process_start = time.monotonic()
 
             logger.info(
                 "Processing [%s]: %s",
@@ -695,12 +709,16 @@ class SessionManager:
 
             full_bot_response = ""
             queued_fragment_this_turn = False
+            t_llm_start = time.monotonic()
+            t_llm_first: float | None = None
             try:
                 async for fragment in session.llm_client.stream_response(
                     user_query=user_text,
                     memory=session.memory,
                     session_id=session.session_id,
                 ):
+                    if t_llm_first is None:
+                        t_llm_first = time.monotonic()
                     # Always complete LLM generation even if TTS was cancelled
                     # (e.g. client VAD echo → "interrupt" message).  Stopping
                     # early stores a truncated response in memory, which
@@ -724,6 +742,10 @@ class SessionManager:
                 )
                 await send_json_cb({"type": "error", "message": "LLM processing failed"})
 
+            t_llm_end = time.monotonic()
+            if t_llm_first is None:
+                t_llm_first = t_llm_end
+
             await session.tts_orchestrator.fragment_queue.put(None)
 
             try:
@@ -733,6 +755,25 @@ class SessionManager:
             except asyncio.CancelledError:
                 orch_task.cancel()
                 break
+
+            t_tts_end = time.monotonic()
+
+            stt_to_process_ms = (t_process_start - t_stt_received) * 1000
+            llm_first_ms = (t_llm_first - t_llm_start) * 1000
+            llm_total_ms = (t_llm_end - t_llm_start) * 1000
+            tts_ms = (t_tts_end - t_llm_first) * 1000
+            e2e_ms = (t_tts_end - t_stt_received) * 1000
+            logger.info(
+                "Turn latency [%s]: stt→process=%.0fms | llm_first=%.0fms | "
+                "llm_total=%.0fms | tts=%.0fms | e2e=%.0fms",
+                lang_cfg["display_name"],
+                stt_to_process_ms,
+                llm_first_ms,
+                llm_total_ms,
+                tts_ms,
+                e2e_ms,
+                extra={"session_id": session.session_id},
+            )
 
             bot_text = full_bot_response.strip()
             if bot_text:

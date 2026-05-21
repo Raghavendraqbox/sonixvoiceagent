@@ -108,10 +108,14 @@ def _build_business_system_prompt(language: str, business: str) -> str:
     """Combine language rules with the selected business persona."""
     lang_cfg = get_language_config(language)
     business_cfg = get_business_config(business)
-    price_data = business_cfg.get("mock_price_data", {})
-    business_prompt = business_cfg["system_prompt"].format(
-        mock_price_data=_format_mock_price_data(price_data)
-    )
+    raw_prompt = business_cfg["system_prompt"]
+    if "{mock_price_data}" in raw_prompt:
+        price_data = business_cfg.get("mock_price_data", {})
+        business_prompt = raw_prompt.format(
+            mock_price_data=_format_mock_price_data(price_data)
+        )
+    else:
+        business_prompt = raw_prompt
     speaking_style = lang_cfg.get(
         "spoken_style",
         f"Speak mainly in {lang_cfg['display_name']} with natural everyday English words.",
@@ -144,7 +148,7 @@ class VoiceLLMClient:
         self,
         retriever: Optional[RAGRetriever] = None,
         language: str = "telugu",
-        business: str = "mercotrace",
+        business: str = "bank_loan",
     ) -> None:
         self._retriever = retriever
         self._language  = language
@@ -406,7 +410,7 @@ class GeminiLLMClient:
         self,
         retriever: Optional[RAGRetriever] = None,
         language: str = "telugu",
-        business: str = "mercotrace",
+        business: str = "bank_loan",
     ) -> None:
         self._retriever = retriever
         self._language  = language
@@ -545,7 +549,7 @@ def create_llm_client(
     backend: str = "ollama",
     retriever: Optional[RAGRetriever] = None,
     language: str = "telugu",
-    business: str = "mercotrace",
+    business: str = "bank_loan",
 ) -> "VoiceLLMClient | GeminiLLMClient":
     """
     Return an LLM client for the requested backend.
@@ -554,7 +558,7 @@ def create_llm_client(
         backend:   "ollama" (local) or "gemini" (cloud).
         retriever: Optional RAG retriever (passed through to client).
         language:  "telugu" or "kannada".
-        business:  "mercotrace" or "davia_hospital".
+        business:  "bank_loan" or "car_loan".
     """
     backend = backend.lower().strip()
     if backend == "gemini":

@@ -231,7 +231,7 @@ async def client_config():
 async def websocket_endpoint(
     websocket: WebSocket,
     language: str = "telugu",
-    business: str = "mercotrace",
+    business: str = "bank_loan",
     voice: str = "male",
     tts_engine: str = "auto",
     sarvam_speaker: str = "",
@@ -245,7 +245,7 @@ async def websocket_endpoint(
 
     Query parameters:
       language   — "telugu" or "kannada" (defaults to LANGUAGE env var → "telugu")
-      business   — "mercotrace" or "davia_hospital"
+      business   — "bank_loan" or "car_loan"
       voice      — "male" (default) or "female"
       sarvam_speaker — female Sarvam speaker override, e.g. "anushka"
       sarvam_emotion — Bulbul v3 emotion preset: neutral | calm | warm | empathetic |
@@ -378,6 +378,14 @@ async def websocket_endpoint(
                 # user genuinely barges in, cancel_tts() clears
                 # bot_audio_active and normal flow resumes.
                 is_speech_for_stt = is_speech_raw and not session.bot_audio_active
+
+                if is_speech_for_stt:
+                    session.user_stt_active_event.set()
+                    session.stt_silence_frames = 0
+                elif session.user_stt_active_event.is_set():
+                    session.stt_silence_frames += 1
+                    if session.stt_silence_frames >= 3:
+                        session.user_stt_active_event.clear()
 
                 if is_speech_raw:
                     session.user_speaking_event.set()

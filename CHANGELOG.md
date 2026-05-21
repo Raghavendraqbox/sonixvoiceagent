@@ -212,7 +212,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Added** scrollable conversation history panel replacing the simple single-turn "You said / Assistant" cards. Every user utterance and bot response stacks as labelled chat bubbles (user = orange, right-aligned; assistant = purple, left-aligned).
 - **Added** live bot response streaming — LLM fragments appear word by word in the bubble as they arrive from the server, with a subtle streaming opacity until the turn completes.
 - **Added** partial ASR preview below the log — italic live text shows while the user is still speaking, then disappears when the final transcript arrives.
-- **Added** **Download Transcript** button — appears automatically when a session is stopped. Exports the full conversation as a timestamped plain-text `.txt` file (`qobox-transcript-YYYY-MM-DD-HH-MM-SS.txt`) with language, date, turn-by-turn user/assistant lines.
+- **Added** **Download Transcript** button — appears automatically when a session is stopped. Exports the full conversation as a timestamped plain-text `.txt` file (`j-s-e-e-transcript-YYYY-MM-DD-HH-MM-SS.txt`) with language, date, turn-by-turn user/assistant lines.
 - **Changed** conversation log and history are cleared automatically when a new session starts.
 
 ### Changed — UI cleanup
@@ -344,6 +344,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **LLM**: Ollama `qwen2.5:72b` — open-source, local GPU, no API key required
 - **TTS**: edge-tts `te-IN-ShrutiNeural` (24 kHz) → gTTS fallback
 - Browser client: Web Audio API, AudioWorklet PCM capture, VAD interrupt
-- FAISS RAG with Qobox knowledge base (Telugu + English)
+- FAISS RAG with J S E E knowledge base (Telugu + English)
 - Sliding-window conversation memory (8 turns)
 - Based on architecture of [voiceagentcloud](https://github.com/Raghavendraqbox/voiceagentcloud)

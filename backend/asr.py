@@ -29,8 +29,9 @@ import io
 import logging
 import queue as _queue
 import threading
+import time
 import wave
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
 import httpx
@@ -90,6 +91,7 @@ class TranscriptResult:
     text: str
     is_final: bool
     confidence: float = 0.0
+    received_at: float = field(default_factory=time.monotonic)
 
 
 # ---------------------------------------------------------------------------
@@ -439,20 +441,12 @@ class ASRHandler:
         # Response schema: {"transcript": "...", ...}
         text = (result.get("transcript") or "").strip()
         if not text:
+            logger.warning(
+                "Sarvam STT empty transcript",
+                extra={"session_id": self.session_id},
+            )
             return
-
-        logger.info(
-            "Sarvam STT [%s]: %s",
-            self._language_display,
-            text[:80],
-            extra={"session_id": self.session_id},
-        )
-
-        if not self.interrupt_event.is_set():
-            self.interrupt_event.set()
-        await self.transcript_queue.put(
-            TranscriptResult(text=text, is_final=True, confidence=1.0)
-        )
+        await self._put_final_transcript(text, "Sarvam")
 
     # ------------------------------------------------------------------
     # Soniox streaming session
@@ -737,7 +731,8 @@ class ASRHandler:
         SILENCE_RMS_THRESHOLD    = 0.008
         # 0.2s commit reduces latency without cutting off natural pauses.
         SILENCE_FRAMES_TO_COMMIT = 2
-        MIN_SPEECH_FRAMES        = max(1, config.audio.min_speech_frames_before_stt)
+        # Azure batch REST needs ≥~400 ms of speech; 2×100 ms frames is too short.
+        MIN_SPEECH_FRAMES        = max(4, config.audio.min_speech_frames_before_stt)
         MAX_SILENCE_FRAMES       = 30
 
         audio_buf: list = []
@@ -783,8 +778,36 @@ class ASRHandler:
                         audio_buf = []; speech_started = False
                         silence_frames = 0; speech_frame_count = 0
 
+    async def _put_final_transcript(self, text: str, source: str) -> None:
+        text = text.strip()
+        if not text:
+            return
+        logger.info(
+            "%s STT [%s]: %s",
+            source,
+            self._language_display,
+            text[:80],
+            extra={"session_id": self.session_id},
+        )
+        if not self.interrupt_event.is_set():
+            self.interrupt_event.set()
+        await self.transcript_queue.put(
+            TranscriptResult(text=text, is_final=True, confidence=1.0)
+        )
+
     async def _azure_transcribe(self, client: "httpx.AsyncClient", audio_buf: list, np) -> None:
+        if not audio_buf:
+            return
         audio_array = np.concatenate(audio_buf).astype(np.float32)
+        audio_ms = len(audio_array) / 16.0  # 16 kHz mono
+        if audio_ms < 350:
+            logger.debug(
+                "Azure STT skip: utterance too short (%.0f ms)",
+                audio_ms,
+                extra={"session_id": self.session_id},
+            )
+            return
+
         pcm_int16 = (audio_array * 32767).clip(-32768, 32767).astype(np.int16)
 
         wav_buf = io.BytesIO()
@@ -812,16 +835,25 @@ class ASRHandler:
                 return
             resp.raise_for_status()
             data = resp.json()
-            if data.get("RecognitionStatus") != "Success":
-                return
+            status = data.get("RecognitionStatus", "unknown")
             text = (data.get("DisplayText") or "").strip()
-            if not text:
+            if status == "Success" and text:
+                await self._put_final_transcript(text, "Azure")
                 return
-            logger.info("Azure STT [%s]: %s", self._language_display, text[:80],
-                        extra={"session_id": self.session_id})
-            if not self.interrupt_event.is_set():
-                self.interrupt_event.set()
-            await self.transcript_queue.put(TranscriptResult(text=text, is_final=True, confidence=1.0))
+            logger.warning(
+                "Azure STT no transcript (status=%s, audio_ms=%.0f)",
+                status,
+                audio_ms,
+                extra={"session_id": self.session_id},
+            )
+            # Telugu/Kannada: Sarvam is more reliable than Azure batch REST.
+            if config.sarvam_stt.api_key:
+                logger.info(
+                    "Azure STT empty — retrying with Sarvam (audio_ms=%.0f)",
+                    audio_ms,
+                    extra={"session_id": self.session_id},
+                )
+                await self._sarvam_transcribe(client, audio_buf, np)
         except httpx.HTTPStatusError as exc:
             logger.error("Azure STT HTTP error %d: %s", exc.response.status_code,
                          exc.response.text[:200], extra={"session_id": self.session_id})
