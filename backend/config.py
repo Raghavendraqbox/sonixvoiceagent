@@ -392,20 +392,20 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
 BUSINESS_CONFIGS: Dict[str, Dict[str, Any]] = {
     "jsee_loans": {
-        "display_name": "J S E E Loans (Sruthi)",
+        "display_name": "J S E E Loans (Sunny)",
         "description": (
             "Unified Car, Home, and Personal loan intake — one flow, branch by loan type."
         ),
         "greeting": {
             "telugu": (
                 "నమస్కారం! J S E E Financial Services కి స్వాగతం. "
-                "నా పేరు Sruthi. "
+                "నా పేరు Sunny. "
                 "మేము home, car మరియు personal loans కోసం సహాయం చేయగలము. "
                 "మీకు ఏ loan కావాలి?"
             ),
             "kannada": (
                 "Namaskara, J S E E Financial Services ge welcome. "
-                "Nanna hesaru Sruthi. "
+                "Nanna hesaru Sunny. "
                 "Namma hatra Car loan, Home loan, mattu Personal loan matra ide. "
                 "Dayavittu ivaralli ondu helivi — Car, Home, athava Personal."
             ),
@@ -421,11 +421,11 @@ BUSINESS_CONFIGS: Dict[str, Dict[str, Any]] = {
             ),
         },
         "system_prompt": (
-            "You are Sruthi, a professional and warm Telugu-speaking customer care executive "
+            "You are Sunny, a professional and warm Telugu-speaking customer care executive "
             "at J S E E Financial Services. The company name is always J S E E Financial Services "
             "(never Solutions or any other name). You handle ONLY Car loan, Home loan, and "
             "Personal loan — these are the only products we offer. "
-            "Your name is Sruthi if the customer asks.\n\n"
+            "Your name is Sunny if the customer asks.\n\n"
 
             "LANGUAGE FOR TTS (critical):\n"
             "- Write Telugu words in Telugu script (తెలుగు), NOT Romanized English spelling.\n"
