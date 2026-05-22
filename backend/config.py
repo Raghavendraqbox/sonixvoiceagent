@@ -682,6 +682,14 @@ class AzureSTTConfig:
     def region(self) -> str:
         return os.getenv("AZURE_STT_REGION") or os.getenv("AZURE_TTS_REGION", "eastus")
 
+    @property
+    def silence_frames_to_commit(self) -> int:
+        """Override via AZURE_STT_SILENCE_FRAMES; else STT_SILENCE_FRAMES_TO_COMMIT (default 3)."""
+        raw = os.getenv("AZURE_STT_SILENCE_FRAMES", "").strip()
+        if raw:
+            return max(2, int(raw))
+        return max(2, int(os.getenv("STT_SILENCE_FRAMES_TO_COMMIT", "3")))
+
 
 # ---------------------------------------------------------------------------
 # Amazon Transcribe config
@@ -798,6 +806,16 @@ class AudioConfig:
     min_speech_frames_before_stt: int = int(
         os.getenv("MIN_SPEECH_FRAMES_BEFORE_STT", "2")
     )
+    # End-of-utterance: consecutive non-speech frames (100 ms each) before a
+    # batch REST clip is sent. Too low (e.g. 1 = 100 ms) splits Telugu speech
+    # and digit-by-digit phone numbers into empty Azure/Sarvam responses.
+    stt_silence_frames_to_commit: int = int(
+        os.getenv("STT_SILENCE_FRAMES_TO_COMMIT", "3")
+    )
+    # Minimum buffered speech duration before calling batch STT APIs.
+    stt_min_utterance_ms: int = int(os.getenv("STT_MIN_UTTERANCE_MS", "450"))
+    # Hard reset if the caller stays silent this long mid-utterance (100 ms frames).
+    stt_max_silence_frames: int = int(os.getenv("STT_MAX_SILENCE_FRAMES", "30"))
 
     # TTS output: resampled to 24kHz for browser playback
     # MUST match PLAYBACK_SAMPLE_RATE in frontend/index.html

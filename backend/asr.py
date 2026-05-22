@@ -41,6 +41,29 @@ from config import config, get_language_config
 
 logger = logging.getLogger(__name__)
 
+# Shared VAD segmentation for REST batch STT (Azure, Sarvam, Google, Amazon, Whisper).
+_BATCH_SILENCE_RMS_THRESHOLD = 0.008
+
+
+def _batch_stt_vad_params(*, min_speech_frames_floor: int = 2) -> dict:
+    """End-of-utterance tuning shared by batch STT engines."""
+    return {
+        "silence_frames_to_commit": max(2, config.audio.stt_silence_frames_to_commit),
+        "min_speech_frames": max(
+            min_speech_frames_floor,
+            config.audio.min_speech_frames_before_stt,
+        ),
+        "max_silence_frames": max(10, config.audio.stt_max_silence_frames),
+        "min_utterance_ms": max(350, config.audio.stt_min_utterance_ms),
+    }
+
+
+def _utterance_duration_ms(audio_buf: list, np) -> float:
+    if not audio_buf:
+        return 0.0
+    audio_array = np.concatenate(audio_buf).astype(np.float32)
+    return len(audio_array) / 16.0  # 16 kHz mono
+
 
 def _unpack_audio_item(item) -> Tuple[bytes, Optional[bool]]:
     """Normalize an audio queue item.
@@ -249,8 +272,8 @@ class ASRHandler:
                 elif engine == "whisper":
                     await self._run_whisper_session()
                 else:  # "auto"
-                    # Prefer streaming STT for full-duplex barge-in. Sarvam is
-                    # accurate but batch-style, so it adds turn-taking latency.
+                    # Streaming first (no batch VAD fragmentation); Sarvam batch
+                    # second for Indian languages; Whisper last.
                     if _soniox_available:
                         await self._run_soniox_streaming()
                     elif _sarvam_available:
@@ -321,14 +344,12 @@ class ASRHandler:
             extra={"session_id": self.session_id},
         )
 
-        # VAD parameters — same as Whisper fallback. The actual classification
-        # is now done upstream by Silero VAD in main.py; the RMS check below
-        # is a backwards-compatible fallback when older callers push raw bytes.
-        SILENCE_RMS_THRESHOLD  = 0.008
-        # 0.2s commit improves full-duplex responsiveness with Azure batch STT.
-        SILENCE_FRAMES_TO_COMMIT = 2
-        MIN_SPEECH_FRAMES       = max(1, config.audio.min_speech_frames_before_stt)
-        MAX_SILENCE_FRAMES      = 30   # 3s hard reset
+        # VAD parameters — classification is done upstream by Silero in main.py.
+        vad = _batch_stt_vad_params(min_speech_frames_floor=2)
+        SILENCE_RMS_THRESHOLD = _BATCH_SILENCE_RMS_THRESHOLD
+        SILENCE_FRAMES_TO_COMMIT = vad["silence_frames_to_commit"]
+        MIN_SPEECH_FRAMES = vad["min_speech_frames"]
+        MAX_SILENCE_FRAMES = vad["max_silence_frames"]
 
         audio_buf: list = []
         silence_frames   = 0
@@ -399,6 +420,15 @@ class ASRHandler:
           language_code — te-IN / kn-IN
           model         — saarika:v2.5
         """
+        audio_ms = _utterance_duration_ms(audio_buf, np)
+        if audio_ms < max(350, config.audio.stt_min_utterance_ms):
+            logger.debug(
+                "Sarvam STT skip: utterance too short (%.0f ms)",
+                audio_ms,
+                extra={"session_id": self.session_id},
+            )
+            return
+
         audio_array = np.concatenate(audio_buf).astype(np.float32)
         # Convert float32 [-1,1] back to int16 for WAV encoding
         pcm_int16 = (audio_array * 32767).clip(-32768, 32767).astype(np.int16)
@@ -621,11 +651,11 @@ class ASRHandler:
         logger.info("Google STT started (language=%s)", self._google_stt_language_code,
                     extra={"session_id": self.session_id})
 
-        SILENCE_RMS_THRESHOLD    = 0.008
-        # 0.2s commit reduces latency without cutting off natural pauses.
-        SILENCE_FRAMES_TO_COMMIT = 2
-        MIN_SPEECH_FRAMES        = max(1, config.audio.min_speech_frames_before_stt)
-        MAX_SILENCE_FRAMES       = 30
+        vad = _batch_stt_vad_params(min_speech_frames_floor=2)
+        SILENCE_RMS_THRESHOLD = _BATCH_SILENCE_RMS_THRESHOLD
+        SILENCE_FRAMES_TO_COMMIT = vad["silence_frames_to_commit"]
+        MIN_SPEECH_FRAMES = vad["min_speech_frames"]
+        MAX_SILENCE_FRAMES = vad["max_silence_frames"]
 
         audio_buf: list = []
         silence_frames = 0
@@ -672,6 +702,14 @@ class ASRHandler:
 
     async def _google_transcribe(self, client: "httpx.AsyncClient", audio_buf: list, np) -> None:
         import base64
+        audio_ms = _utterance_duration_ms(audio_buf, np)
+        if audio_ms < max(350, config.audio.stt_min_utterance_ms):
+            logger.debug(
+                "Google STT skip: utterance too short (%.0f ms)",
+                audio_ms,
+                extra={"session_id": self.session_id},
+            )
+            return
         audio_array = np.concatenate(audio_buf).astype(np.float32)
         pcm_int16 = (audio_array * 32767).clip(-32768, 32767).astype(np.int16)
 
@@ -729,12 +767,11 @@ class ASRHandler:
                     self._azure_stt_language_code, region,
                     extra={"session_id": self.session_id})
 
-        SILENCE_RMS_THRESHOLD    = 0.008
-        # 0.1s commit — faster end-of-utterance (override via AZURE_STT_SILENCE_FRAMES).
-        SILENCE_FRAMES_TO_COMMIT = max(1, int(os.getenv("AZURE_STT_SILENCE_FRAMES", "1")))
-        # Azure batch REST needs ≥~400 ms of speech; 2×100 ms frames is too short.
-        MIN_SPEECH_FRAMES        = max(4, config.audio.min_speech_frames_before_stt)
-        MAX_SILENCE_FRAMES       = 30
+        vad = _batch_stt_vad_params(min_speech_frames_floor=4)
+        SILENCE_RMS_THRESHOLD = _BATCH_SILENCE_RMS_THRESHOLD
+        SILENCE_FRAMES_TO_COMMIT = config.azure_stt.silence_frames_to_commit
+        MIN_SPEECH_FRAMES = vad["min_speech_frames"]
+        MAX_SILENCE_FRAMES = vad["max_silence_frames"]
 
         audio_buf: list = []
         silence_frames = 0
@@ -799,15 +836,18 @@ class ASRHandler:
     async def _azure_transcribe(self, client: "httpx.AsyncClient", audio_buf: list, np) -> None:
         if not audio_buf:
             return
-        audio_array = np.concatenate(audio_buf).astype(np.float32)
-        audio_ms = len(audio_array) / 16.0  # 16 kHz mono
-        if audio_ms < 350:
+        audio_ms = _utterance_duration_ms(audio_buf, np)
+        min_ms = max(350, config.audio.stt_min_utterance_ms)
+        if audio_ms < min_ms:
             logger.debug(
-                "Azure STT skip: utterance too short (%.0f ms)",
+                "Azure STT skip: utterance too short (%.0f ms, min=%d)",
                 audio_ms,
+                min_ms,
                 extra={"session_id": self.session_id},
             )
             return
+
+        audio_array = np.concatenate(audio_buf).astype(np.float32)
 
         pcm_int16 = (audio_array * 32767).clip(-32768, 32767).astype(np.int16)
 
@@ -848,13 +888,20 @@ class ASRHandler:
                 extra={"session_id": self.session_id},
             )
             # Telugu/Kannada: Sarvam is more reliable than Azure batch REST.
-            if config.sarvam_stt.api_key:
+            if config.sarvam_stt.api_key and audio_ms >= min_ms:
                 logger.info(
                     "Azure STT empty — retrying with Sarvam (audio_ms=%.0f)",
                     audio_ms,
                     extra={"session_id": self.session_id},
                 )
                 await self._sarvam_transcribe(client, audio_buf, np)
+            elif config.sarvam_stt.api_key:
+                logger.debug(
+                    "Azure STT empty — skipping Sarvam retry (utterance %.0f ms < min %d)",
+                    audio_ms,
+                    min_ms,
+                    extra={"session_id": self.session_id},
+                )
         except httpx.HTTPStatusError as exc:
             logger.error("Azure STT HTTP error %d: %s", exc.response.status_code,
                          exc.response.text[:200], extra={"session_id": self.session_id})
@@ -894,11 +941,11 @@ class ASRHandler:
                     self._amazon_transcribe_language_code, config.amazon_transcribe.region,
                     extra={"session_id": self.session_id})
 
-        SILENCE_RMS_THRESHOLD    = 0.008
-        # 0.2s commit reduces latency without cutting off natural pauses.
-        SILENCE_FRAMES_TO_COMMIT = 2
-        MIN_SPEECH_FRAMES        = max(1, config.audio.min_speech_frames_before_stt)
-        MAX_SILENCE_FRAMES       = 30
+        vad = _batch_stt_vad_params(min_speech_frames_floor=2)
+        SILENCE_RMS_THRESHOLD = _BATCH_SILENCE_RMS_THRESHOLD
+        SILENCE_FRAMES_TO_COMMIT = vad["silence_frames_to_commit"]
+        MIN_SPEECH_FRAMES = vad["min_speech_frames"]
+        MAX_SILENCE_FRAMES = vad["max_silence_frames"]
 
         audio_buf: list = []
         silence_frames = 0
@@ -946,6 +993,15 @@ class ASRHandler:
         from amazon_transcribe.client import TranscribeStreamingClient  # type: ignore
         from amazon_transcribe.handlers import TranscriptResultStreamHandler  # type: ignore
         from amazon_transcribe.model import TranscriptEvent  # type: ignore
+
+        audio_ms = _utterance_duration_ms(audio_buf, np)
+        if audio_ms < max(350, config.audio.stt_min_utterance_ms):
+            logger.debug(
+                "Amazon Transcribe skip: utterance too short (%.0f ms)",
+                audio_ms,
+                extra={"session_id": self.session_id},
+            )
+            return
 
         audio_array = np.concatenate(audio_buf).astype(np.float32)
         pcm_bytes = (audio_array * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
@@ -1056,12 +1112,11 @@ class ASRHandler:
                 extra={"session_id": self.session_id},
             )
 
-        # VAD parameters
-        SILENCE_RMS_THRESHOLD = 0.008
-        # 0.2s commit reduces latency without cutting off natural pauses.
-        SILENCE_FRAMES_TO_COMMIT = 2
-        MIN_SPEECH_FRAMES = max(1, config.audio.min_speech_frames_before_stt)
-        MAX_SILENCE_FRAMES = 30         # 3 s hard reset
+        vad = _batch_stt_vad_params(min_speech_frames_floor=2)
+        SILENCE_RMS_THRESHOLD = _BATCH_SILENCE_RMS_THRESHOLD
+        SILENCE_FRAMES_TO_COMMIT = vad["silence_frames_to_commit"]
+        MIN_SPEECH_FRAMES = vad["min_speech_frames"]
+        MAX_SILENCE_FRAMES = vad["max_silence_frames"]
 
         audio_buf: list = []
         silence_frames = 0

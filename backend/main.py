@@ -164,12 +164,15 @@ async def health():
         "supported_languages": SUPPORTED_LANGUAGES,
         "default_language": config.default_language,
         "asr": (
-            f"soniox/{config.soniox.model}"
-            if os.getenv("SONIOX_API_KEY")
-            else "sarvam-stt/saarika:v2.5"
-            if os.getenv("SARVAM_API_KEY")
+            f"auto → soniox/{config.soniox.model}"
+            if config.default_stt_engine == "auto" and os.getenv("SONIOX_API_KEY")
+            else f"auto → sarvam/{config.sarvam_stt.model}"
+            if config.default_stt_engine == "auto" and os.getenv("SARVAM_API_KEY")
+            else f"{config.default_stt_engine}"
+            if config.default_stt_engine != "auto"
             else "whisper-large-v3 (local GPU)"
         ),
+        "default_stt_engine": config.default_stt_engine,
         "llm": (
             f"gemini/{config.gemini.model}"
             if config.default_llm_backend == "gemini" and config.gemini.api_key
@@ -206,6 +209,11 @@ async def client_config():
             "keyboard_typing_sound_gain": config.audio.keyboard_typing_sound_gain,
             "keyboard_typing_min_ms": config.audio.keyboard_typing_min_ms,
             "keyboard_typing_max_ms": config.audio.keyboard_typing_max_ms,
+        },
+        "stt": {
+            "default_engine": config.default_stt_engine,
+            "silence_frames_to_commit": config.audio.stt_silence_frames_to_commit,
+            "min_utterance_ms": config.audio.stt_min_utterance_ms,
         },
         "sarvam": {
             "female_speakers": list(SARVAM_FEMALE_SPEAKERS),
@@ -401,7 +409,7 @@ async def websocket_endpoint(
                         session.tts_orchestrator
                         and session.tts_orchestrator.is_active()
                         and session.bot_audio_active
-                        and session.bot_bargein_speech_frames >= 2
+                        and session.bot_bargein_speech_frames >= 1
                         and not session.tts_cancel_event.is_set()
                     ):
                         session.cancel_tts()
@@ -409,7 +417,7 @@ async def websocket_endpoint(
                     elif (
                         session.bot_audio_active
                         and not (session.tts_orchestrator and session.tts_orchestrator.is_active())
-                        and session.bot_bargein_speech_frames >= 2
+                        and session.bot_bargein_speech_frames >= 1
                     ):
                         # TTS bytes are fully sent but the echo-guard sleep is still
                         # running. User spoke — drop the guard immediately so STT

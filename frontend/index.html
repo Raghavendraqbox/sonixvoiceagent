@@ -450,11 +450,11 @@
       <div class="selector-card">
         <label for="stt-select">STT</label>
         <select id="stt-select" onchange="onSTTEngineChange(this.value)">
-          <option value="auto"            >Auto</option>
+          <option value="auto"    selected>Auto</option>
           <option value="sarvam"          >Sarvam</option>
           <option value="soniox"          >Soniox</option>
           <option value="google"          >Google Cloud</option>
-          <option value="azure"   selected>Microsoft Azure</option>
+          <option value="azure"          >Microsoft Azure</option>
           <option value="amazon"          >Amazon Transcribe</option>
           <option value="whisper"         >Whisper (local)</option>
         </select>
@@ -613,7 +613,7 @@ let selectedSarvamPace = 1.10;
 let sarvamPaceMin      = DEFAULT_SARVAM_PACE_MIN;
 let sarvamPaceMax      = DEFAULT_SARVAM_PACE_MAX;
 let sarvamPaceStep     = DEFAULT_SARVAM_PACE_STEP;
-let selectedSTTEngine  = "azure";
+let selectedSTTEngine  = "auto";
 let selectedTTSEngine  = "sarvam";
 let selectedLLMBackend = "gemini";
 let selectedBusiness   = "jsee_loans";
@@ -684,6 +684,17 @@ async function loadClientConfig() {
       parseFiniteNumber(sarvam.default_pace, DEFAULT_SARVAM_PACE, 0.5, 2.0),
     );
     updateSarvamPaceVisibility();
+
+    const stt = cfg.stt || {};
+    const defaultEngine = (stt.default_engine || "auto").toLowerCase();
+    const allowedStt = new Set([
+      "auto", "sarvam", "soniox", "google", "azure", "amazon", "whisper",
+    ]);
+    if (allowedStt.has(defaultEngine)) {
+      selectedSTTEngine = defaultEngine;
+      const sttSelect = document.getElementById("stt-select");
+      if (sttSelect) sttSelect.value = defaultEngine;
+    }
   } catch (err) {
     console.warn("Using default client config:", err);
   } finally {
