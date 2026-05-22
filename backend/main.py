@@ -100,7 +100,10 @@ async def lifespan(app: FastAPI):
     logger.info("Default language : %s", config.default_language)
     logger.info("Supported        : %s", ", ".join(SUPPORTED_LANGUAGES))
     logger.info("STT  : %s (default engine: %s)", config.soniox.model, config.default_stt_engine)
-    logger.info("LLM  : Ollama %s @ %s", config.ollama.model, config.ollama.base_url)
+    if config.default_llm_backend == "gemini" and config.gemini.api_key:
+        logger.info("LLM  : Gemini %s", config.gemini.model)
+    else:
+        logger.info("LLM  : Ollama %s @ %s", config.ollama.model, config.ollama.base_url)
     logger.info("TTS  : Telugu=%s | Kannada=%s", config.tts.telugu_engine_priority, config.tts.kannada_engine_priority)
     logger.info("Audio: input 16kHz | TTS output 24kHz")
     logger.info("=" * 60)
@@ -231,7 +234,7 @@ async def client_config():
 async def websocket_endpoint(
     websocket: WebSocket,
     language: str = "telugu",
-    business: str = "bank_loan",
+    business: str = "jsee_loans",
     voice: str = "male",
     tts_engine: str = "auto",
     sarvam_speaker: str = "",
@@ -245,7 +248,7 @@ async def websocket_endpoint(
 
     Query parameters:
       language   — "telugu" or "kannada" (defaults to LANGUAGE env var → "telugu")
-      business   — "bank_loan" or "car_loan"
+      business   — "jsee_loans" (default), or "bank_loan" / "car_loan"
       voice      — "male" (default) or "female"
       sarvam_speaker — female Sarvam speaker override, e.g. "anushka"
       sarvam_emotion — Bulbul v3 emotion preset: neutral | calm | warm | empathetic |
@@ -438,11 +441,15 @@ async def websocket_endpoint(
                 msg_type = msg.get("type", "")
 
                 if msg_type == "interrupt":
+                    # Also cancel during greeting/hardcoded TTS (no orchestrator task).
                     if (
-                        session.tts_orchestrator
-                        and session.tts_orchestrator.is_active()
-                        and session.bot_audio_active
+                        session.bot_audio_active
                         and not session.tts_cancel_event.is_set()
+                        and (
+                            session.tts_orchestrator is None
+                            or session.tts_orchestrator.is_active()
+                            or session.tts_handler.last_pcm_bytes_sent > 0
+                        )
                     ):
                         session.cancel_tts()
                         await send_json_msg({"type": "tts_stopped"})

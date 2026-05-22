@@ -197,14 +197,14 @@ class SessionManager:
         send_audio_cb: AudioSendCallback,
         send_json_cb: JsonSendCallback,
         language: str = "telugu",
-        business: str = "bank_loan",
-        voice: str = "male",
+        business: str = "jsee_loans",
+        voice: str = "female",
         tts_engine: str = "auto",
         sarvam_speaker: str = "",
         sarvam_emotion: str = "",
         sarvam_pace: float = 0.0,
         stt_engine: str = "auto",
-        llm_backend: str = "ollama",
+        llm_backend: str = "gemini",
     ) -> Session:
         """
         Allocate a new session for the given language, wire all handlers,
@@ -371,7 +371,17 @@ class SessionManager:
         transcript is picked up on the next loop iteration and interrupts or
         doubles the bot's response. We drain synchronously so the next
         ``await transcript_queue.get()`` always waits for genuine user speech.
+
+        Skip draining when the user has already spoken (interrupt_event set or
+        a final transcript is waiting) — otherwise real barge-in utterances
+        are discarded after the greeting finishes.
         """
+        if session.interrupt_event.is_set() or not session.transcript_queue.empty():
+            logger.info(
+                "Skipping echo drain — user transcript pending",
+                extra={"session_id": session.session_id},
+            )
+            return
         drained = 0
         while not session.transcript_queue.empty():
             try:
@@ -441,9 +451,14 @@ class SessionManager:
         await send_json_cb({"type": "bot_text_fragment", "text": text})
         await session.tts_orchestrator.fragment_queue.put(text)
         await session.tts_orchestrator.fragment_queue.put(None)
+        # ElevenLabs + long greetings can exceed 30s; don't cut off mid-utterance.
         try:
-            await asyncio.wait_for(orch_task, timeout=30.0)
+            await asyncio.wait_for(orch_task, timeout=90.0)
         except asyncio.TimeoutError:
+            logger.warning(
+                "Hardcoded TTS timed out after 90s",
+                extra={"session_id": session.session_id},
+            )
             orch_task.cancel()
         # IMPORTANT: do NOT clear bot_audio_active yet. The orch task ends
         # the moment the last PCM chunk is flushed to the WebSocket, but the
@@ -464,7 +479,16 @@ class SessionManager:
                 0.4,
                 session.tts_handler.last_pcm_bytes_sent / _TTS_BYTES_PER_SEC + 0.3,
             )
-            await asyncio.sleep(_playback_secs)
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + _playback_secs
+            while loop.time() < deadline:
+                if (
+                    not session.bot_audio_active
+                    or not session.transcript_queue.empty()
+                    or session.interrupt_event.is_set()
+                ):
+                    break
+                await asyncio.sleep(0.05)
             if session.bot_audio_active:   # re-check: barge-in may have fired during sleep
                 session.bot_audio_active = False
                 self._drain_echo_transcripts(session)
@@ -827,7 +851,16 @@ class SessionManager:
             # Skip if user already barged in (bot_audio_active cleared by
             # cancel_tts) — their pending transcript must survive.
             if session.bot_audio_active:
-                await asyncio.sleep(max(0.4, _turn_play_secs + 0.3))
+                loop = asyncio.get_running_loop()
+                _turn_deadline = loop.time() + max(0.4, _turn_play_secs + 0.3)
+                while loop.time() < _turn_deadline:
+                    if (
+                        not session.bot_audio_active
+                        or not session.transcript_queue.empty()
+                        or session.interrupt_event.is_set()
+                    ):
+                        break
+                    await asyncio.sleep(0.05)
                 if session.bot_audio_active:   # re-check after sleep
                     session.bot_audio_active = False
                     self._drain_echo_transcripts(session)

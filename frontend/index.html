@@ -413,21 +413,15 @@
         </select>
       </div>
 
-      <!-- Business selector — locked once session starts -->
-      <div class="selector-card">
-        <label for="business-select">Business</label>
-        <select id="business-select" onchange="onBusinessChange(this.value)">
-          <option value="bank_loan" selected>Bank Loan (Home Loan)</option>
-          <option value="car_loan">Car Loan</option>
-        </select>
-      </div>
+      <!-- Business: single J S E E flow (Car / Home / Personal) — locked at session start -->
+      <input type="hidden" id="business-select" value="jsee_loans" />
 
       <!-- Voice selector — Male / Female -->
       <div class="selector-card" id="voice-selector">
         <label for="voice-select">Voice</label>
         <select id="voice-select" onchange="onVoiceChange(this.value)">
-          <option value="male"   selected>Male</option>
-          <option value="female"         >Female</option>
+          <option value="male"           >Male</option>
+          <option value="female" selected>Female</option>
         </select>
       </div>
 
@@ -502,18 +496,18 @@
         <input
           type="range"
           id="sarvam-pace-input"
-          min="0.7" max="1.4" step="0.05" value="1.0"
+          min="0.7" max="1.4" step="0.05" value="1.10"
           oninput="onSarvamPaceChange(this.value)"
         />
-        <span class="slider-readout" id="sarvam-pace-readout">1.00x</span>
+        <span class="slider-readout" id="sarvam-pace-readout">1.10x</span>
       </div>
 
       <!-- LLM Backend selector — locked once session starts -->
       <div class="selector-card">
         <label for="llm-select">LLM</label>
         <select id="llm-select">
-          <option value="ollama" selected>Ollama (local)</option>
-          <option value="gemini"         >Gemini (cloud ✨)</option>
+          <option value="ollama"         >Ollama (local)</option>
+          <option value="gemini" selected>Gemini (cloud ✨)</option>
         </select>
       </div>
 
@@ -569,6 +563,12 @@ const LANG_INFO = {
 };
 
 const BUSINESS_INFO = {
+  jsee_loans: {
+    name: "J S E E Loans",
+    title: "J S E E Financial Services — Sruthi",
+    subtitle: "Car, Home & Personal loan intake · Telugu & Kannada",
+    badge: "Sruthi · Car · Home · Personal · Telugu · Kannada",
+  },
   bank_loan: {
     name: "Bank Loan",
     title: "J S E E Home Loan Customer Care",
@@ -597,7 +597,7 @@ const DEFAULT_SARVAM_EMOTIONS = [
 ];
 
 // Sarvam pace slider defaults — overridden by /client-config at startup.
-const DEFAULT_SARVAM_PACE     = 1.0;
+const DEFAULT_SARVAM_PACE     = 1.10;
 const DEFAULT_SARVAM_PACE_MIN = 0.7;
 const DEFAULT_SARVAM_PACE_MAX = 1.4;
 const DEFAULT_SARVAM_PACE_STEP = 0.05;
@@ -606,19 +606,19 @@ const DEFAULT_SARVAM_PACE_STEP = 0.05;
 // State
 // ---------------------------------------------------------------------------
 let selectedLanguage   = "telugu";
-let selectedVoice      = "male";
+let selectedVoice      = "female";
 let selectedSarvamSpeaker = "priya";
 let selectedSarvamEmotion = "neutral";
-let selectedSarvamPace = DEFAULT_SARVAM_PACE;
+let selectedSarvamPace = 1.10;
 let sarvamPaceMin      = DEFAULT_SARVAM_PACE_MIN;
 let sarvamPaceMax      = DEFAULT_SARVAM_PACE_MAX;
 let sarvamPaceStep     = DEFAULT_SARVAM_PACE_STEP;
 let selectedSTTEngine  = "azure";
 let selectedTTSEngine  = "sarvam";
-let selectedLLMBackend = "ollama";
-let selectedBusiness   = "bank_loan";
+let selectedLLMBackend = "gemini";
+let selectedBusiness   = "jsee_loans";
 let sessionLanguage   = "telugu";   // locked at session start — used for all WS reconnects
-let sessionBusiness   = "bank_loan"; // locked at session start — used for all WS reconnects
+let sessionBusiness   = "jsee_loans"; // locked at session start — used for all WS reconnects
 // Conversation history: [{role:"user"|"bot", text:"...", ts: Date}]
 let conversationHistory = [];
 let currentBotMsgEl    = null;   // the streaming bot bubble currently being built
@@ -740,12 +740,12 @@ function onLanguageChange(lang) {
 
 function onBusinessChange(business) {
   if (sessionActive) return;   // cannot change business mid-session
-  selectedBusiness = BUSINESS_INFO[business] ? business : "bank_loan";
+  selectedBusiness = BUSINESS_INFO[business] ? business : "jsee_loans";
   updateBusinessChrome();
 }
 
 function updateBusinessChrome() {
-  const info = BUSINESS_INFO[selectedBusiness] || BUSINESS_INFO.bank_loan;
+  const info = BUSINESS_INFO[selectedBusiness] || BUSINESS_INFO.jsee_loans;
   appTitle.textContent = info.title;
   appSubtitle.textContent = info.subtitle;
   appBadge.textContent = info.badge;
@@ -978,7 +978,7 @@ async function startSession() {
   btnStart.disabled = false;
 
   const info = LANG_INFO[selectedLanguage] || LANG_INFO.telugu;
-  const businessInfo = BUSINESS_INFO[sessionBusiness] || BUSINESS_INFO.bank_loan;
+  const businessInfo = BUSINESS_INFO[sessionBusiness] || BUSINESS_INFO.jsee_loans;
   setOrb("idle", "Listening");
   conversationHeader.textContent = `${businessInfo.name} Conversation`;
   setStatus(`Connected to ${businessInfo.name} — speak in ${info.name} (${info.native})`);
@@ -1450,7 +1450,7 @@ function escHtml(str) {
 function downloadTranscript() {
   if (!conversationHistory.length) return;
   const langInfo  = LANG_INFO[sessionLanguage] || LANG_INFO.telugu;
-  const businessInfo = BUSINESS_INFO[sessionBusiness] || BUSINESS_INFO.bank_loan;
+  const businessInfo = BUSINESS_INFO[sessionBusiness] || BUSINESS_INFO.jsee_loans;
   const now       = new Date();
   const dateStr   = now.toISOString().slice(0,19).replace("T"," ");
   const divider   = "─".repeat(52);
@@ -1494,7 +1494,7 @@ function onJSONReceived(raw) {
   try { msg = JSON.parse(raw); } catch { return; }
 
   const info = LANG_INFO[selectedLanguage] || LANG_INFO.telugu;
-  const businessInfo = BUSINESS_INFO[sessionBusiness] || BUSINESS_INFO.bank_loan;
+  const businessInfo = BUSINESS_INFO[sessionBusiness] || BUSINESS_INFO.jsee_loans;
 
   switch (msg.type) {
     case "session_ready":
@@ -1622,6 +1622,11 @@ function stopTTSPlayback() {
 setInterval(() => {
   if (ws && ws.readyState === WebSocket.OPEN) sendJSON({ type: "ping" });
 }, 25000);
+
+updateBusinessChrome();
+updateSarvamSpeakerVisibility();
+updateSarvamPaceVisibility();
+if (sarvamPaceReadout) sarvamPaceReadout.textContent = `${selectedSarvamPace.toFixed(2)}x`;
 </script>
 </body>
 </html>

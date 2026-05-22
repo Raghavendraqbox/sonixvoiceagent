@@ -109,6 +109,8 @@ def _build_business_system_prompt(language: str, business: str) -> str:
     lang_cfg = get_language_config(language)
     business_cfg = get_business_config(business)
     raw_prompt = business_cfg["system_prompt"]
+    if isinstance(raw_prompt, dict):
+        raw_prompt = raw_prompt.get(language) or raw_prompt.get("telugu", "")
     if "{mock_price_data}" in raw_prompt:
         price_data = business_cfg.get("mock_price_data", {})
         business_prompt = raw_prompt.format(
@@ -124,7 +126,7 @@ def _build_business_system_prompt(language: str, business: str) -> str:
         f"You are speaking to the customer in {lang_cfg['display_name']} "
         f"({lang_cfg['display_name_native']}). {speaking_style} "
         "For low-latency voice, keep every response to exactly one very short "
-        "conversational sentence, ideally under 12 words. "
+        "conversational sentence, ideally under 10 words — never two sentences. "
         "Do not use lists, bullets, or markdown in spoken replies. "
         "Begin every reply with the actual answer — never with hesitation "
         "sounds, fillers, or thinking noises like 'hmm', 'umm', 'uh', "
@@ -347,7 +349,10 @@ class VoiceLLMClient:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _split_fragment(buffer: str) -> "tuple[str, str]":
+    def _split_fragment(
+        buffer: str,
+        word_dispatch_threshold: int | None = None,
+    ) -> "tuple[str, str]":
         """
         Extract the next TTS-ready fragment from the buffer.
 
@@ -374,10 +379,13 @@ class VoiceLLMClient:
 
         # ── Priority 2: word-count trigger ─────────────────────────────────
         words = buffer.split()
-        threshold = max(
-            3,
-            int(getattr(config.ollama, "word_dispatch_threshold", _DEFAULT_WORD_DISPATCH_THRESHOLD)),
-        )
+        if word_dispatch_threshold is not None:
+            threshold = max(3, int(word_dispatch_threshold))
+        else:
+            threshold = max(
+                3,
+                int(getattr(config.ollama, "word_dispatch_threshold", _DEFAULT_WORD_DISPATCH_THRESHOLD)),
+            )
         if len(words) >= threshold:
             # Split at the last space so we never break a word mid-character.
             last_space = buffer.rfind(" ")
@@ -452,74 +460,171 @@ class GeminiLLMClient:
             if config.gemini.thinking_budget >= 0
             else None
         )
+        afc_disable = self._genai_types.AutomaticFunctionCallingConfig(disable=True)
+        tool_none = self._genai_types.ToolConfig(
+            function_calling_config=self._genai_types.FunctionCallingConfig(
+                mode=self._genai_types.FunctionCallingConfigMode.NONE,
+            ),
+        )
         gen_config = self._genai_types.GenerateContentConfig(
             system_instruction=self._system_prompt,
             temperature=config.gemini.temperature,
             max_output_tokens=config.gemini.max_tokens,
+            automatic_function_calling=afc_disable,
+            tool_config=tool_none,
             **({"thinking_config": thinking_cfg} if thinking_cfg is not None else {}),
         )
         import random
         max_retries = 2
-        for attempt in range(max_retries + 1):
-            buffer = ""
-            fragments_yielded = 0
-            try:
-                stream = await self._client.aio.models.generate_content_stream(
-                    model=config.gemini.model,
-                    contents=contents,
-                    config=gen_config,
-                )
-                async for chunk in stream:
-                    token = chunk.text or ""
-                    if not token:
-                        continue
+        word_threshold = config.gemini.word_dispatch_threshold
+        models = config.gemini.fallback_model_list
 
-                    buffer += token
-                    fragment, buffer = VoiceLLMClient._split_fragment(buffer)
-                    if fragment:
-                        if _is_filler_only(fragment):
-                            logger.debug(
-                                "Skipping filler fragment from Gemini: %r",
-                                fragment,
-                                extra={"session_id": session_id},
-                            )
-                        else:
-                            logger.debug(
-                                "Gemini fragment [%s]: %s",
-                                self._language_display,
-                                fragment[:50],
-                                extra={"session_id": session_id},
-                            )
-                            yield fragment
-                            fragments_yielded += 1
+        stream_timeout_s = config.gemini.stream_timeout_s
+        connect_timeout_s = min(config.gemini.connect_timeout_s, stream_timeout_s)
 
-                tail = buffer.strip()
-                if tail and not _is_filler_only(tail):
-                    yield tail
-                return  # success — stop retry loop
-
-            except Exception as exc:
-                if fragments_yielded > 0:
-                    # Already streamed partial audio — can't retry cleanly, just stop
-                    logger.error(
-                        "Gemini error mid-stream (attempt %d): %s", attempt + 1, exc,
-                        extra={"session_id": session_id},
+        for model_idx, model_name in enumerate(models):
+            for attempt in range(max_retries + 1):
+                buffer = ""
+                fragments_yielded = 0
+                try:
+                    stream = await asyncio.wait_for(
+                        self._client.aio.models.generate_content_stream(
+                            model=model_name,
+                            contents=contents,
+                            config=gen_config,
+                        ),
+                        timeout=connect_timeout_s,
                     )
-                    return
-                if attempt < max_retries:
-                    wait_s = 2 ** attempt  # 1s, then 2s
+                    loop = asyncio.get_running_loop()
+                    deadline = loop.time() + stream_timeout_s
+                    async for chunk in stream:
+                        if loop.time() > deadline:
+                            logger.warning(
+                                "Gemini %s stream timed out after %.0fs",
+                                model_name,
+                                stream_timeout_s,
+                                extra={"session_id": session_id},
+                            )
+                            break
+                        token = chunk.text or ""
+                        if not token:
+                            continue
+
+                        buffer += token
+                        fragment, buffer = VoiceLLMClient._split_fragment(
+                            buffer, word_dispatch_threshold=word_threshold,
+                        )
+                        if fragment:
+                            if _is_filler_only(fragment):
+                                logger.debug(
+                                    "Skipping filler fragment from Gemini: %r",
+                                    fragment,
+                                    extra={"session_id": session_id},
+                                )
+                            else:
+                                if fragments_yielded == 0:
+                                    logger.info(
+                                        "Gemini first token [%s] model=%s: %s",
+                                        self._language_display,
+                                        model_name,
+                                        fragment[:80],
+                                        extra={"session_id": session_id},
+                                    )
+                                else:
+                                    logger.debug(
+                                        "Gemini fragment [%s]: %s",
+                                        self._language_display,
+                                        fragment[:50],
+                                        extra={"session_id": session_id},
+                                    )
+                                yield fragment
+                                fragments_yielded += 1
+
+                    tail = buffer.strip()
+                    if tail and not _is_filler_only(tail):
+                        yield tail
+                        fragments_yielded += 1
+                    if fragments_yielded == 0:
+                        logger.warning(
+                            "Gemini %s returned no text — using stub",
+                            model_name,
+                            extra={"session_id": session_id},
+                        )
+                        yield random.choice(self._neutral_stubs)
+                    return  # success
+
+                except asyncio.TimeoutError:
                     logger.warning(
-                        "Gemini error (attempt %d/%d), retrying in %ds: %s",
-                        attempt + 1, max_retries + 1, wait_s, exc,
+                        "Gemini %s connect timed out after %.0fs (attempt %d/%d)",
+                        model_name,
+                        connect_timeout_s,
+                        attempt + 1,
+                        max_retries + 1,
                         extra={"session_id": session_id},
                     )
-                    await asyncio.sleep(wait_s)
-                else:
-                    logger.error(
-                        "Gemini error after %d attempts: %s", max_retries + 1, exc,
-                        extra={"session_id": session_id},
-                    )
+                    if attempt < max_retries:
+                        await asyncio.sleep(2 ** attempt)
+                        continue
+                    if model_idx + 1 < len(models):
+                        break
                     yield random.choice(self._neutral_stubs)
+                    return
+                except Exception as exc:
+                    if fragments_yielded > 0:
+                        logger.error(
+                            "Gemini error mid-stream (%s): %s",
+                            model_name,
+                            exc,
+                            extra={"session_id": session_id},
+                        )
+                        return
+                    err_s = str(exc).lower()
+                    is_overload = "503" in err_s or "unavailable" in err_s or "high demand" in err_s
+                    is_model_gone = (
+                        "404" in err_s
+                        or "not found" in err_s
+                        or "no longer available" in err_s
+                    )
+                    if is_model_gone and model_idx + 1 < len(models):
+                        next_model = models[model_idx + 1]
+                        logger.warning(
+                            "Gemini %s unavailable — falling back to %s",
+                            model_name,
+                            next_model,
+                            extra={"session_id": session_id},
+                        )
+                        break  # try next model immediately (no retry same dead model)
+                    if attempt < max_retries and not is_model_gone:
+                        wait_s = 1 if is_overload else (2 ** attempt)
+                        logger.warning(
+                            "Gemini %s error (attempt %d/%d), retry in %ds: %s",
+                            model_name,
+                            attempt + 1,
+                            max_retries + 1,
+                            wait_s,
+                            exc,
+                            extra={"session_id": session_id},
+                        )
+                        await asyncio.sleep(wait_s)
+                    elif is_overload and model_idx + 1 < len(models):
+                        next_model = models[model_idx + 1]
+                        logger.warning(
+                            "Gemini %s overloaded — falling back to %s",
+                            model_name,
+                            next_model,
+                            extra={"session_id": session_id},
+                        )
+                        break  # try next model
+                    else:
+                        logger.error(
+                            "Gemini %s failed after %d attempts: %s",
+                            model_name,
+                            max_retries + 1,
+                            exc,
+                            extra={"session_id": session_id},
+                        )
+                        yield random.choice(self._neutral_stubs)
+                        return
 
     async def close(self) -> None:
         pass
@@ -558,7 +663,7 @@ def create_llm_client(
         backend:   "ollama" (local) or "gemini" (cloud).
         retriever: Optional RAG retriever (passed through to client).
         language:  "telugu" or "kannada".
-        business:  "bank_loan" or "car_loan".
+        business:  "jsee_loans" (default), or "bank_loan" / "car_loan".
     """
     backend = backend.lower().strip()
     if backend == "gemini":

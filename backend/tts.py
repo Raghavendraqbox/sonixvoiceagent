@@ -44,12 +44,14 @@ Cancel semantics:
 
 import asyncio
 import base64
+import re
 import contextvars
 import datetime
 import io
 import json
 import logging
 import os
+import time
 import threading
 import wave
 from pathlib import Path
@@ -137,6 +139,30 @@ AudioSendCallback = Callable[[bytes], Awaitable[None]]
 def _normalize_sarvam_emotion(emotion: str) -> str:
     normalized = (emotion or "neutral").strip().lower().replace("-", "_")
     return normalized if normalized in SARVAM_EMOTION_PRESETS else "neutral"
+
+
+# Romanized Telugu is spoken with an English accent by te-IN TTS — map to script.
+_TELUGU_TTS_PRONUNCIATION_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bkavali\b", re.IGNORECASE), "కావాలి"),
+    (re.compile(r"\bkaavali\b", re.IGNORECASE), "కావాలి"),
+    (re.compile(r"\bnamaskaram\b", re.IGNORECASE), "నమస్కారం"),
+    (re.compile(r"\bmeeku\b", re.IGNORECASE), "మీకు"),
+    (re.compile(r"\bmemu\b", re.IGNORECASE), "మేము"),
+    (re.compile(r"\bmaaku\b", re.IGNORECASE), "మాకు"),
+    (re.compile(r"\bcheppandi\b", re.IGNORECASE), "చెప్పండి"),
+    (re.compile(r"\bdayachesi\b", re.IGNORECASE), "దయచేసి"),
+    (re.compile(r"\bdhanyavadalu\b", re.IGNORECASE), "ధన్యవాదాలు"),
+    (re.compile(r"\bswagatham\b", re.IGNORECASE), "స్వాగతం"),
+    (re.compile(r"\bleda\b", re.IGNORECASE), "లేదా"),
+    (re.compile(r"\bledha\b", re.IGNORECASE), "లేదా"),
+)
+
+
+def _normalize_telugu_tts_text(text: str) -> str:
+    """Map common Romanized Telugu to script so te-IN TTS uses native pronunciation."""
+    for pattern, replacement in _TELUGU_TTS_PRONUNCIATION_FIXES:
+        text = pattern.sub(replacement, text)
+    return text
 
 
 def _parse_sarvam_temperature(raw: str) -> Optional[float]:
@@ -631,8 +657,10 @@ class VoiceTTSHandler:
     async def synthesize_and_stream(self, text: str) -> bool:
         if not text.strip():
             return True
+        if self._language == "telugu":
+            text = _normalize_telugu_tts_text(text)
         logger.info(
-            "TTS [%s]: %.70s",
+            "TTS [%s]: %s",
             self._language_display,
             text,
             extra={"session_id": self.session_id},
@@ -1600,22 +1628,47 @@ class VoiceTTSHandler:
                 extra={"session_id": self.session_id},
             )
 
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+        output_format = (config.tts.elevenlabs_output_format or "mp3_44100_128").strip()
+        model_id = config.tts.elevenlabs_model_id or "eleven_v3"
+        # optimize_streaming_latency is not supported on eleven_v3 (API returns 400).
+        latency_qs = ""
+        if "v3" not in model_id.lower():
+            latency_qs = "&optimize_streaming_latency=3"
+        url = (
+            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+            f"?output_format={output_format}{latency_qs}"
+        )
         headers = {
             "xi-api-key": api_key,
             "Content-Type": "application/json",
             "Accept": "audio/mpeg",
         }
-        payload = {
-            "text": text,
-            "model_id": "eleven_multilingual_v2",
-            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+        voice_settings: dict = {
+            "stability": float(config.tts.elevenlabs_stability),
+            "similarity_boost": float(config.tts.elevenlabs_similarity_boost),
+            "style": float(config.tts.elevenlabs_style),
+            "use_speaker_boost": bool(config.tts.elevenlabs_use_speaker_boost),
         }
+        payload: dict = {
+            "text": text,
+            "model_id": model_id,
+            "voice_settings": voice_settings,
+        }
+        # Language override OFF in ElevenLabs UI → do not force language_code.
+        if config.tts.elevenlabs_language_override:
+            lang_code = self._lang_cfg.get("elevenlabs_language_code") or self._lang_cfg.get(
+                "language_code"
+            )
+            if lang_code:
+                payload["language_code"] = lang_code
 
         logger.info(
-            "ElevenLabs: selected_voice=%s → voice_id=%s (eleven_multilingual_v2)",
+            "ElevenLabs: selected_voice=%s → voice_id=%s model=%s stability=%.2f format=%s",
             self._voice,
             voice_id,
+            model_id,
+            voice_settings["stability"],
+            output_format,
             extra={"session_id": self.session_id},
         )
         try:
@@ -1654,6 +1707,11 @@ class VoiceTTSHandler:
                 None, lambda: _mp3_bytes_to_pcm(audio_bytes, denoise=False)
             )
             if pcm_bytes is None:
+                logger.error(
+                    "ElevenLabs MP3 decode failed (%d bytes mp3) — no audio sent to client",
+                    len(audio_bytes),
+                    extra={"session_id": self.session_id},
+                )
                 return False
 
             _debug_dump_audio_pair(
@@ -1664,14 +1722,18 @@ class VoiceTTSHandler:
                 decoded_pcm=pcm_bytes,
             )
 
+            bytes_before = self.last_pcm_bytes_sent
+            ok = await self._stream_pcm(pcm_bytes)
+            streamed = self.last_pcm_bytes_sent - bytes_before
             logger.info(
-                "ElevenLabs TTS success: voice=%s voice_id=%s (%d bytes)",
+                "ElevenLabs TTS success: voice=%s voice_id=%s mp3=%d pcm_streamed=%d",
                 self._voice,
                 voice_id,
                 len(audio_bytes),
+                streamed,
                 extra={"session_id": self.session_id},
             )
-            return await self._stream_pcm(pcm_bytes)
+            return ok
 
         except Exception as exc:
             logger.error(
@@ -2251,7 +2313,7 @@ TeluguTTSHandler = VoiceTTSHandler
 # ---------------------------------------------------------------------------
 
 class TTSOrchestrator:
-    """Drains a queue of sentence fragments, synthesizes them in order."""
+    """Drains LLM fragments, coalesces sentences, streams TTS directly to the client."""
 
     def __init__(
         self,
@@ -2269,34 +2331,25 @@ class TTSOrchestrator:
     def fragment_queue(self) -> asyncio.Queue:
         return self._fragment_queue
 
-    # Flush on sentence boundaries only.
-    # Avoid comma-based flushes because they over-segment responses and increase
-    # cloud TTS round-trips (higher latency, choppier playback).
+    # Flush on sentence boundaries only — never on commas (extra Sarvam round-trips).
     _SENTENCE_END = frozenset(".!?।")
     _MIN_FLUSH_CHARS = 1
-    # Safety net: force-flush quickly for non-streaming cloud TTS providers.
-    # Sarvam returns a complete audio file, so smaller first chunks reduce
-    # time-to-first-audio while the next chunk synthesizes in parallel.
-    _MAX_BUFFER_CHARS = 30
+    # Coalesce multiple LLM sentences into one Sarvam call when under this length.
+    _MAX_COALESCE_CHARS = int(os.getenv("TTS_COALESCE_MAX_CHARS", "220"))
+    # Brief wait so a second sentence queued right after the first merges before synth.
+    _COALESCE_WAIT_S = float(os.getenv("TTS_COALESCE_WAIT_S", "0.06"))
 
     async def run(self) -> None:
-        """3-stage pipelined TTS loop.
+        """Accumulate fragments → coalesce sentences → stream TTS (no PCM capture).
 
-        Stage 1 (_accumulate): reads LLM token fragments, assembles sentences,
-          emits to sentence_queue.
-        Stage 2 (_synthesize): reads sentences, calls synthesize_to_pcm (which
-          runs in its own task context so _pcm_capture_var is isolated), emits
-          PCM bytes to pcm_queue.
-        Stage 3 (_stream): reads PCM bytes, streams to client in chunks.
-
-        Synthesis of sentence N+1 overlaps with streaming of sentence N,
-        cutting per-sentence latency by ~1s with Azure TTS / ~350ms with edge.
+        synthesize_to_pcm buffered entire Sarvam utterances before playback, which
+        erased WebSocket time-to-first-audio. synthesize_and_stream sends audio as
+        Sarvam chunks arrive.
         """
         self._active = True
         logger.debug("TTSOrchestrator started", extra={"session_id": self.session_id})
 
         sentence_queue: asyncio.Queue = asyncio.Queue()
-        pcm_queue: asyncio.Queue = asyncio.Queue()
 
         def _drain_fragments() -> None:
             while not self._fragment_queue.empty():
@@ -2334,45 +2387,62 @@ class TTSOrchestrator:
                         fragment.rstrip()
                         and fragment.rstrip()[-1] in self._SENTENCE_END
                     )
-                    force = len(buf_text) >= self._MAX_BUFFER_CHARS
-                    if (ends or force) and len(buf_text) >= self._MIN_FLUSH_CHARS:
+                    if ends and len(buf_text) >= self._MIN_FLUSH_CHARS:
                         sentence_queue.put_nowait(buf_text)
                         buf = []
             finally:
                 sentence_queue.put_nowait(None)
 
-        async def _synthesize() -> None:
+        async def _speak_coalesced(first: str) -> None:
+            batch = [first]
+            total = len(first)
+            while total < self._MAX_COALESCE_CHARS:
+                try:
+                    nxt = await asyncio.wait_for(
+                        sentence_queue.get(),
+                        timeout=self._COALESCE_WAIT_S,
+                    )
+                except asyncio.TimeoutError:
+                    break
+                if nxt is None:
+                    sentence_queue.put_nowait(None)
+                    break
+                batch.append(nxt)
+                total += len(nxt) + 1
+            merged = " ".join(s.strip() for s in batch if s.strip())
+            if not merged or self._cancel_event.is_set():
+                return
+            t0 = time.monotonic()
+            await self._tts.synthesize_and_stream(merged)
+            logger.debug(
+                "TTS orchestrator spoke %d chars in %.0fms",
+                len(merged),
+                (time.monotonic() - t0) * 1000,
+                extra={"session_id": self.session_id},
+            )
+
+        async def _synthesize_stream() -> None:
             try:
                 while True:
                     text = await sentence_queue.get()
                     if text is None or self._cancel_event.is_set():
                         break
-                    pcm = await self._tts.synthesize_to_pcm(text)
-                    pcm_queue.put_nowait(pcm if pcm else b"")
-            finally:
-                pcm_queue.put_nowait(None)
-
-        async def _stream() -> None:
-            bpc = int(TTS_RATE * config.tts.chunk_ms / 1000) * 2
-            while True:
-                pcm = await pcm_queue.get()
-                if pcm is None:
-                    break
-                if not pcm or self._cancel_event.is_set():
-                    continue
-                for i in range(0, len(pcm), bpc):
-                    if self._cancel_event.is_set():
-                        break
-                    chunk = pcm[i: i + bpc]
-                    await self._tts._send_audio(chunk)
-                    self._tts.last_pcm_bytes_sent += len(chunk)
-                    await asyncio.sleep(0)
+                    await _speak_coalesced(text)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.error(
+                    "TTS orchestrator synthesis error: %s",
+                    exc,
+                    extra={"session_id": self.session_id},
+                    exc_info=True,
+                )
+                raise
 
         try:
             await asyncio.gather(
                 asyncio.create_task(_accumulate(), name=f"tts-acc-{self.session_id[:8]}"),
-                asyncio.create_task(_synthesize(), name=f"tts-syn-{self.session_id[:8]}"),
-                asyncio.create_task(_stream(),     name=f"tts-str-{self.session_id[:8]}"),
+                asyncio.create_task(_synthesize_stream(), name=f"tts-syn-{self.session_id[:8]}"),
             )
         except asyncio.CancelledError:
             raise

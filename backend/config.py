@@ -138,10 +138,8 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # Find Telugu voice IDs at: https://api.ttsmaker.com/v1/get-voice-list
         "ttsmaker_voice_id":     int(os.getenv("TTSMAKER_VOICE_ID_TELUGU", "0")),
 
-        # TTS — ElevenLabs (legacy fallback)
-        # iP95p4xoKVk53GoZ742B = Chris (male, multilingual v2 compatible)
-        # onwK4e9ZLuTAKqWW03F9 = River (female, multilingual v2, best quality)
-        "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_TELUGU_MALE",   "iP95p4xoKVk53GoZ742B"),
+        # TTS — ElevenLabs (Sunny male — Eleven v3; see ELEVENLABS_* in .env)
+        "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_TELUGU_MALE",   "AobjUwMQVcgXCsgZKdOU"),
         "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_TELUGU_FEMALE", "onwK4e9ZLuTAKqWW03F9"),
 
         # TTS — Azure Cognitive Services (https://azure.microsoft.com/en-us/products/ai-services/text-to-speech)
@@ -283,8 +281,8 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # Find Kannada voice IDs at: https://api.ttsmaker.com/v1/get-voice-list
         "ttsmaker_voice_id":     int(os.getenv("TTSMAKER_VOICE_ID_KANNADA", "0")),
 
-        # TTS — ElevenLabs (API-based, high quality Kannada)
-        "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_KANNADA_MALE",   "iP95p4xoKVk53GoZ742B"),
+        # TTS — ElevenLabs (Sunny male — Eleven v3; see ELEVENLABS_* in .env)
+        "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_KANNADA_MALE",   "AobjUwMQVcgXCsgZKdOU"),
         "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_KANNADA_FEMALE", "onwK4e9ZLuTAKqWW03F9"),
 
         # TTS — Azure Cognitive Services (https://azure.microsoft.com/en-us/products/ai-services/text-to-speech)
@@ -393,6 +391,102 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 # ---------------------------------------------------------------------------
 
 BUSINESS_CONFIGS: Dict[str, Dict[str, Any]] = {
+    "jsee_loans": {
+        "display_name": "J S E E Loans (Sruthi)",
+        "description": (
+            "Unified Car, Home, and Personal loan intake — one flow, branch by loan type."
+        ),
+        "greeting": {
+            "telugu": (
+                "నమస్కారం! J S E E Financial Services కి స్వాగతం. "
+                "నా పేరు Sruthi. "
+                "మేము home, car మరియు personal loans కోసం సహాయం చేయగలము. "
+                "మీకు ఏ loan కావాలి?"
+            ),
+            "kannada": (
+                "Namaskara, J S E E Financial Services ge welcome. "
+                "Nanna hesaru Sruthi. "
+                "Namma hatra Car loan, Home loan, mattu Personal loan matra ide. "
+                "Dayavittu ivaralli ondu helivi — Car, Home, athava Personal."
+            ),
+        },
+        "silence_reprompt": {
+            "telugu": (
+                "నా voice వినిపిస్తుందా? "
+                "Loan type చెప్పండి — Car, Home, లేదా Personal."
+            ),
+            "kannada": (
+                "Nanna voice kelistide? "
+                "Dayavittu loan type helivi — Car, Home, athava Personal."
+            ),
+        },
+        "system_prompt": (
+            "You are Sruthi, a professional and warm Telugu-speaking customer care executive "
+            "at J S E E Financial Services. The company name is always J S E E Financial Services "
+            "(never Solutions or any other name). You handle ONLY Car loan, Home loan, and "
+            "Personal loan — these are the only products we offer. "
+            "Your name is Sruthi if the customer asks.\n\n"
+
+            "LANGUAGE FOR TTS (critical):\n"
+            "- Write Telugu words in Telugu script (తెలుగు), NOT Romanized English spelling.\n"
+            "- Do NOT write meeku, namaskaram, cheppandi, sahayam, etc. in Latin letters — "
+            "use మీకు, నమస్కారం, చెప్పండి, సహాయం instead.\n"
+            "- Keep only common English loan words in Latin: loan, home, car, personal, mobile, "
+            "confirm, Financial Services, etc.\n\n"
+
+            "RESPECT — polite Telugu, not repetitive:\n"
+            "- Sound respectful using మీకు, దయచేసి, ధన్యవాదాలు, and polite verb forms like "
+            "చెప్పండి.\n"
+            "- Do NOT start with \"Hello garu\" or stack andi/garu word after word.\n"
+            "- Use గారు or అండి at most once per reply if needed.\n\n"
+
+            "SINGLE FLOW — determine loan type first, then follow ONLY that branch:\n"
+            "1. If loan type is not yet known: ask which they need — Car, Home, or Personal. "
+            "Accept natural speech: \"car\", \"car loan\", \"gadi\", \"home\", \"home loan\", "
+            "\"illu\", \"personal\", \"personal loan\", etc.\n"
+            "2. Once loan type is confirmed, NEVER ask loan type again.\n\n"
+
+            "CAR LOAN branch (in order, one question at a time):\n"
+            "a) Car model (e.g. Maruti, Hyundai)\n"
+            "b) Approximate on-road price\n"
+            "c) Mobile number — confirm exactly 10 digits\n"
+            "Then say a representative will call within about 2 minutes to complete the process, "
+            "and thank them warmly.\n\n"
+
+            "HOME LOAN branch (in order):\n"
+            "a) Property city / where they need the loan\n"
+            "b) Expected loan amount (e.g. 30 lakhs, 1 crore)\n"
+            "c) Give a short reference ID like HL987 (use HL plus three digits)\n"
+            "d) Mobile number — confirm exactly 10 digits\n"
+            "Then say a banking executive will call, and thank them.\n\n"
+
+            "PERSONAL LOAN branch (in order):\n"
+            "a) Optionally ask purpose (emergency, travel, marriage) — skip if they hesitate\n"
+            "b) Approximate monthly income\n"
+            "c) Mobile number — confirm exactly 10 digits\n"
+            "Then say a representative will call to complete the loan process, and thank them.\n\n"
+
+            "UNSUPPORTED loans (Gold, Education, Business, etc.):\n"
+            "- Say clearly we ONLY have Car, Home, and Personal at J S E E Financial Services.\n"
+            "- Example tone: \"మాకు Car, Home, Personal మాత్రమే ఉన్నాయి, వేరే loans లేవు. "
+            "దయచేసి మూడు లో ఒకటి చెప్పండి.\"\n"
+            "- Do NOT promise Gold/Education/Business or take details for unsupported types.\n"
+            "- Do NOT offer a callback for unsupported loan categories.\n\n"
+
+            "CLOSING (after a branch is complete or on goodbye):\n"
+            "- Reassure J S E E Financial Services will support them; no OTP; representative "
+            "will call; thank them — polite tone, no stacked andi.\n\n"
+
+            "RULES:\n"
+            "- Ask only ONE question at a time. Confirm each answer briefly before the next.\n"
+            "- Do NOT use filler sounds (hmm, umm, ఉమ్, ఆ).\n"
+            "- MOBILE: Indian mobile = exactly 10 digits. If incomplete, ask for remaining digits.\n"
+            "- When confirming mobile, write only 10 digits in Latin numerals (e.g. 9700989115).\n"
+            "- Never repeat information already collected.\n"
+            "- If asked about interest rates: competitive rates; a specialist will share details.\n"
+            "- Be reassuring: their details are safe."
+        ),
+    },
     "bank_loan": {
         "display_name": "Bank Loan (Home Loan)",
         "description": "J S E E home loan application customer care.",
@@ -482,12 +576,12 @@ BUSINESS_CONFIGS: Dict[str, Dict[str, Any]] = {
 SUPPORTED_LANGUAGES = list(LANGUAGE_CONFIGS.keys())
 SUPPORTED_BUSINESSES = list(BUSINESS_CONFIGS.keys())
 DEFAULT_LANGUAGE: str = os.getenv("LANGUAGE", "telugu").lower()
-DEFAULT_BUSINESS: str = os.getenv("BUSINESS", "bank_loan").lower()
+DEFAULT_BUSINESS: str = os.getenv("BUSINESS", "jsee_loans").lower()
 
 if DEFAULT_LANGUAGE not in SUPPORTED_LANGUAGES:
     DEFAULT_LANGUAGE = "telugu"
 if DEFAULT_BUSINESS not in SUPPORTED_BUSINESSES:
-    DEFAULT_BUSINESS = "bank_loan"
+    DEFAULT_BUSINESS = "jsee_loans"
 
 
 def get_language_config(language: str) -> Dict[str, Any]:
@@ -497,7 +591,7 @@ def get_language_config(language: str) -> Dict[str, Any]:
 
 def get_business_config(business: str) -> Dict[str, Any]:
     """Return the business profile for the given id (defaults to bank_loan)."""
-    return BUSINESS_CONFIGS.get(business.lower(), BUSINESS_CONFIGS["bank_loan"])
+    return BUSINESS_CONFIGS.get(business.lower(), BUSINESS_CONFIGS["jsee_loans"])
 
 
 # ---------------------------------------------------------------------------
@@ -772,7 +866,7 @@ class TTSConfig:
     # Defaults below back the slider exposed via /client-config — keep them
     # within Sarvam's API limits (0.5–2.0). Per-session value comes from the
     # ?sarvam_pace= query param and falls back to `sarvam_pace` here.
-    sarvam_pace:        float = float(os.getenv("SARVAM_PACE", "1.0"))
+    sarvam_pace:        float = float(os.getenv("SARVAM_PACE", "1.10"))
     sarvam_pace_min:    float = float(os.getenv("SARVAM_PACE_MIN", "0.7"))
     sarvam_pace_max:    float = float(os.getenv("SARVAM_PACE_MAX", "1.4"))
     sarvam_pace_step:   float = float(os.getenv("SARVAM_PACE_STEP", "0.05"))
@@ -796,8 +890,24 @@ class TTSConfig:
     # TTSMaker  (https://ttsmaker.com — free tier available)
     ttsmaker_token:     str = field(default_factory=lambda: os.getenv("TTSMAKER_TOKEN",     ""))
 
-    # ElevenLabs  (legacy / Kannada)
+    # ElevenLabs — Sunny (male) + Eleven v3; mirrors ElevenLabs UI settings in .env
     elevenlabs_api_key: str = field(default_factory=lambda: os.getenv("ELEVENLABS_API_KEY", ""))
+    elevenlabs_model_id: str = field(
+        default_factory=lambda: os.getenv("ELEVENLABS_MODEL_ID", "eleven_v3")
+    )
+    elevenlabs_output_format: str = field(
+        default_factory=lambda: os.getenv("ELEVENLABS_OUTPUT_FORMAT", "mp3_44100_128")
+    )
+    # Stability 0 = Creative, 1 = Robust (~0.6 matches UI slider ~60% toward Robust)
+    elevenlabs_stability: float = float(os.getenv("ELEVENLABS_STABILITY", "0.6"))
+    elevenlabs_similarity_boost: float = float(os.getenv("ELEVENLABS_SIMILARITY_BOOST", "0.75"))
+    elevenlabs_style: float = float(os.getenv("ELEVENLABS_STYLE", "0.0"))
+    elevenlabs_use_speaker_boost: bool = os.getenv(
+        "ELEVENLABS_USE_SPEAKER_BOOST", "true"
+    ).strip().lower() in ("1", "true", "yes", "on")
+    elevenlabs_language_override: bool = os.getenv(
+        "ELEVENLABS_LANGUAGE_OVERRIDE", "false"
+    ).strip().lower() in ("1", "true", "yes", "on")
     narakeet_api_key:   str = field(default_factory=lambda: os.getenv("NARAKEET_API_KEY",   ""))
     micmonster_api_key: str = field(default_factory=lambda: os.getenv("MICMONSTER_API_KEY", ""))
     speakatoo_api_key:  str = field(default_factory=lambda: os.getenv("SPEAKATOO_API_KEY",  ""))
@@ -845,9 +955,25 @@ class GeminiConfig:
     model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     temperature: float = float(os.getenv("GEMINI_TEMPERATURE", "0.7"))
     max_tokens: int = int(os.getenv("GEMINI_MAX_TOKENS", "150"))
+    word_dispatch_threshold: int = int(os.getenv("GEMINI_WORD_DISPATCH_THRESHOLD", "4"))
+    stream_timeout_s: float = float(os.getenv("GEMINI_STREAM_TIMEOUT_S", "25"))
+    connect_timeout_s: float = float(os.getenv("GEMINI_CONNECT_TIMEOUT_S", "15"))
     # Set GEMINI_THINKING_BUDGET=0 to disable internal reasoning on 2.5-flash/thinking models.
     # Leave unset (default -1 = don't send thinking_config) for 2.0-flash and other non-thinking models.
     thinking_budget: int = int(os.getenv("GEMINI_THINKING_BUDGET", "-1"))
+
+    @property
+    def fallback_model_list(self) -> list[str]:
+        """Primary model first, then comma-separated GEMINI_FALLBACK_MODELS."""
+        fallbacks = os.getenv(
+            "GEMINI_FALLBACK_MODELS", "gemini-2.0-flash,gemini-1.5-flash"
+        )
+        ordered: list[str] = []
+        for name in (self.model, *fallbacks.split(",")):
+            name = name.strip()
+            if name and name not in ordered:
+                ordered.append(name)
+        return ordered or [self.model]
 
 
 # ---------------------------------------------------------------------------
@@ -895,7 +1021,7 @@ class AppConfig:
 
     # Default LLM backend (overridden per-session via ?llm_backend= query param)
     # Options: ollama | gemini
-    default_llm_backend: str = os.getenv("LLM_BACKEND", "ollama")
+    default_llm_backend: str = os.getenv("LLM_BACKEND", "gemini")
 
 
 # Module-level singleton — import this everywhere

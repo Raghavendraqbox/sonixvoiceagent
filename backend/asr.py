@@ -27,6 +27,7 @@ Priority chain:
 import asyncio
 import io
 import logging
+import os
 import queue as _queue
 import threading
 import time
@@ -729,8 +730,8 @@ class ASRHandler:
                     extra={"session_id": self.session_id})
 
         SILENCE_RMS_THRESHOLD    = 0.008
-        # 0.2s commit reduces latency without cutting off natural pauses.
-        SILENCE_FRAMES_TO_COMMIT = 2
+        # 0.1s commit — faster end-of-utterance (override via AZURE_STT_SILENCE_FRAMES).
+        SILENCE_FRAMES_TO_COMMIT = max(1, int(os.getenv("AZURE_STT_SILENCE_FRAMES", "1")))
         # Azure batch REST needs ≥~400 ms of speech; 2×100 ms frames is too short.
         MIN_SPEECH_FRAMES        = max(4, config.audio.min_speech_frames_before_stt)
         MAX_SILENCE_FRAMES       = 30
