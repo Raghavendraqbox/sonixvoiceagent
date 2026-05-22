@@ -140,7 +140,7 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # TTS — ElevenLabs (Sunny male — Eleven v3; see ELEVENLABS_* in .env)
         "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_TELUGU_MALE",   "AobjUwMQVcgXCsgZKdOU"),
-        "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_TELUGU_FEMALE", "onwK4e9ZLuTAKqWW03F9"),
+        "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_TELUGU_FEMALE", "aAbJxtZ77iJMeCQP9j9p"),
 
         # TTS — Azure Cognitive Services (https://azure.microsoft.com/en-us/products/ai-services/text-to-speech)
         # Telugu neural voices: te-IN-ShrutiNeural (female), te-IN-MohanNeural (male)
@@ -283,7 +283,7 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # TTS — ElevenLabs (Sunny male — Eleven v3; see ELEVENLABS_* in .env)
         "elevenlabs_voice_id_male":   os.getenv("ELEVENLABS_VOICE_ID_KANNADA_MALE",   "AobjUwMQVcgXCsgZKdOU"),
-        "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_KANNADA_FEMALE", "onwK4e9ZLuTAKqWW03F9"),
+        "elevenlabs_voice_id_female": os.getenv("ELEVENLABS_VOICE_ID_KANNADA_FEMALE", "aAbJxtZ77iJMeCQP9j9p"),
 
         # TTS — Azure Cognitive Services (https://azure.microsoft.com/en-us/products/ai-services/text-to-speech)
         # Kannada neural voices: kn-IN-SapnaNeural (female), kn-IN-GaganNeural (male)
