@@ -243,7 +243,7 @@ async def websocket_endpoint(
     websocket: WebSocket,
     language: str = "telugu",
     business: str = "jsee_loans",
-    voice: str = "male",
+    voice: str = "female",
     tts_engine: str = "auto",
     sarvam_speaker: str = "",
     sarvam_emotion: str = "",
@@ -274,7 +274,7 @@ async def websocket_endpoint(
     business = business.lower().strip()
     if business not in SUPPORTED_BUSINESSES:
         business = config.default_business
-    voice = voice.lower() if voice.lower() in ("male", "female") else "male"
+    voice = voice.lower() if voice.lower() in ("male", "female") else "female"
     tts_engine = tts_engine.lower().strip()
     sarvam_speaker = sarvam_speaker.lower().strip()
     if sarvam_speaker not in SARVAM_FEMALE_SPEAKERS:

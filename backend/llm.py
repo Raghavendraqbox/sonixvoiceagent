@@ -104,6 +104,29 @@ def _format_mock_price_data(price_data: dict) -> str:
     return "\n".join(lines)
 
 
+def _voice_turn_rules(business: str) -> str:
+    """Per-business spoken-turn length rules for streaming TTS."""
+    if business == "jsee_loans":
+        return (
+            "For low-latency voice, use one or two short conversational sentences per turn "
+            "(roughly 8–30 words total). Ask only ONE question per turn. "
+            "Do not use lists, bullets, or markdown in spoken replies. "
+            "Begin every reply with the actual answer — never with hesitation "
+            "sounds, fillers, or thinking noises like 'hmm', 'umm', 'uh', "
+            "'ఉమ్', 'ఆ', or 'ఉం'. Skip them entirely so the customer hears the "
+            "answer immediately."
+        )
+    return (
+        "For low-latency voice, keep every response to exactly one very short "
+        "conversational sentence, ideally under 10 words — never two sentences. "
+        "Do not use lists, bullets, or markdown in spoken replies. "
+        "Begin every reply with the actual answer — never with hesitation "
+        "sounds, fillers, or thinking noises like 'hmm', 'umm', 'uh', "
+        "'ఉమ్', 'ఆ', or 'ఉం'. Skip them entirely so the customer hears the "
+        "answer immediately."
+    )
+
+
 def _build_business_system_prompt(language: str, business: str) -> str:
     """Combine language rules with the selected business persona."""
     lang_cfg = get_language_config(language)
@@ -122,16 +145,11 @@ def _build_business_system_prompt(language: str, business: str) -> str:
         "spoken_style",
         f"Speak mainly in {lang_cfg['display_name']} with natural everyday English words.",
     )
+    voice_rules = _voice_turn_rules(business)
     return (
         f"You are speaking to the customer in {lang_cfg['display_name']} "
         f"({lang_cfg['display_name_native']}). {speaking_style} "
-        "For low-latency voice, keep every response to exactly one very short "
-        "conversational sentence, ideally under 10 words — never two sentences. "
-        "Do not use lists, bullets, or markdown in spoken replies. "
-        "Begin every reply with the actual answer — never with hesitation "
-        "sounds, fillers, or thinking noises like 'hmm', 'umm', 'uh', "
-        "'ఉమ్', 'ఆ', or 'ఉం'. Skip them entirely so the customer hears the "
-        "answer immediately.\n\n"
+        f"{voice_rules}\n\n"
         f"{business_prompt}"
     )
 
