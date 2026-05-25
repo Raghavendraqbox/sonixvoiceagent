@@ -37,7 +37,7 @@ _SENTENCE_BOUNDARY = re.compile(r"([.!?؟۔])\s*(?=\S|$)")
 
 # Word-count dispatch: yield after this many words even without punctuation.
 # Value comes from config so deployments can tune latency without code changes.
-_DEFAULT_WORD_DISPATCH_THRESHOLD = 6
+_DEFAULT_WORD_DISPATCH_THRESHOLD = 3
 
 
 # Hesitation / thinking tokens that some LLMs emit at the start of a reply.

@@ -209,6 +209,8 @@ async def client_config():
             "keyboard_typing_sound_gain": config.audio.keyboard_typing_sound_gain,
             "keyboard_typing_min_ms": config.audio.keyboard_typing_min_ms,
             "keyboard_typing_max_ms": config.audio.keyboard_typing_max_ms,
+            "playback_prebuffer_ms": config.audio.playback_prebuffer_ms,
+            "input_send_interval_ms": config.audio.input_send_interval_ms,
         },
         "stt": {
             "default_engine": config.default_stt_engine,
@@ -395,7 +397,7 @@ async def websocket_endpoint(
                     session.stt_silence_frames = 0
                 elif session.user_stt_active_event.is_set():
                     session.stt_silence_frames += 1
-                    if session.stt_silence_frames >= 3:
+                    if session.stt_silence_frames >= config.audio.stt_silence_frames_to_commit:
                         session.user_stt_active_event.clear()
 
                 if is_speech_raw:
@@ -427,9 +429,9 @@ async def websocket_endpoint(
                 elif session.user_speaking_event.is_set():
                     session.input_silence_frames += 1
                     session.bot_bargein_speech_frames = 0
-                    # Browser sends ~100 ms chunks; wait for sustained silence
-                    # before allowing the LLM to answer.
-                    if session.input_silence_frames >= 3:
+                    # Browser sends ~50 ms chunks by default; wait for sustained
+                    # silence before allowing the LLM to answer.
+                    if session.input_silence_frames >= config.audio.stt_silence_frames_to_commit:
                         session.user_speaking_event.clear()
                 else:
                     session.bot_bargein_speech_frames = 0

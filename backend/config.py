@@ -654,7 +654,7 @@ class OllamaConfig:
     # Early-dispatch controls for streamed LLM -> TTS.
     # Lower values reduce first-audio latency but can increase sentence fragmentation.
     # Defaults preserve existing behavior.
-    word_dispatch_threshold: int = int(os.getenv("OLLAMA_WORD_DISPATCH_THRESHOLD", "4"))
+    word_dispatch_threshold: int = int(os.getenv("OLLAMA_WORD_DISPATCH_THRESHOLD", "3"))
 
 
 # ---------------------------------------------------------------------------
@@ -689,11 +689,19 @@ class MemoryConfig:
 # Audio config
 # ---------------------------------------------------------------------------
 
+def _default_input_chunk_bytes() -> int:
+    send_ms = max(20, int(os.getenv("INPUT_SEND_INTERVAL_MS", "50")))
+    return 16000 * 2 * send_ms // 1000
+
+
 @dataclass
 class AudioConfig:
     """Audio pipeline settings — must stay in sync with frontend."""
-    # Microphone capture: 16kHz mono 16-bit → 3200 bytes per 100ms chunk
-    input_chunk_bytes: int = 3200
+    # Microphone capture: 16kHz mono 16-bit; chunk size scales with send interval.
+    input_send_interval_ms: int = int(os.getenv("INPUT_SEND_INTERVAL_MS", "50"))
+    input_chunk_bytes: int = int(
+        os.getenv("INPUT_CHUNK_BYTES", str(_default_input_chunk_bytes()))
+    )
     input_sample_rate: int = 16000
     input_channels: int = 1
     input_bit_depth: int = 16
@@ -720,7 +728,7 @@ class AudioConfig:
         os.getenv("STT_SILENCE_FRAMES_TO_COMMIT", "3")
     )
     # Minimum buffered speech duration before calling batch STT APIs.
-    stt_min_utterance_ms: int = int(os.getenv("STT_MIN_UTTERANCE_MS", "450"))
+    stt_min_utterance_ms: int = int(os.getenv("STT_MIN_UTTERANCE_MS", "380"))
     # Hard reset if the caller stays silent this long mid-utterance (100 ms frames).
     stt_max_silence_frames: int = int(os.getenv("STT_MAX_SILENCE_FRAMES", "30"))
 
@@ -728,8 +736,8 @@ class AudioConfig:
     # MUST match PLAYBACK_SAMPLE_RATE in frontend/index.html
     tts_sample_rate: int = 24000
 
-    # Pre-buffer before playback starts (ms)
-    playback_prebuffer_ms: int = 200
+    # Pre-buffer before playback starts (ms) — lower = faster first audio
+    playback_prebuffer_ms: int = int(os.getenv("PLAYBACK_PREBUFFER_MS", "60"))
 
     # Browser playback humanizer. Defaults preserve existing behavior; disable
     # either layer in .env when a clean TTS-only output is required.
@@ -880,7 +888,7 @@ class GeminiConfig:
     model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     temperature: float = float(os.getenv("GEMINI_TEMPERATURE", "0.7"))
     max_tokens: int = int(os.getenv("GEMINI_MAX_TOKENS", "150"))
-    word_dispatch_threshold: int = int(os.getenv("GEMINI_WORD_DISPATCH_THRESHOLD", "4"))
+    word_dispatch_threshold: int = int(os.getenv("GEMINI_WORD_DISPATCH_THRESHOLD", "3"))
     stream_timeout_s: float = float(os.getenv("GEMINI_STREAM_TIMEOUT_S", "25"))
     connect_timeout_s: float = float(os.getenv("GEMINI_CONNECT_TIMEOUT_S", "15"))
     # Set GEMINI_THINKING_BUDGET=0 to disable internal reasoning on 2.5-flash/thinking models.

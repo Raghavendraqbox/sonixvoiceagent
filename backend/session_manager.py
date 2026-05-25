@@ -401,7 +401,7 @@ class SessionManager:
         self,
         session: Session,
         max_wait: float = 8.0,
-        post_silence_grace: float = 0.35,
+        post_silence_grace: float = 0.18,
     ) -> bool:
         """
         Wait for live microphone speech to settle before starting the LLM.
@@ -627,11 +627,11 @@ class SessionManager:
             elif user_text[-1] in ".!?।":
                 # Cloud batch STT often inserts punctuation at short pauses.
                 # Hold briefly so a continuing caller is not interrupted.
-                merge_timeout = 0.25
+                merge_timeout = 0.14
             elif first_word_count <= 5:
-                merge_timeout = 0.25
+                merge_timeout = 0.14
             else:
-                merge_timeout = 0.18
+                merge_timeout = 0.10
             while True:
                 try:
                     more: TranscriptResult = await asyncio.wait_for(

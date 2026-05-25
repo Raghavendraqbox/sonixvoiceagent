@@ -539,7 +539,7 @@
 // Configuration
 // ---------------------------------------------------------------------------
 const WS_BASE           = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
-const SEND_INTERVAL_MS  = 100;
+let SEND_INTERVAL_MS    = 50;
 const VAD_THRESHOLD_BASE   = 0.024;  // floor for the client-side mute layer
 const VAD_THRESHOLD_MARGIN = 0.012;  // added on top of the calibrated noise floor
 let   VAD_THRESHOLD        = VAD_THRESHOLD_BASE;  // re-tuned per session via ambient calibration
@@ -547,7 +547,7 @@ const VAD_HOLD_FRAMES      = 3;      // frames to confirm user started speaking 
 const VAD_INTERRUPT_FRAMES = 2;      // fast barge-in while bot speaks (2 × 100ms = 200ms)
 const TTS_GRACE_FRAMES     = 1;      // short echo guard; keeps full-duplex interruption responsive
 const PLAYBACK_SAMPLE_RATE = 24000;
-const PREBUFFER_MS      = 100;
+let PREBUFFER_MS        = 60;
 let humanizerOfficeEnabled = true;
 let humanizerTypingEnabled = true;
 let humanizerOfficeGain = 0.018;  // subtle office ambience while bot speaks
@@ -657,6 +657,13 @@ async function loadClientConfig() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const cfg = await resp.json();
     const audio = cfg.audio || {};
+
+    SEND_INTERVAL_MS = parseFiniteNumber(
+      audio.input_send_interval_ms, SEND_INTERVAL_MS, 20, 200
+    );
+    PREBUFFER_MS = parseFiniteNumber(
+      audio.playback_prebuffer_ms, PREBUFFER_MS, 20, 500
+    );
 
     humanizerOfficeEnabled = audio.office_background_noise_enabled !== false;
     humanizerTypingEnabled = audio.keyboard_typing_sound_enabled !== false;
@@ -1241,7 +1248,7 @@ function stopTypingLayer() {
 }
 
 // ---------------------------------------------------------------------------
-// Audio chunk sender (every 100ms)
+// Audio chunk sender (interval from /client-config, default 50ms)
 // ---------------------------------------------------------------------------
 function sendAudioChunk() {
   if (!ws || ws.readyState !== WebSocket.OPEN || pcmBuffer.length === 0) return;

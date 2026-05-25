@@ -2337,7 +2337,7 @@ class TTSOrchestrator:
     # Coalesce multiple LLM sentences into one Sarvam call when under this length.
     _MAX_COALESCE_CHARS = int(os.getenv("TTS_COALESCE_MAX_CHARS", "220"))
     # Brief wait so a second sentence queued right after the first merges before synth.
-    _COALESCE_WAIT_S = float(os.getenv("TTS_COALESCE_WAIT_S", "0.06"))
+    _COALESCE_WAIT_S = float(os.getenv("TTS_COALESCE_WAIT_S", "0.03"))
 
     async def run(self) -> None:
         """Accumulate fragments → coalesce sentences → stream TTS (no PCM capture).
