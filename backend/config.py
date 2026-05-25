@@ -725,10 +725,10 @@ class AudioConfig:
     # batch REST clip is sent. Too low (e.g. 1 = 100 ms) splits Telugu speech
     # and digit-by-digit phone numbers into empty Azure/Sarvam responses.
     stt_silence_frames_to_commit: int = int(
-        os.getenv("STT_SILENCE_FRAMES_TO_COMMIT", "3")
+        os.getenv("STT_SILENCE_FRAMES_TO_COMMIT", "2")
     )
     # Minimum buffered speech duration before calling batch STT APIs.
-    stt_min_utterance_ms: int = int(os.getenv("STT_MIN_UTTERANCE_MS", "380"))
+    stt_min_utterance_ms: int = int(os.getenv("STT_MIN_UTTERANCE_MS", "320"))
     # Hard reset if the caller stays silent this long mid-utterance (100 ms frames).
     stt_max_silence_frames: int = int(os.getenv("STT_MAX_SILENCE_FRAMES", "30"))
 
@@ -737,7 +737,7 @@ class AudioConfig:
     tts_sample_rate: int = 24000
 
     # Pre-buffer before playback starts (ms) — lower = faster first audio
-    playback_prebuffer_ms: int = int(os.getenv("PLAYBACK_PREBUFFER_MS", "60"))
+    playback_prebuffer_ms: int = int(os.getenv("PLAYBACK_PREBUFFER_MS", "40"))
 
     # Browser playback humanizer. Defaults preserve existing behavior; disable
     # either layer in .env when a clean TTS-only output is required.
@@ -829,7 +829,7 @@ class TTSConfig:
         default_factory=lambda: os.getenv("ELEVENLABS_MODEL_ID", "eleven_v3")
     )
     elevenlabs_output_format: str = field(
-        default_factory=lambda: os.getenv("ELEVENLABS_OUTPUT_FORMAT", "mp3_44100_128")
+        default_factory=lambda: os.getenv("ELEVENLABS_OUTPUT_FORMAT", "pcm_24000")
     )
     # Stability 0 = Creative, 1 = Robust (~0.6 matches UI slider ~60% toward Robust)
     elevenlabs_stability: float = float(os.getenv("ELEVENLABS_STABILITY", "0.6"))
@@ -885,7 +885,7 @@ class GeminiConfig:
     def api_key(self) -> str:
         return os.getenv("GEMINI_API_KEY", "")
 
-    model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     temperature: float = float(os.getenv("GEMINI_TEMPERATURE", "0.7"))
     max_tokens: int = int(os.getenv("GEMINI_MAX_TOKENS", "150"))
     word_dispatch_threshold: int = int(os.getenv("GEMINI_WORD_DISPATCH_THRESHOLD", "3"))
@@ -899,7 +899,8 @@ class GeminiConfig:
     def fallback_model_list(self) -> list[str]:
         """Primary model first, then comma-separated GEMINI_FALLBACK_MODELS."""
         fallbacks = os.getenv(
-            "GEMINI_FALLBACK_MODELS", "gemini-2.0-flash,gemini-1.5-flash"
+            "GEMINI_FALLBACK_MODELS",
+            "gemini-2.5-flash,gemini-2.0-flash,gemini-2.0-flash-lite",
         )
         ordered: list[str] = []
         for name in (self.model, *fallbacks.split(",")):

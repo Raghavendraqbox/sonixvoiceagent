@@ -659,8 +659,12 @@ class VoiceTTSHandler:
         return self._telugu_engines[0] if self._telugu_engines else "edge"
 
     def prefers_turn_batching(self) -> bool:
-        """Batch the full LLM turn into one HTTP call (ElevenLabs REST)."""
-        return self.primary_engine() == "elevenlabs"
+        """Batch the full LLM turn into one ElevenLabs HTTP call (higher latency, fewer API calls)."""
+        if self.primary_engine() != "elevenlabs":
+            return False
+        return os.getenv("ELEVENLABS_BATCH_FULL_TURN", "false").strip().lower() in (
+            "1", "true", "yes", "on",
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -1642,10 +1646,10 @@ class VoiceTTSHandler:
                 extra={"session_id": self.session_id},
             )
 
-        output_format = (config.tts.elevenlabs_output_format or "mp3_44100_128").strip()
+        output_format = (config.tts.elevenlabs_output_format or "pcm_24000").strip()
         model_id = config.tts.elevenlabs_model_id or "eleven_v3"
         # optimize_streaming_latency is not supported on eleven_v3 (API returns 400).
-        # Full-turn batching in TTSOrchestrator avoids multiple REST round-trips per reply.
+        # pcm_24000 skips MP3 decode — matches browser playback rate (24 kHz).
         latency_qs = ""
         if "v3" not in model_id.lower():
             latency_qs = "&optimize_streaming_latency=3"
@@ -1653,10 +1657,11 @@ class VoiceTTSHandler:
             f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
             f"?output_format={output_format}{latency_qs}"
         )
+        use_pcm = output_format.lower().startswith("pcm_")
         headers = {
             "xi-api-key": api_key,
             "Content-Type": "application/json",
-            "Accept": "audio/mpeg",
+            "Accept": "application/octet-stream" if use_pcm else "audio/mpeg",
         }
         voice_settings: dict = {
             "stability": float(config.tts.elevenlabs_stability),
@@ -1717,23 +1722,33 @@ class VoiceTTSHandler:
             if not audio_bytes:
                 return False
 
-            loop = asyncio.get_running_loop()
-            pcm_bytes = await loop.run_in_executor(
-                None, lambda: _mp3_bytes_to_pcm(audio_bytes, denoise=False)
-            )
-            if pcm_bytes is None:
-                logger.error(
-                    "ElevenLabs MP3 decode failed (%d bytes mp3) — no audio sent to client",
-                    len(audio_bytes),
-                    extra={"session_id": self.session_id},
+            if use_pcm and "24000" in output_format.lower():
+                if len(audio_bytes) % 2 != 0:
+                    logger.error(
+                        "ElevenLabs PCM payload has odd byte count (%d)",
+                        len(audio_bytes),
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
+                pcm_bytes = audio_bytes
+            else:
+                loop = asyncio.get_running_loop()
+                pcm_bytes = await loop.run_in_executor(
+                    None, lambda: _mp3_bytes_to_pcm(audio_bytes, denoise=False)
                 )
-                return False
+                if pcm_bytes is None:
+                    logger.error(
+                        "ElevenLabs audio decode failed (%d bytes) — no audio sent to client",
+                        len(audio_bytes),
+                        extra={"session_id": self.session_id},
+                    )
+                    return False
 
             _debug_dump_audio_pair(
                 provider="elevenlabs",
                 session_id=self.session_id,
                 source_audio=audio_bytes,
-                source_ext="mp3",
+                source_ext="pcm" if use_pcm else "mp3",
                 decoded_pcm=pcm_bytes,
             )
 

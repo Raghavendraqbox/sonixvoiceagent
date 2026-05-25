@@ -29,7 +29,7 @@ GREETING_KANNADA = (
 )
 
 SILENCE_REPROMPT_TELUGU = (
-    "Hello సర్ / మేడమ్. నా voice clear గా వినిపిస్తుందా? మీరు line లో ఉన్నారా?"
+    "నమస్కారం. నా voice clear గా వినిపిస్తుందా? మీరు line లో ఉన్నారా?"
 )
 
 SILENCE_REPROMPT_KANNADA = (

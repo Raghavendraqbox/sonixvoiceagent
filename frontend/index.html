@@ -1473,10 +1473,11 @@ function startBotBubble() {
 }
 
 function appendBotFragment(text) {
-  if (!text) return;
-  if (!currentBotMsgEl) startBotBubble();
-  const cur = (currentBotMsgEl.textContent || "").replace(/\s+/g, " ").trim();
+  if (!text || !currentBotMsgEl) return;
   const incoming = text.replace(/\s+/g, " ").trim();
+  // Ignore punctuation-only fragments (sentence splitter leak across turns).
+  if (!incoming || /^[.!?؟۔]+$/.test(incoming)) return;
+  const cur = (currentBotMsgEl.textContent || "").replace(/\s+/g, " ").trim();
   // Stale parallel WebSockets can deliver the same fragment twice.
   if (incoming && cur.endsWith(incoming)) return;
   const last = conversationHistory[conversationHistory.length - 1];
@@ -1578,8 +1579,9 @@ function onJSONReceived(raw) {
       ttsPrebufferDone = false;
       ttsScheduledUntil = 0;
       ttsBufferedMs = 0;
-      // Only open a new bubble if bot_text_fragment hasn't already created one
-      if (!currentBotMsgEl) startBotBubble();
+      // One bubble per spoken turn — avoids ?/. punctuation bleeding from prior turn.
+      finalizeBotBubble();
+      startBotBubble();
       if (ttsAudioCtx && ttsAudioCtx.state !== "running") ttsAudioCtx.resume();
       startBackgroundAmbience();
       scheduleTypingLayer();
