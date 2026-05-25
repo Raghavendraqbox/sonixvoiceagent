@@ -544,8 +544,8 @@ const VAD_THRESHOLD_BASE   = 0.024;  // floor for the client-side mute layer
 const VAD_THRESHOLD_MARGIN = 0.012;  // added on top of the calibrated noise floor
 let   VAD_THRESHOLD        = VAD_THRESHOLD_BASE;  // re-tuned per session via ambient calibration
 const VAD_HOLD_FRAMES      = 3;      // frames to confirm user started speaking (3 × 100ms = 300ms)
-const VAD_INTERRUPT_FRAMES = 2;      // fast barge-in while bot speaks (2 × 100ms = 200ms)
-const TTS_GRACE_FRAMES     = 1;      // short echo guard; keeps full-duplex interruption responsive
+const VAD_INTERRUPT_FRAMES = 3;      // barge-in while bot speaks (3 × send interval)
+const TTS_GRACE_FRAMES     = 2;      // echo guard after tts_start before client interrupt is sent
 const PLAYBACK_SAMPLE_RATE = 24000;
 let PREBUFFER_MS        = 60;
 let humanizerOfficeEnabled = true;
@@ -623,6 +623,8 @@ let sessionBusiness   = "jsee_loans"; // locked at session start — used for al
 let conversationHistory = [];
 let currentBotMsgEl    = null;   // the streaming bot bubble currently being built
 let reconnectTimer    = null;     // debounce: only one reconnect pending at a time
+let wsGeneration      = 0;        // ignore stale socket messages after reconnect
+let sessionStarting   = false;    // guard double-click while mic permission is pending
 let ws                = null;
 let audioCtx          = null;
 let mediaStream       = null;
@@ -904,6 +906,9 @@ async function toggleSession() {
 }
 
 async function startSession() {
+  if (sessionActive || sessionStarting) return;
+  sessionStarting = true;
+
   await loadClientConfig();
 
   // Clear previous conversation log and history for a fresh session
@@ -950,6 +955,7 @@ async function startSession() {
       },
     });
   } catch (err) {
+    sessionStarting = false;
     setStatus("Microphone permission denied: " + err.message);
     btnStart.disabled = false;
     langSelect.disabled = false;
@@ -991,6 +997,7 @@ async function startSession() {
   connectWebSocket();
 
   sessionActive = true;
+  sessionStarting = false;
   btnStart.textContent = "Stop";
   btnStart.classList.add("active");
   btnStart.disabled = false;
@@ -1004,6 +1011,7 @@ async function startSession() {
 
 function stopSession() {
   sessionActive = false;
+  sessionStarting = false;
   btnStart.textContent = "Start Conversation";
   btnStart.classList.remove("active");
   langSelect.disabled = false;
@@ -1367,6 +1375,19 @@ function checkVAD(rms) {
 // WebSocket
 // ---------------------------------------------------------------------------
 function connectWebSocket() {
+  // Close any prior socket so its onmessage cannot append duplicate greetings.
+  if (ws) {
+    const stale = ws;
+    stale.onclose = null;
+    stale.onmessage = null;
+    stale.onerror = null;
+    stale.onopen = null;
+    if (stale.readyState === WebSocket.OPEN || stale.readyState === WebSocket.CONNECTING) {
+      try { stale.close(1000, "replaced"); } catch (_) {}
+    }
+    ws = null;
+  }
+
   selectedVoice = voiceSelect.value;
   selectedSarvamSpeaker = selectedVoice === "female" ? sarvamSpeakerSelect.value : "";
   selectedSarvamEmotion = sarvamEmotionSelect.value;
@@ -1387,11 +1408,18 @@ function connectWebSocket() {
     : "";
   const wsUrl = `${WS_BASE}?language=${encodeURIComponent(lang)}&business=${encodeURIComponent(business)}&voice=${encodeURIComponent(selectedVoice)}&sarvam_speaker=${encodeURIComponent(selectedSarvamSpeaker)}&sarvam_emotion=${encodeURIComponent(selectedSarvamEmotion)}${paceParam}&stt_engine=${encodeURIComponent(selectedSTTEngine)}&tts_engine=${encodeURIComponent(selectedTTSEngine)}&llm_backend=${encodeURIComponent(selectedLLMBackend)}`;
   setStatus("Connecting to server…");
+  wsGeneration += 1;
+  const activeGeneration = wsGeneration;
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";
 
-  ws.onopen  = () => { reconnectTimer = null; setStatus("Connected — starting session…"); };
+  ws.onopen  = () => {
+    if (activeGeneration !== wsGeneration) return;
+    reconnectTimer = null;
+    setStatus("Connected — starting session…");
+  };
   ws.onclose = (e) => {
+    if (activeGeneration !== wsGeneration) return;
     setStatus("Disconnected (code " + e.code + ")");
     if (sessionActive && !reconnectTimer) {
       setOrb("idle", "Reconnecting…");
@@ -1401,9 +1429,13 @@ function connectWebSocket() {
       }, 2000);
     }
   };
-  ws.onerror = () => setStatus("WebSocket error");
+  ws.onerror = () => {
+    if (activeGeneration !== wsGeneration) return;
+    setStatus("WebSocket error");
+  };
 
   ws.onmessage = (event) => {
+    if (activeGeneration !== wsGeneration) return;
     if (event.data instanceof ArrayBuffer) onAudioReceived(event.data);
     else if (typeof event.data === "string") onJSONReceived(event.data);
   };
@@ -1441,7 +1473,12 @@ function startBotBubble() {
 }
 
 function appendBotFragment(text) {
+  if (!text) return;
   if (!currentBotMsgEl) startBotBubble();
+  const cur = (currentBotMsgEl.textContent || "").replace(/\s+/g, " ").trim();
+  const incoming = text.replace(/\s+/g, " ").trim();
+  // Stale parallel WebSockets can deliver the same fragment twice.
+  if (incoming && cur.endsWith(incoming)) return;
   const last = conversationHistory[conversationHistory.length - 1];
   if (last && last.role === "bot") last.text += text + " ";
   currentBotMsgEl.textContent = (currentBotMsgEl.textContent || "") + text + " ";

@@ -8,6 +8,7 @@ Language is determined per-session via the WebSocket ?language= query param
 
 import asyncio
 import logging
+import os
 import re
 import time
 import uuid
@@ -71,12 +72,16 @@ class Session:
     # across sessions. Lazily attached by SessionManager.create_session().
     vad: object = field(default=None, init=False)
 
-    def cancel_tts(self) -> None:
+    def cancel_tts(self, reason: str = "unspecified") -> None:
         """Signal TTS to stop immediately."""
         self.tts_cancel_event.set()
         self.interrupt_event.set()
         self.bot_audio_active = False
-        logger.info("TTS cancel signalled", extra={"session_id": self.session_id})
+        logger.info(
+            "TTS cancel signalled (%s)",
+            reason,
+            extra={"session_id": self.session_id},
+        )
 
     async def cancel_and_wait_tts(self, timeout: float = 3.0) -> None:
         """
@@ -89,7 +94,7 @@ class Session:
           3. an MMS thread-executor still in-flight completes AFTER the reset
              and streams audio alongside the next response.
         """
-        self.cancel_tts()
+        self.cancel_tts(reason="new_turn")
         task = self.tts_orch_task
         if task and not task.done():
             task.cancel()
@@ -269,6 +274,7 @@ class SessionManager:
             session_id=session_id,
             tts_handler=session.tts_handler,
             cancel_event=session.tts_cancel_event,
+            batch_full_turn=session.tts_handler.prefers_turn_batching(),
         )
 
         # Wire LLM — RAG disabled for voice: encode() causes 4-5s page-fault
@@ -444,11 +450,13 @@ class SessionManager:
             session_id=session.session_id,
             tts_handler=session.tts_handler,
             cancel_event=session.tts_cancel_event,
+            batch_full_turn=session.tts_handler.prefers_turn_batching(),
         )
         orch_task = asyncio.create_task(session.tts_orchestrator.run())
         session.tts_orch_task = orch_task
         await send_json_cb({"type": "tts_start"})
         await send_json_cb({"type": "bot_text_fragment", "text": text})
+        # Single enqueue — batch orchestrator merges parts into one ElevenLabs call.
         await session.tts_orchestrator.fragment_queue.put(text)
         await session.tts_orchestrator.fragment_queue.put(None)
         # ElevenLabs + long greetings can exceed 30s; don't cut off mid-utterance.
@@ -570,6 +578,15 @@ class SessionManager:
                     continue
                 _silence_defer_count = 0
                 if _silence_reprompt_count < 2:
+                    if session.bot_audio_active or (
+                        session.tts_orchestrator and session.tts_orchestrator.is_active()
+                    ):
+                        logger.info(
+                            "Silence reprompt skipped — bot still speaking",
+                            extra={"session_id": session.session_id},
+                        )
+                        _silence_timeout = 8.0
+                        continue
                     reprompt = silence_reprompt or last_bot_text
                     if reprompt:
                         await self._play_hardcoded(session, send_json_cb, reprompt)
@@ -722,9 +739,11 @@ class SessionManager:
                 session_id=session.session_id,
                 tts_handler=session.tts_handler,
                 cancel_event=session.tts_cancel_event,
+                batch_full_turn=session.tts_handler.prefers_turn_batching(),
             )
             # Track this turn's audio output and detect "LLM text but no audio".
             bytes_before_turn = session.tts_handler.last_pcm_bytes_sent
+            session.tts_handler.last_completed_tts_text = ""
             orch_task = asyncio.create_task(
                 session.tts_orchestrator.run(),
                 name=f"tts-orch-{session.session_id}",
@@ -772,15 +791,22 @@ class SessionManager:
 
             await session.tts_orchestrator.fragment_queue.put(None)
 
+            _orch_timeout_s = float(os.getenv("TTS_ORCH_TIMEOUT_S", "90"))
             try:
-                await asyncio.wait_for(orch_task, timeout=30.0)
+                await asyncio.wait_for(orch_task, timeout=_orch_timeout_s)
             except asyncio.TimeoutError:
+                logger.warning(
+                    "TTS orchestrator timed out after %.0fs",
+                    _orch_timeout_s,
+                    extra={"session_id": session.session_id},
+                )
                 orch_task.cancel()
             except asyncio.CancelledError:
                 orch_task.cancel()
                 break
 
             t_tts_end = time.monotonic()
+            turn_was_cancelled = session.tts_cancel_event.is_set()
 
             stt_to_process_ms = (t_process_start - t_stt_received) * 1000
             llm_first_ms = (t_llm_first - t_llm_start) * 1000
@@ -806,9 +832,12 @@ class SessionManager:
 
             bytes_after_turn = session.tts_handler.last_pcm_bytes_sent
             bytes_sent_this_turn = bytes_after_turn - bytes_before_turn
+            full_bot = bot_text.strip()
+            completed = session.tts_handler.last_completed_tts_text.strip()
+
             if (
                 bot_text
-                and not session.tts_cancel_event.is_set()
+                and not turn_was_cancelled
                 and bytes_sent_this_turn <= 0
             ):
                 logger.warning(
@@ -816,6 +845,7 @@ class SessionManager:
                     extra={"session_id": session.session_id},
                 )
                 try:
+                    session.tts_cancel_event.clear()
                     await session.tts_handler.synthesize_and_stream(bot_text)
                 except Exception as exc:
                     logger.error(
@@ -823,6 +853,34 @@ class SessionManager:
                         exc,
                         extra={"session_id": session.session_id},
                     )
+            elif (
+                full_bot
+                and turn_was_cancelled
+                and bytes_sent_this_turn > 0
+                and completed
+                and completed != full_bot
+                and session.transcript_queue.empty()
+            ):
+                remainder = (
+                    full_bot[len(completed):].strip()
+                    if completed and full_bot.startswith(completed)
+                    else full_bot
+                )
+                if remainder:
+                    logger.warning(
+                        "Partial TTS cancel — retrying remainder (%d chars)",
+                        len(remainder),
+                        extra={"session_id": session.session_id},
+                    )
+                    try:
+                        session.tts_cancel_event.clear()
+                        await session.tts_handler.synthesize_and_stream(remainder)
+                    except Exception as exc:
+                        logger.error(
+                            "TTS remainder synthesis failed: %s",
+                            exc,
+                            extra={"session_id": session.session_id},
+                        )
 
             # IMPORTANT: do NOT clear bot_audio_active yet — see the matching
             # comment in _play_hardcoded(). The flag must stay asserted until

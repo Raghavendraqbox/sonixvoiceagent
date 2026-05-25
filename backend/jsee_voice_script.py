@@ -15,14 +15,14 @@ from typing import Dict
 # ---------------------------------------------------------------------------
 
 GREETING_TELUGU = (
-    "నమస్కారం సర్ / మేడమ్. "
+    "నమస్కారం. "
     "నేను JSEE Financial Services నుంచి మాట్లాడుతున్నాను. "
     "మీకు రెండు నిమిషాలు టైమ్ ఉంటే, మీ requirement కి సరిపోయే loan options "
     "గురించి assist చేయగలను."
 )
 
 GREETING_KANNADA = (
-    "ನಮಸ್ಕಾರ ಸರ್ / ಮೇಡಮ್. "
+    "ನಮಸ್ಕಾರ. "
     "ನಾನು JSEE Financial Services ನಿಂದ ಮಾತನಾಡುತ್ತಿದ್ದೇನೆ. "
     "ನಿಮಗೆ ಎರಡು ನಿಮಿಷ ಸಮಯ ಇದ್ದರೆ, ನಿಮ್ಮ requirement ಗೆ ಸರಿಹೊಂದುವ "
     "loan options ಬಗ್ಗೆ assist ಮಾಡಬಹುದು."

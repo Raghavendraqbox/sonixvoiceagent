@@ -650,6 +650,18 @@ class VoiceTTSHandler:
         else:
             self._kannada_engines = []
 
+        self.last_completed_tts_text: str = ""
+
+    def primary_engine(self) -> str:
+        """First engine in the session priority chain."""
+        if self._language == "kannada":
+            return self._kannada_engines[0] if self._kannada_engines else "edge"
+        return self._telugu_engines[0] if self._telugu_engines else "edge"
+
+    def prefers_turn_batching(self) -> bool:
+        """Batch the full LLM turn into one HTTP call (ElevenLabs REST)."""
+        return self.primary_engine() == "elevenlabs"
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -667,10 +679,12 @@ class VoiceTTSHandler:
         )
 
         if self._language == "kannada":
-            return await self._synthesize_kannada(text)
-
-        # Telugu: ElevenLabs primary → MMS Telugu fallback → silence
-        return await self._synthesize_telugu(text)
+            ok = await self._synthesize_kannada(text)
+        else:
+            ok = await self._synthesize_telugu(text)
+        if ok and not self._cancel_event.is_set():
+            self.last_completed_tts_text = text.strip()
+        return ok
 
     async def synthesize_to_pcm(self, text: str) -> Optional[bytes]:
         """Synthesize text → raw PCM bytes without streaming to the client.
@@ -1631,6 +1645,7 @@ class VoiceTTSHandler:
         output_format = (config.tts.elevenlabs_output_format or "mp3_44100_128").strip()
         model_id = config.tts.elevenlabs_model_id or "eleven_v3"
         # optimize_streaming_latency is not supported on eleven_v3 (API returns 400).
+        # Full-turn batching in TTSOrchestrator avoids multiple REST round-trips per reply.
         latency_qs = ""
         if "v3" not in model_id.lower():
             latency_qs = "&optimize_streaming_latency=3"
@@ -2320,10 +2335,12 @@ class TTSOrchestrator:
         session_id: str,
         tts_handler: VoiceTTSHandler,
         cancel_event: asyncio.Event,
+        batch_full_turn: bool = False,
     ) -> None:
         self.session_id     = session_id
         self._tts           = tts_handler
         self._cancel_event  = cancel_event
+        self._batch_full_turn = batch_full_turn
         self._fragment_queue: asyncio.Queue = asyncio.Queue()
         self._active        = False
 
@@ -2345,101 +2362,112 @@ class TTSOrchestrator:
         synthesize_to_pcm buffered entire Sarvam utterances before playback, which
         erased WebSocket time-to-first-audio. synthesize_and_stream sends audio as
         Sarvam chunks arrive.
+
+        When batch_full_turn is True (ElevenLabs REST), wait for all LLM fragments
+        then issue a single synthesize_and_stream call per turn.
         """
         self._active = True
-        logger.debug("TTSOrchestrator started", extra={"session_id": self.session_id})
-
-        sentence_queue: asyncio.Queue = asyncio.Queue()
-
-        def _drain_fragments() -> None:
-            while not self._fragment_queue.empty():
-                try:
-                    self._fragment_queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    break
-
-        async def _accumulate() -> None:
-            buf: list[str] = []
-            try:
-                while True:
-                    if self._cancel_event.is_set():
-                        _drain_fragments()
-                        break
-                    try:
-                        fragment = await asyncio.wait_for(
-                            self._fragment_queue.get(), timeout=0.1
-                        )
-                    except asyncio.TimeoutError:
-                        continue
-
-                    if fragment is None:
-                        if buf and not self._cancel_event.is_set():
-                            sentence_queue.put_nowait(" ".join(buf).strip())
-                        break
-
-                    if self._cancel_event.is_set():
-                        _drain_fragments()
-                        break
-
-                    buf.append(fragment)
-                    buf_text = " ".join(buf)
-                    ends = (
-                        fragment.rstrip()
-                        and fragment.rstrip()[-1] in self._SENTENCE_END
-                    )
-                    if ends and len(buf_text) >= self._MIN_FLUSH_CHARS:
-                        sentence_queue.put_nowait(buf_text)
-                        buf = []
-            finally:
-                sentence_queue.put_nowait(None)
-
-        async def _speak_coalesced(first: str) -> None:
-            batch = [first]
-            total = len(first)
-            while total < self._MAX_COALESCE_CHARS:
-                try:
-                    nxt = await asyncio.wait_for(
-                        sentence_queue.get(),
-                        timeout=self._COALESCE_WAIT_S,
-                    )
-                except asyncio.TimeoutError:
-                    break
-                if nxt is None:
-                    sentence_queue.put_nowait(None)
-                    break
-                batch.append(nxt)
-                total += len(nxt) + 1
-            merged = " ".join(s.strip() for s in batch if s.strip())
-            if not merged or self._cancel_event.is_set():
-                return
-            t0 = time.monotonic()
-            await self._tts.synthesize_and_stream(merged)
-            logger.debug(
-                "TTS orchestrator spoke %d chars in %.0fms",
-                len(merged),
-                (time.monotonic() - t0) * 1000,
-                extra={"session_id": self.session_id},
-            )
-
-        async def _synthesize_stream() -> None:
-            try:
-                while True:
-                    text = await sentence_queue.get()
-                    if text is None or self._cancel_event.is_set():
-                        break
-                    await _speak_coalesced(text)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                logger.error(
-                    "TTS orchestrator synthesis error: %s",
-                    exc,
-                    extra={"session_id": self.session_id},
-                    exc_info=True,
-                )
-                raise
+        mode = "batch" if self._batch_full_turn else "stream"
+        logger.debug(
+            "TTSOrchestrator started (%s mode)", mode,
+            extra={"session_id": self.session_id},
+        )
 
         try:
+            if self._batch_full_turn:
+                await self._run_batch_turn()
+                return
+
+            sentence_queue: asyncio.Queue = asyncio.Queue()
+
+            def _drain_fragments() -> None:
+                while not self._fragment_queue.empty():
+                    try:
+                        self._fragment_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+
+            async def _accumulate() -> None:
+                buf: list[str] = []
+                try:
+                    while True:
+                        if self._cancel_event.is_set():
+                            _drain_fragments()
+                            break
+                        try:
+                            fragment = await asyncio.wait_for(
+                                self._fragment_queue.get(), timeout=0.1
+                            )
+                        except asyncio.TimeoutError:
+                            continue
+
+                        if fragment is None:
+                            if buf and not self._cancel_event.is_set():
+                                sentence_queue.put_nowait(" ".join(buf).strip())
+                            break
+
+                        if self._cancel_event.is_set():
+                            _drain_fragments()
+                            break
+
+                        buf.append(fragment)
+                        buf_text = " ".join(buf)
+                        ends = (
+                            fragment.rstrip()
+                            and fragment.rstrip()[-1] in self._SENTENCE_END
+                        )
+                        if ends and len(buf_text) >= self._MIN_FLUSH_CHARS:
+                            sentence_queue.put_nowait(buf_text)
+                            buf = []
+                finally:
+                    sentence_queue.put_nowait(None)
+
+            async def _speak_coalesced(first: str) -> None:
+                batch = [first]
+                total = len(first)
+                while total < self._MAX_COALESCE_CHARS:
+                    try:
+                        nxt = await asyncio.wait_for(
+                            sentence_queue.get(),
+                            timeout=self._COALESCE_WAIT_S,
+                        )
+                    except asyncio.TimeoutError:
+                        break
+                    if nxt is None:
+                        sentence_queue.put_nowait(None)
+                        break
+                    batch.append(nxt)
+                    total += len(nxt) + 1
+                merged = " ".join(s.strip() for s in batch if s.strip())
+                if not merged or self._cancel_event.is_set():
+                    return
+                t0 = time.monotonic()
+                await self._tts.synthesize_and_stream(merged)
+                logger.debug(
+                    "TTS orchestrator spoke %d chars in %.0fms",
+                    len(merged),
+                    (time.monotonic() - t0) * 1000,
+                    extra={"session_id": self.session_id},
+                )
+
+            async def _synthesize_stream() -> None:
+                try:
+                    while True:
+                        text = await sentence_queue.get()
+                        if text is None or self._cancel_event.is_set():
+                            break
+                        await _speak_coalesced(text)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.error(
+                        "TTS orchestrator synthesis error: %s",
+                        exc,
+                        extra={"session_id": self.session_id},
+                        exc_info=True,
+                    )
+                    raise
+
             await asyncio.gather(
                 asyncio.create_task(_accumulate(), name=f"tts-acc-{self.session_id[:8]}"),
                 asyncio.create_task(_synthesize_stream(), name=f"tts-syn-{self.session_id[:8]}"),
@@ -2449,6 +2477,54 @@ class TTSOrchestrator:
         finally:
             self._active = False
             logger.debug("TTSOrchestrator stopped", extra={"session_id": self.session_id})
+
+    async def _run_batch_turn(self) -> None:
+        """One ElevenLabs HTTP call for the entire LLM turn."""
+        parts: list[str] = []
+
+        def _drain_fragments() -> None:
+            while not self._fragment_queue.empty():
+                try:
+                    self._fragment_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+
+        try:
+            while True:
+                if self._cancel_event.is_set():
+                    _drain_fragments()
+                    return
+                try:
+                    fragment = await asyncio.wait_for(
+                        self._fragment_queue.get(), timeout=0.1
+                    )
+                except asyncio.TimeoutError:
+                    continue
+
+                if fragment is None:
+                    break
+
+                if self._cancel_event.is_set():
+                    _drain_fragments()
+                    return
+
+                if fragment.strip():
+                    parts.append(fragment.strip())
+
+            merged = " ".join(parts).strip()
+            if not merged or self._cancel_event.is_set():
+                return
+
+            t0 = time.monotonic()
+            await self._tts.synthesize_and_stream(merged)
+            logger.debug(
+                "TTS orchestrator batch spoke %d chars in %.0fms",
+                len(merged),
+                (time.monotonic() - t0) * 1000,
+                extra={"session_id": self.session_id},
+            )
+        except asyncio.CancelledError:
+            raise
 
     def is_active(self) -> bool:
         return self._active

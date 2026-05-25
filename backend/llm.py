@@ -588,14 +588,6 @@ class GeminiLLMClient:
                     yield random.choice(self._neutral_stubs)
                     return
                 except Exception as exc:
-                    if fragments_yielded > 0:
-                        logger.error(
-                            "Gemini error mid-stream (%s): %s",
-                            model_name,
-                            exc,
-                            extra={"session_id": session_id},
-                        )
-                        return
                     err_s = str(exc).lower()
                     is_overload = "503" in err_s or "unavailable" in err_s or "high demand" in err_s
                     is_model_gone = (
@@ -603,6 +595,29 @@ class GeminiLLMClient:
                         or "not found" in err_s
                         or "no longer available" in err_s
                     )
+                    if fragments_yielded > 0:
+                        logger.error(
+                            "Gemini error mid-stream (%s): %s",
+                            model_name,
+                            exc,
+                            extra={"session_id": session_id},
+                        )
+                        if (is_overload or is_model_gone) and model_idx + 1 < len(models):
+                            next_model = models[model_idx + 1]
+                            logger.warning(
+                                "Gemini %s stopped after %d fragment(s) — "
+                                "falling back to %s for the rest of the turn",
+                                model_name,
+                                fragments_yielded,
+                                next_model,
+                                extra={"session_id": session_id},
+                            )
+                            break
+                        tail = buffer.strip()
+                        if tail and not _is_filler_only(tail):
+                            yield tail
+                        yield random.choice(self._neutral_stubs)
+                        return
                     if is_model_gone and model_idx + 1 < len(models):
                         next_model = models[model_idx + 1]
                         logger.warning(

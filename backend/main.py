@@ -407,14 +407,20 @@ async def websocket_endpoint(
                         session.bot_bargein_speech_frames += 1
                     else:
                         session.bot_bargein_speech_frames = 0
+                    bargein_frames_required = 1
+                    if (
+                        session.tts_orchestrator
+                        and session.tts_orchestrator.is_active()
+                    ):
+                        bargein_frames_required = 3
                     if (
                         session.tts_orchestrator
                         and session.tts_orchestrator.is_active()
                         and session.bot_audio_active
-                        and session.bot_bargein_speech_frames >= 1
+                        and session.bot_bargein_speech_frames >= bargein_frames_required
                         and not session.tts_cancel_event.is_set()
                     ):
-                        session.cancel_tts()
+                        session.cancel_tts(reason="server_barge-in")
                         await send_json_msg({"type": "tts_stopped"})
                     elif (
                         session.bot_audio_active
@@ -461,7 +467,7 @@ async def websocket_endpoint(
                             or session.tts_handler.last_pcm_bytes_sent > 0
                         )
                     ):
-                        session.cancel_tts()
+                        session.cancel_tts(reason="client_interrupt")
                         await send_json_msg({"type": "tts_stopped"})
                     else:
                         logger.debug(
