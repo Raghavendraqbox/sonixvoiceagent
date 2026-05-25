@@ -450,11 +450,11 @@
       <div class="selector-card">
         <label for="stt-select">STT</label>
         <select id="stt-select" onchange="onSTTEngineChange(this.value)">
-          <option value="auto"    selected>Auto</option>
+          <option value="auto"            >Auto</option>
           <option value="sarvam"          >Sarvam</option>
           <option value="soniox"          >Soniox</option>
           <option value="google"          >Google Cloud</option>
-          <option value="azure"          >Microsoft Azure</option>
+          <option value="azure"   selected>Microsoft Azure</option>
           <option value="amazon"          >Amazon Transcribe</option>
           <option value="whisper"         >Whisper (local)</option>
         </select>
@@ -465,11 +465,11 @@
         <label for="tts-select">TTS</label>
         <select id="tts-select" onchange="onTTSEngineChange(this.value)">
           <option value="auto"                 >Auto</option>
-          <option value="sarvam"       selected>Sarvam</option>
+          <option value="sarvam"               >Sarvam</option>
           <option value="google_tts"           >Google Cloud</option>
           <option value="azure_tts"            >Microsoft Azure</option>
           <option value="amazon_polly"         >Amazon Polly</option>
-          <option value="elevenlabs"           >ElevenLabs</option>
+          <option value="elevenlabs" selected>ElevenLabs</option>
           <option value="edge"                 >Edge TTS (free)</option>
           <option value="gtts"                 >gTTS (free)</option>
         </select>
@@ -613,8 +613,8 @@ let selectedSarvamPace = 1.10;
 let sarvamPaceMin      = DEFAULT_SARVAM_PACE_MIN;
 let sarvamPaceMax      = DEFAULT_SARVAM_PACE_MAX;
 let sarvamPaceStep     = DEFAULT_SARVAM_PACE_STEP;
-let selectedSTTEngine  = "auto";
-let selectedTTSEngine  = "sarvam";
+let selectedSTTEngine  = "azure";
+let selectedTTSEngine  = "elevenlabs";
 let selectedLLMBackend = "gemini";
 let selectedBusiness   = "jsee_loans";
 let sessionLanguage   = "telugu";   // locked at session start — used for all WS reconnects
@@ -703,6 +703,26 @@ async function loadClientConfig() {
       selectedSTTEngine = defaultEngine;
       const sttSelect = document.getElementById("stt-select");
       if (sttSelect) sttSelect.value = defaultEngine;
+    }
+
+    const tts = cfg.tts || {};
+    const defaultTts = (tts.default_engine || "elevenlabs").toLowerCase();
+    const allowedTts = new Set([
+      "auto", "sarvam", "google_tts", "azure_tts", "amazon_polly",
+      "elevenlabs", "edge", "gtts",
+    ]);
+    if (allowedTts.has(defaultTts)) {
+      selectedTTSEngine = defaultTts;
+      const ttsSelect = document.getElementById("tts-select");
+      if (ttsSelect) ttsSelect.value = defaultTts;
+    }
+
+    const voiceCfg = cfg.voice || {};
+    const defaultVoice = (voiceCfg.default || "female").toLowerCase();
+    if (defaultVoice === "male" || defaultVoice === "female") {
+      selectedVoice = defaultVoice;
+      const voiceSel = document.getElementById("voice-select");
+      if (voiceSel) voiceSel.value = defaultVoice;
     }
   } catch (err) {
     console.warn("Using default client config:", err);

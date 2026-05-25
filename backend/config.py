@@ -951,7 +951,14 @@ class AppConfig:
 
     # Default STT engine (overridden per-session via ?stt_engine= query param)
     # Options: auto | sarvam | soniox | google | azure | amazon | whisper
-    default_stt_engine: str = os.getenv("STT_ENGINE", "auto")
+    default_stt_engine: str = os.getenv("STT_ENGINE", "azure")
+
+    # Default TTS engine for UI / ?tts_engine= when not overridden
+    # Options: auto | elevenlabs | sarvam | azure_tts | edge | gtts | ...
+    default_tts_engine: str = os.getenv("DEFAULT_TTS_ENGINE", "elevenlabs")
+
+    # Default voice gender: male | female
+    default_voice: str = os.getenv("DEFAULT_VOICE", "female").lower()
 
     # Default LLM backend (overridden per-session via ?llm_backend= query param)
     # Options: ollama | gemini

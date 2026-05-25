@@ -217,6 +217,12 @@ async def client_config():
             "silence_frames_to_commit": config.audio.stt_silence_frames_to_commit,
             "min_utterance_ms": config.audio.stt_min_utterance_ms,
         },
+        "tts": {
+            "default_engine": config.default_tts_engine,
+        },
+        "voice": {
+            "default": config.default_voice,
+        },
         "sarvam": {
             "female_speakers": list(SARVAM_FEMALE_SPEAKERS),
             "emotions": list(SARVAM_EMOTION_TEMPERATURES.keys()),
@@ -259,7 +265,7 @@ async def websocket_endpoint(
     Query parameters:
       language   — "telugu" or "kannada" (defaults to LANGUAGE env var → "telugu")
       business   — "jsee_loans" (default), or "bank_loan" / "car_loan"
-      voice      — "male" (default) or "female"
+      voice      — "female" (default) or "male"
       sarvam_speaker — female Sarvam speaker override, e.g. "anushka"
       sarvam_emotion — Bulbul v3 emotion preset: neutral | calm | warm | empathetic |
                        happy | cheerful | excited | serious
@@ -276,7 +282,7 @@ async def websocket_endpoint(
     business = business.lower().strip()
     if business not in SUPPORTED_BUSINESSES:
         business = config.default_business
-    voice = voice.lower() if voice.lower() in ("male", "female") else "female"
+    voice = voice.lower() if voice.lower() in ("male", "female") else config.default_voice
     tts_engine = tts_engine.lower().strip()
     sarvam_speaker = sarvam_speaker.lower().strip()
     if sarvam_speaker not in SARVAM_FEMALE_SPEAKERS:
